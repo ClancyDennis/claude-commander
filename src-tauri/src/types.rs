@@ -1,0 +1,188 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentStatus {
+    Running,
+    Stopped,
+    Error,
+    WaitingForInput,
+    Idle,
+    Processing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubContext {
+    pub repository_url: String,
+    pub owner: String,
+    pub repo: String,
+    pub branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_synced: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInfo {
+    pub id: String,
+    pub working_dir: String,
+    pub status: AgentStatus,
+    pub session_id: Option<String>,
+    pub last_activity: Option<i64>, // Unix timestamp in milliseconds
+    pub is_processing: bool,
+    pub pending_input: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_context: Option<GitHubContext>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentOutputEvent {
+    pub agent_id: String,
+    pub output_type: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parsed_json: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<OutputMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_size: Option<usize>,
+    pub is_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatusEvent {
+    pub agent_id: String,
+    pub status: AgentStatus,
+    pub info: Option<AgentInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInputRequiredEvent {
+    pub agent_id: String,
+    pub last_output: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentActivityEvent {
+    pub agent_id: String,
+    pub is_processing: bool,
+    pub pending_input: bool,
+    pub last_activity: i64, // Unix timestamp in milliseconds
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolEventPayload {
+    pub agent_id: String,
+    pub session_id: String,
+    pub hook_event_name: String,
+    pub tool_name: String,
+    pub tool_input: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_response: Option<serde_json::Value>,
+
+    // Enhanced fields for Phase 3
+    pub tool_call_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>, // "pending", "success", "failed"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_time_ms: Option<u64>,
+    pub timestamp: i64, // Unix timestamp in milliseconds
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HookInput {
+    pub session_id: String,
+    pub hook_event_name: String,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+    #[serde(default)]
+    pub tool_input: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tool_response: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatistics {
+    pub agent_id: String,
+    pub total_prompts: u32,
+    pub total_tool_calls: u32,
+    pub total_output_bytes: u64,
+    pub session_start: String,
+    pub last_activity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens_used: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatsEvent {
+    pub agent_id: String,
+    pub stats: AgentStatistics,
+}
+
+// Chat-related types for meta-agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,  // "user" or "assistant"
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    pub timestamp: i64,  // Unix timestamp in milliseconds
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub tool_name: String,
+    pub input: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatResponse {
+    pub message: ChatMessage,
+    pub usage: ChatUsage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaAgentToolCallEvent {
+    pub tool_name: String,
+    pub input: serde_json::Value,
+    pub output: serde_json::Value,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaAgentThinkingEvent {
+    pub is_thinking: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallStatistics {
+    pub agent_id: String,
+    pub total_calls: u32,
+    pub successful_calls: u32,
+    pub failed_calls: u32,
+    pub pending_calls: u32,
+    pub average_execution_time_ms: f64,
+    pub calls_by_tool: std::collections::HashMap<String, u32>,
+}

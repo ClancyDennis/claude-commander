@@ -1,0 +1,34 @@
+[package]
+name = "claude-agent-manager"
+version = "0.1.0"
+description = "A Tauri app to manage multiple Claude Code instances"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "claude_agent_manager_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
+reqwest = { version = "0.12", features = ["json"] }
+async-stream = "0.3"
+futures = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+dotenvy = "0.15"
+
+[profile.release]
+strip = true
+lto = true
