@@ -2,7 +2,11 @@
   import { agents, selectedAgentId, viewMode, openChat, openAgent } from "../stores/agents";
   import type { Agent } from "../types";
 
-  let { onNewAgent }: { onNewAgent: () => void } = $props();
+  let { onNewAgent, onTogglePoolDashboard, onToggleCostTracker }: {
+    onNewAgent: () => void;
+    onTogglePoolDashboard?: () => void;
+    onToggleCostTracker?: () => void;
+  } = $props();
 
   function selectAgent(id: string) {
     openAgent(id);
@@ -155,6 +159,21 @@
       </ul>
     {/if}
   </div>
+
+  {#if onTogglePoolDashboard || onToggleCostTracker}
+    <footer class="agent-list-footer">
+      {#if onTogglePoolDashboard}
+        <button class="footer-btn" onclick={onTogglePoolDashboard} title="Toggle Pool Dashboard (Ctrl+Shift+P)">
+          🏊 Pool
+        </button>
+      {/if}
+      {#if onToggleCostTracker}
+        <button class="footer-btn" onclick={onToggleCostTracker} title="Toggle Cost Tracker (Ctrl+Shift+$)">
+          💰 Costs
+        </button>
+      {/if}
+    </footer>
+  {/if}
 </aside>
 
 <style>
@@ -429,5 +448,34 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  .agent-list-footer {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+  }
+
+  .footer-btn {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .footer-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
   }
 </style>

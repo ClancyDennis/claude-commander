@@ -49,6 +49,28 @@ export const selectedAgentStats = derived(
   }
 );
 
+export const agentsWithOutputs = derived(
+  [agents, agentOutputs],
+  ([$agents, $agentOutputs]) => {
+    const agentsArray: Array<{id: string; workingDir: string; outputCount: number}> = [];
+
+    $agentOutputs.forEach((outputs, agentId) => {
+      if (outputs.length > 0) {
+        const agent = $agents.get(agentId);
+        if (agent) {
+          agentsArray.push({
+            id: agent.id,
+            workingDir: agent.workingDir,
+            outputCount: outputs.length
+          });
+        }
+      }
+    });
+
+    return agentsArray;
+  }
+);
+
 export function addAgent(agent: Agent) {
   agents.update((map) => {
     map.set(agent.id, agent);

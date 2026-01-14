@@ -179,14 +179,13 @@ impl AIClient {
         &self,
         messages: Vec<Message>,
         tools: Vec<Tool>,
-        max_tokens: u32,
     ) -> Result<AIResponse, AIError> {
         match &self.provider {
             Provider::Claude { api_key, model } => {
-                self.send_claude_message(api_key, model, messages, Some(tools), max_tokens).await
+                self.send_claude_message(api_key, model, messages, Some(tools)).await
             }
             Provider::OpenAI { api_key, model } => {
-                self.send_openai_message(api_key, model, messages, Some(tools), max_tokens).await
+                self.send_openai_message(api_key, model, messages, Some(tools)).await
             }
         }
     }
@@ -194,14 +193,13 @@ impl AIClient {
     pub async fn send_message(
         &self,
         messages: Vec<Message>,
-        max_tokens: u32,
     ) -> Result<AIResponse, AIError> {
         match &self.provider {
             Provider::Claude { api_key, model } => {
-                self.send_claude_message(api_key, model, messages, None, max_tokens).await
+                self.send_claude_message(api_key, model, messages, None).await
             }
             Provider::OpenAI { api_key, model } => {
-                self.send_openai_message(api_key, model, messages, None, max_tokens).await
+                self.send_openai_message(api_key, model, messages, None).await
             }
         }
     }
@@ -212,11 +210,9 @@ impl AIClient {
         model: &str,
         messages: Vec<Message>,
         tools: Option<Vec<Tool>>,
-        max_tokens: u32,
     ) -> Result<AIResponse, AIError> {
         let mut body = json!({
             "model": model,
-            "max_tokens": max_tokens,
             "messages": messages,
         });
 
@@ -265,7 +261,6 @@ impl AIClient {
         model: &str,
         messages: Vec<Message>,
         tools: Option<Vec<Tool>>,
-        max_tokens: u32,
     ) -> Result<AIResponse, AIError> {
         // Convert messages to OpenAI format
         let openai_messages: Vec<Value> = messages
@@ -279,7 +274,6 @@ impl AIClient {
         let mut body = json!({
             "model": model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
         });
 
         // Convert tools to OpenAI format if provided
@@ -352,7 +346,7 @@ impl AIClient {
         let stop_reason = match choice.finish_reason.as_str() {
             "stop" => Some("end_turn".to_string()),
             "tool_calls" => Some("tool_use".to_string()),
-            "length" => Some("max_tokens".to_string()),
+            "length" => Some("length".to_string()),
             other => Some(other.to_string()),
         };
 

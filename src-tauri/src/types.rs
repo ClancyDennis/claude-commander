@@ -45,6 +45,16 @@ pub struct AgentOutputEvent {
     pub parsed_json: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<OutputMetadata>,
+
+    // Enhanced fields from Claude stream-json format
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtype: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +123,24 @@ pub struct HookInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelUsageStats {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentStatistics {
     pub agent_id: String,
     pub total_prompts: u32,
@@ -124,6 +152,16 @@ pub struct AgentStatistics {
     pub total_tokens_used: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_cost_usd: Option<f64>,
+
+    // Enhanced statistics from final result message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_usage: Option<std::collections::HashMap<String, ModelUsageStats>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_api_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

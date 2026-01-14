@@ -96,11 +96,9 @@ impl ClaudeClient {
         &self,
         messages: Vec<Message>,
         tools: Vec<Tool>,
-        max_tokens: u32,
     ) -> Result<ClaudeResponse, ClaudeError> {
         let body = json!({
             "model": MODEL,
-            "max_tokens": max_tokens,
             "messages": messages,
             "tools": tools,
         });
@@ -133,11 +131,9 @@ impl ClaudeClient {
     pub async fn send_message(
         &self,
         messages: Vec<Message>,
-        max_tokens: u32,
     ) -> Result<ClaudeResponse, ClaudeError> {
         let body = json!({
             "model": MODEL,
-            "max_tokens": max_tokens,
             "messages": messages,
         });
 

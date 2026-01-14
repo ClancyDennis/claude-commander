@@ -1,12 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { metaAgentChat, metaAgentThinking, addChatMessage } from "../stores/agents";
+  import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
   import ChatMessage from "./ChatMessage.svelte";
   import type { ChatResponse } from "../types";
 
   let input = $state("");
   let messagesContainer: HTMLDivElement | undefined = $state();
   let error = $state<string | null>(null);
+  let processingAgentId = $state<string | null>(null);
 
   async function sendMessage() {
     if (!input.trim() || $metaAgentThinking) return;
@@ -68,6 +69,30 @@
     }
   }
 
+  async function handleProcessResults(agentId: string) {
+    if (processingAgentId || $metaAgentThinking) return;
+
+    processingAgentId = agentId;
+    error = null;
+
+    try {
+      const response = await invoke<ChatResponse>("process_agent_results", {
+        agentId,
+      });
+
+      // Add the response to chat
+      addChatMessage(response.message);
+
+      // Scroll to bottom
+      setTimeout(scrollToBottom, 100);
+    } catch (e) {
+      console.error("Error processing agent results:", e);
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      processingAgentId = null;
+    }
+  }
+
   $effect(() => {
     // Auto-scroll when new messages arrive
     if ($metaAgentChat.length > 0) {
@@ -123,6 +148,25 @@
       </div>
     {/if}
   </div>
+
+  {#if $agentsWithOutputs.length > 0}
+    <div class="agent-results-section">
+      <div class="section-title">Agents with results:</div>
+      <div class="agent-results-buttons">
+        {#each $agentsWithOutputs as agent (agent.id)}
+          <button
+            onclick={() => handleProcessResults(agent.id)}
+            disabled={processingAgentId !== null || $metaAgentThinking}
+            class="process-results-btn"
+            class:processing={processingAgentId === agent.id}
+          >
+            📊 Process results from {agent.workingDir}
+            <span class="output-count">({agent.outputCount} outputs)</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <div class="input-area">
     {#if error}
@@ -423,5 +467,65 @@
   .send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .agent-results-section {
+    padding: 12px 20px;
+    background: rgba(124, 58, 237, 0.05);
+    border-top: 1px solid rgba(124, 58, 237, 0.2);
+    border-bottom: 1px solid rgba(124, 58, 237, 0.2);
+  }
+
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #7c3aed;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .agent-results-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .process-results-btn {
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(109, 40, 217, 0.1) 100%);
+    border: 1px solid rgba(124, 58, 237, 0.3);
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .process-results-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.2) 0%, rgba(109, 40, 217, 0.2) 100%);
+    border-color: rgba(124, 58, 237, 0.5);
+    transform: translateX(2px);
+  }
+
+  .process-results-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .process-results-btn.processing {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.3) 0%, rgba(109, 40, 217, 0.3) 100%);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .output-count {
+    color: #999;
+    font-size: 12px;
+    margin-left: auto;
   }
 </style>

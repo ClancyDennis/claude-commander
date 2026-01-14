@@ -16,6 +16,7 @@
   import AgentStats from "./AgentStats.svelte";
   import OutputControls from "./OutputControls.svelte";
   import ExportDialog from "./ExportDialog.svelte";
+  import AgentSettings from "./AgentSettings.svelte";
   import type { AgentOutput } from "../types";
 
   let { agentId, showHeader = true, compact = false }: { agentId?: string; showHeader?: boolean; compact?: boolean } = $props();
@@ -38,6 +39,7 @@
   let showTools = $state(false);
   let showStats = $state(false);
   let showExportDialog = $state(false);
+  let showSettings = $state(false);
 
   // Filtered outputs managed by OutputControls
   let filteredOutputs = $state<AgentOutput[]>([]);
@@ -165,6 +167,17 @@
           </svg>
           Tools
         </button>
+        <button
+          class="secondary"
+          class:active={showSettings}
+          onclick={() => (showSettings = !showSettings)}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m6.36 6.36l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m6.36-6.36l4.24-4.24"/>
+          </svg>
+          Settings
+        </button>
         <button class="secondary" onclick={() => clearAgentOutput(effectiveAgentId!)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3,6 5,6 21,6"/>
@@ -186,7 +199,7 @@
     {/if}
 
     <div class="content">
-      <div class="output-panel" class:with-tools={showTools} class:with-stats={showStats}>
+      <div class="output-panel" class:with-tools={showTools} class:with-stats={showStats} class:with-settings={showSettings}>
         {#if outputs.length > 0}
           <OutputControls
             outputs={outputs}
@@ -256,6 +269,12 @@
 
       {#if showTools}
         <ToolActivity />
+      {/if}
+
+      {#if showSettings && effectiveAgentId}
+        <div class="settings-panel">
+          <AgentSettings agentId={effectiveAgentId} onClose={() => showSettings = false} />
+        </div>
       {/if}
     </div>
 
@@ -670,5 +689,18 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
     font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  }
+
+  .settings-panel {
+    flex: 1;
+    max-width: 500px;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+  }
+
+  .output-panel.with-tools,
+  .output-panel.with-stats,
+  .output-panel.with-settings {
+    flex: 2;
   }
 </style>

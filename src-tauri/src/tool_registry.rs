@@ -12,13 +12,13 @@ impl ToolRegistry {
         // Agent Management Tools
         tools.push(Tool {
             name: "CreateWorkerAgent".to_string(),
-            description: "Creates a new Claude Code worker agent in a specified working directory and optionally sends it an initial task. Use this when the user wants to create an agent and have it do something. IMPORTANT: If the user provides a task or instruction for the agent, you MUST include it in the initial_prompt parameter to start the agent working immediately. Without an initial_prompt, the agent will just wait idle for input.".to_string(),
+            description: "Creates a new Claude Code worker agent in a specified working directory and optionally sends it an initial task. Use this when the user wants to create an agent and have it do something. IMPORTANT: If the user provides a task or instruction for the agent, you MUST include it in the initial_prompt parameter to start the agent working immediately. Without an initial_prompt, the agent will just wait idle for input. IMPORTANT: Before creating an agent, ask the user what working directory they want to use, or suggest using their home directory (e.g., /home/username/agent-workspace).".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "working_dir": {
                         "type": "string",
-                        "description": "The absolute path to the working directory where the agent should operate"
+                        "description": "The absolute path to the working directory where the agent should operate. Must be a valid, existing directory path on the system. If unsure, ask the user or use ~/agent-workspace."
                     },
                     "initial_prompt": {
                         "type": "string",
@@ -144,6 +144,22 @@ impl ToolRegistry {
                     }
                 },
                 "required": ["message", "type"]
+            }),
+        });
+
+        // Filesystem Tools
+        tools.push(Tool {
+            name: "ListDirectory".to_string(),
+            description: "Lists the contents of a directory on the filesystem. Use this to explore available directories and find valid working directory paths for creating agents. Returns a list of files and directories with their types.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The absolute path to the directory to list. Use '~' for the user's home directory, or provide an absolute path like '/home/username' or '/tmp'."
+                    }
+                },
+                "required": ["path"]
             }),
         });
 

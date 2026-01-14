@@ -158,3 +158,51 @@ export interface MetaAgentToolCallEvent {
 export interface MetaAgentThinkingEvent {
   is_thinking: boolean;
 }
+
+// Cost Tracking Types
+
+export interface SessionCostRecord {
+  sessionId: string;
+  agentId: string;
+  workingDir: string;
+  startedAt: string;
+  endedAt?: string;
+  totalCostUsd: number;
+  totalTokens: number;
+  totalPrompts: number;
+  totalToolCalls: number;
+  modelUsage?: Record<string, ModelCostBreakdown>;
+}
+
+export interface ModelCostBreakdown {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number;
+}
+
+export interface CostSummary {
+  totalCostUsd: number;
+  totalSessions: number;
+  totalTokens: number;
+  totalPrompts: number;
+  totalToolCalls: number;
+  sessionRecords: SessionCostRecord[];
+  costByModel: Record<string, number>;
+  costByWorkingDir: Record<string, number>;
+}
+
+export interface DateRangeCostSummary {
+  startDate?: string;
+  endDate?: string;
+  totalCostUsd: number;
+  sessionCount: number;
+  dailyCosts: DailyCost[];
+}
+
+export interface DailyCost {
+  date: string;
+  costUsd: number;
+  sessionCount: number;
+}

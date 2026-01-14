@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 use crate::github;
+use crate::logger::Logger;
 use crate::types::{
     AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatsEvent, AgentStatus, AgentStatusEvent,
     AgentInputRequiredEvent, AgentActivityEvent, OutputMetadata,
@@ -22,12 +23,14 @@ pub struct AgentProcess {
     pub is_processing: Arc<Mutex<bool>>,
     pub pending_input: Arc<Mutex<bool>>,
     pub stats: Arc<Mutex<AgentStatistics>>,
+    pub output_buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
 }
 
 pub struct AgentManager {
     pub agents: Arc<Mutex<HashMap<String, AgentProcess>>>,
     pub session_to_agent: Arc<Mutex<HashMap<String, String>>>,
     pub hook_port: u16,
+    pub logger: Option<Arc<Logger>>,
 }
 
 impl AgentManager {
@@ -36,6 +39,16 @@ impl AgentManager {
             agents: Arc::new(Mutex::new(HashMap::new())),
             session_to_agent: Arc::new(Mutex::new(HashMap::new())),
             hook_port,
+            logger: None,
+        }
+    }
+
+    pub fn with_logger(hook_port: u16, logger: Arc<Logger>) -> Self {
+        Self {
+            agents: Arc::new(Mutex::new(HashMap::new())),
+            session_to_agent: Arc::new(Mutex::new(HashMap::new())),
+            hook_port,
+            logger: Some(logger),
         }
     }
 
@@ -78,8 +91,12 @@ impl AgentManager {
             .map_err(|e| format!("Failed to create settings file: {}", e))?;
 
         // Spawn claude process (use full path since nvm paths may not be in PATH)
-        let claude_path = std::env::var("HOME")
-            .map(|home| format!("{}/.nvm/versions/node/v23.11.1/bin/claude", home))
+        // First try CLAUDE_PATH env var, then try to construct from HOME, finally fallback to just "claude"
+        let claude_path = std::env::var("CLAUDE_PATH")
+            .or_else(|_| {
+                std::env::var("HOME")
+                    .map(|home| format!("{}/.nvm/versions/node/v23.11.1/bin/claude", home))
+            })
             .unwrap_or_else(|_| "claude".to_string());
 
         let mut child = Command::new(&claude_path)
@@ -160,7 +177,14 @@ impl AgentManager {
             last_activity: session_start,
             total_tokens_used: None,
             total_cost_usd: None,
+            model_usage: None,
+            duration_api_ms: None,
+            duration_ms: None,
+            num_turns: None,
         }));
+
+        // Initialize output buffer
+        let output_buffer = Arc::new(Mutex::new(Vec::new()));
 
         {
             let mut agents = self.agents.lock().await;
@@ -174,6 +198,7 @@ impl AgentManager {
                     is_processing: is_processing.clone(),
                     pending_input: pending_input.clone(),
                     stats: stats.clone(),
+                    output_buffer: output_buffer.clone(),
                 },
             );
         }
@@ -199,13 +224,40 @@ impl AgentManager {
         let is_processing_clone = is_processing.clone();
         let pending_input_clone = pending_input.clone();
         let stats_clone = stats.clone();
+        let output_buffer_clone = output_buffer.clone();
 
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
 
+            // Helper function to extract common fields from Claude messages
+            let extract_common_fields = |json: &serde_json::Value| -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+                let session_id = json.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let uuid = json.get("uuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let parent_tool_use_id = json.get("parent_tool_use_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let subtype = json.get("subtype").and_then(|v| v.as_str()).map(|s| s.to_string());
+                (session_id, uuid, parent_tool_use_id, subtype)
+            };
+
+            // Helper function to store output in buffer (keeps last 100 outputs)
+            let store_in_buffer = |output_event: AgentOutputEvent| {
+                let buffer_clone = output_buffer_clone.clone();
+                tokio::spawn(async move {
+                    let mut buffer = buffer_clone.lock().await;
+                    buffer.push(output_event);
+                    // Keep only last 100 outputs
+                    let buffer_len = buffer.len();
+                    if buffer_len > 100 {
+                        buffer.drain(0..buffer_len - 100);
+                    }
+                });
+            };
+
             while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[DEBUG] Received line: {}", line);
+                // Log incoming line (only if verbose logging is needed)
+                // if let Some(ref logger) = self.logger {
+                //     let _ = logger.debug("agent_output", &format!("Received: {}", line), Some(agent_id_clone.clone()), None).await;
+                // }
 
                 // Update activity timestamp
                 *last_activity_clone.lock().await = Instant::now();
@@ -229,6 +281,7 @@ impl AgentManager {
                     match msg_type {
                         "system" => {
                             // System initialization message - could show in UI
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
                             let content = serde_json::to_string_pretty(&json).unwrap_or(line.clone());
                             let byte_size = content.len();
 
@@ -250,13 +303,15 @@ impl AgentManager {
                                     byte_size: Some(byte_size),
                                     is_truncated: false,
                                 }),
+                                session_id,
+                                uuid,
+                                parent_tool_use_id,
+                                subtype,
                             });
                         },
                         "assistant" => {
                             // Assistant message with potential tool uses
-                            // Mark as not processing since assistant is responding
-                            *is_processing_clone.lock().await = false;
-
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
                             let mut has_tool_use = false;
                             let mut last_text_output = String::new();
 
@@ -278,7 +333,7 @@ impl AgentManager {
                                                             stats.last_activity = chrono::Utc::now().to_rfc3339();
                                                         }
 
-                                                        let _ = app_handle_clone.emit("agent:output", AgentOutputEvent {
+                                                        let output_event = AgentOutputEvent {
                                                             agent_id: agent_id_clone.clone(),
                                                             output_type: "text".to_string(),
                                                             content: text.to_string(),
@@ -289,7 +344,13 @@ impl AgentManager {
                                                                 byte_size: Some(byte_size),
                                                                 is_truncated: false,
                                                             }),
-                                                        });
+                                                            session_id: session_id.clone(),
+                                                            uuid: uuid.clone(),
+                                                            parent_tool_use_id: parent_tool_use_id.clone(),
+                                                            subtype: subtype.clone(),
+                                                        };
+                                                        store_in_buffer(output_event.clone());
+                                                        let _ = app_handle_clone.emit("agent:output", output_event);
                                                     }
                                                 },
                                                 "tool_use" => {
@@ -316,7 +377,7 @@ impl AgentManager {
                                                         stats.total_output_bytes += byte_size as u64;
                                                     }
 
-                                                    let _ = app_handle_clone.emit("agent:output", AgentOutputEvent {
+                                                    let output_event = AgentOutputEvent {
                                                         agent_id: agent_id_clone.clone(),
                                                         output_type: "tool_use".to_string(),
                                                         content,
@@ -327,7 +388,13 @@ impl AgentManager {
                                                             byte_size: Some(byte_size),
                                                             is_truncated: false,
                                                         }),
-                                                    });
+                                                        session_id: session_id.clone(),
+                                                        uuid: uuid.clone(),
+                                                        parent_tool_use_id: parent_tool_use_id.clone(),
+                                                        subtype: subtype.clone(),
+                                                    };
+                                                    store_in_buffer(output_event.clone());
+                                                    let _ = app_handle_clone.emit("agent:output", output_event);
                                                 },
                                                 _ => {}
                                             }
@@ -336,9 +403,17 @@ impl AgentManager {
                                 }
                             }
 
-                            // If there's text output and no tool use, agent is likely waiting for input
-                            if !has_tool_use && !last_text_output.is_empty() {
+                            // Check stop_reason to determine if agent is waiting for input
+                            // Only mark as waiting if stop_reason is "end_turn" (agent finished its turn and expects user response)
+                            let stop_reason = json.get("message")
+                                .and_then(|msg| msg.get("stop_reason"))
+                                .and_then(|sr| sr.as_str())
+                                .unwrap_or("");
+
+                            if stop_reason == "end_turn" && !has_tool_use {
+                                // Agent finished its turn without tool use - waiting for user input
                                 *pending_input_clone.lock().await = true;
+                                *is_processing_clone.lock().await = false;
 
                                 // Update agent status to WaitingForInput
                                 {
@@ -354,10 +429,19 @@ impl AgentManager {
                                     agent_id: agent_id_clone.clone(),
                                     last_output: last_text_output,
                                 });
+                            } else if has_tool_use {
+                                // Agent is processing tools
+                                *pending_input_clone.lock().await = false;
+                            } else {
+                                // Agent is still working (e.g., stop_reason might be "tool_use" or message is partial)
+                                *is_processing_clone.lock().await = true;
+                                *pending_input_clone.lock().await = false;
                             }
                         },
                         "user" => {
                             // User message (tool results)
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
+
                             if let Some(message) = json.get("message") {
                                 if let Some(content_array) = message.get("content").and_then(|v| v.as_array()) {
                                     for content_block in content_array {
@@ -380,7 +464,7 @@ impl AgentManager {
                                                         stats.last_activity = chrono::Utc::now().to_rfc3339();
                                                     }
 
-                                                    let _ = app_handle_clone.emit("agent:output", AgentOutputEvent {
+                                                    let output_event = AgentOutputEvent {
                                                         agent_id: agent_id_clone.clone(),
                                                         output_type: if is_error { "error".to_string() } else { "tool_result".to_string() },
                                                         content: result_text,
@@ -391,7 +475,13 @@ impl AgentManager {
                                                             byte_size: Some(byte_size),
                                                             is_truncated: false,
                                                         }),
-                                                    });
+                                                        session_id: session_id.clone(),
+                                                        uuid: uuid.clone(),
+                                                        parent_tool_use_id: parent_tool_use_id.clone(),
+                                                        subtype: subtype.clone(),
+                                                    };
+                                                    store_in_buffer(output_event.clone());
+                                                    let _ = app_handle_clone.emit("agent:output", output_event);
                                                 }
                                             }
                                         }
@@ -400,55 +490,112 @@ impl AgentManager {
                             }
                         },
                         "result" => {
-                            // Final result - extract cost and token data
+                            // Final result - extract detailed cost and performance data
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
                             let content = serde_json::to_string_pretty(&json).unwrap_or(line.clone());
                             let byte_size = content.len();
 
-                            // Extract usage statistics from result
-                            if let Some(usage) = json.get("usage") {
-                                let total_tokens = usage.get("total_tokens")
-                                    .and_then(|v| v.as_u64())
-                                    .map(|v| v as u32);
+                            // Extract comprehensive statistics from result message
+                            {
+                                let mut stats = stats_clone.lock().await;
 
-                                // Calculate cost (approximate based on Claude Sonnet pricing)
-                                // Input: $3/MTok, Output: $15/MTok
-                                let cost = if let (Some(input_tokens), Some(output_tokens)) = (
-                                    usage.get("input_tokens").and_then(|v| v.as_u64()),
-                                    usage.get("output_tokens").and_then(|v| v.as_u64()),
-                                ) {
-                                    let input_cost = (input_tokens as f64 / 1_000_000.0) * 3.0;
-                                    let output_cost = (output_tokens as f64 / 1_000_000.0) * 15.0;
-                                    Some(input_cost + output_cost)
-                                } else {
-                                    None
-                                };
-
-                                // Update stats
-                                {
-                                    let mut stats = stats_clone.lock().await;
-                                    if let Some(tokens) = total_tokens {
-                                        stats.total_tokens_used = Some(
-                                            stats.total_tokens_used.unwrap_or(0) + tokens
-                                        );
-                                    }
-                                    if let Some(c) = cost {
-                                        stats.total_cost_usd = Some(
-                                            stats.total_cost_usd.unwrap_or(0.0) + c
-                                        );
-                                    }
-                                    stats.total_output_bytes += byte_size as u64;
-                                    stats.last_activity = chrono::Utc::now().to_rfc3339();
+                                // Extract total_cost_usd directly from result (most accurate)
+                                if let Some(total_cost) = json.get("total_cost_usd").and_then(|v| v.as_f64()) {
+                                    stats.total_cost_usd = Some(
+                                        stats.total_cost_usd.unwrap_or(0.0) + total_cost
+                                    );
                                 }
 
-                                // Emit updated stats
-                                let stats_snapshot = stats_clone.lock().await.clone();
-                                let _ = app_handle_clone.emit("agent:stats", AgentStatsEvent {
-                                    agent_id: agent_id_clone.clone(),
-                                    stats: stats_snapshot,
-                                });
+                                // Extract modelUsage for detailed per-model breakdown
+                                if let Some(model_usage_obj) = json.get("modelUsage").and_then(|v| v.as_object()) {
+                                    let mut model_usage_map = stats.model_usage.take().unwrap_or_default();
+
+                                    for (model_name, model_data) in model_usage_obj {
+                                        let usage_stats = crate::types::ModelUsageStats {
+                                            input_tokens: model_data.get("inputTokens").and_then(|v| v.as_u64()),
+                                            output_tokens: model_data.get("outputTokens").and_then(|v| v.as_u64()),
+                                            cache_creation_input_tokens: model_data.get("cacheCreationInputTokens").and_then(|v| v.as_u64()),
+                                            cache_read_input_tokens: model_data.get("cacheReadInputTokens").and_then(|v| v.as_u64()),
+                                            cost_usd: model_data.get("costUSD").and_then(|v| v.as_f64()),
+                                            context_window: model_data.get("contextWindow").and_then(|v| v.as_u64()),
+                                            max_output_tokens: model_data.get("maxOutputTokens").and_then(|v| v.as_u64()),
+                                        };
+
+                                        // Accumulate or insert model usage
+                                        let entry = model_usage_map.entry(model_name.clone()).or_insert_with(|| {
+                                            crate::types::ModelUsageStats {
+                                                input_tokens: Some(0),
+                                                output_tokens: Some(0),
+                                                cache_creation_input_tokens: Some(0),
+                                                cache_read_input_tokens: Some(0),
+                                                cost_usd: Some(0.0),
+                                                context_window: usage_stats.context_window,
+                                                max_output_tokens: usage_stats.max_output_tokens,
+                                            }
+                                        });
+
+                                        if let Some(tokens) = usage_stats.input_tokens {
+                                            entry.input_tokens = Some(entry.input_tokens.unwrap_or(0) + tokens);
+                                        }
+                                        if let Some(tokens) = usage_stats.output_tokens {
+                                            entry.output_tokens = Some(entry.output_tokens.unwrap_or(0) + tokens);
+                                        }
+                                        if let Some(tokens) = usage_stats.cache_creation_input_tokens {
+                                            entry.cache_creation_input_tokens = Some(entry.cache_creation_input_tokens.unwrap_or(0) + tokens);
+                                        }
+                                        if let Some(tokens) = usage_stats.cache_read_input_tokens {
+                                            entry.cache_read_input_tokens = Some(entry.cache_read_input_tokens.unwrap_or(0) + tokens);
+                                        }
+                                        if let Some(cost) = usage_stats.cost_usd {
+                                            entry.cost_usd = Some(entry.cost_usd.unwrap_or(0.0) + cost);
+                                        }
+                                    }
+
+                                    stats.model_usage = Some(model_usage_map);
+                                }
+
+                                // Extract performance metrics
+                                if let Some(duration) = json.get("duration_api_ms").and_then(|v| v.as_u64()) {
+                                    stats.duration_api_ms = Some(
+                                        stats.duration_api_ms.unwrap_or(0) + duration
+                                    );
+                                }
+                                if let Some(duration) = json.get("duration_ms").and_then(|v| v.as_u64()) {
+                                    stats.duration_ms = Some(
+                                        stats.duration_ms.unwrap_or(0) + duration
+                                    );
+                                }
+                                if let Some(turns) = json.get("num_turns").and_then(|v| v.as_u64()) {
+                                    stats.num_turns = Some(
+                                        stats.num_turns.unwrap_or(0) + turns as u32
+                                    );
+                                }
+
+                                // Extract token counts from usage object (for total_tokens_used)
+                                if let Some(usage) = json.get("usage") {
+                                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let output_tokens = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let total_tokens = input_tokens + output_tokens;
+
+                                    if total_tokens > 0 {
+                                        stats.total_tokens_used = Some(
+                                            stats.total_tokens_used.unwrap_or(0) + total_tokens as u32
+                                        );
+                                    }
+                                }
+
+                                stats.total_output_bytes += byte_size as u64;
+                                stats.last_activity = chrono::Utc::now().to_rfc3339();
                             }
 
-                            let _ = app_handle_clone.emit("agent:output", AgentOutputEvent {
+                            // Emit updated stats
+                            let stats_snapshot = stats_clone.lock().await.clone();
+                            let _ = app_handle_clone.emit("agent:stats", AgentStatsEvent {
+                                agent_id: agent_id_clone.clone(),
+                                stats: stats_snapshot,
+                            });
+
+                            let output_event = AgentOutputEvent {
                                 agent_id: agent_id_clone.clone(),
                                 output_type: "result".to_string(),
                                 content,
@@ -459,10 +606,40 @@ impl AgentManager {
                                     byte_size: Some(byte_size),
                                     is_truncated: false,
                                 }),
+                                session_id,
+                                uuid,
+                                parent_tool_use_id,
+                                subtype,
+                            };
+                            store_in_buffer(output_event.clone());
+                            let _ = app_handle_clone.emit("agent:output", output_event);
+                        },
+                        "stream_event" => {
+                            // Streaming partial updates (if --include-partial-messages is enabled)
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
+                            let content = serde_json::to_string_pretty(&json).unwrap_or(line.clone());
+                            let byte_size = content.len();
+
+                            let _ = app_handle_clone.emit("agent:output", AgentOutputEvent {
+                                agent_id: agent_id_clone.clone(),
+                                output_type: "stream_event".to_string(),
+                                content,
+                                parsed_json: Some(json.clone()),
+                                metadata: Some(OutputMetadata {
+                                    language: Some("json".to_string()),
+                                    line_count: None,
+                                    byte_size: Some(byte_size),
+                                    is_truncated: false,
+                                }),
+                                session_id,
+                                uuid,
+                                parent_tool_use_id,
+                                subtype,
                             });
                         },
                         _ => {
                             // Unknown type - emit as-is
+                            let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(&json);
                             let byte_size = line.len();
 
                             // Update stats
@@ -483,6 +660,10 @@ impl AgentManager {
                                     byte_size: Some(byte_size),
                                     is_truncated: false,
                                 }),
+                                session_id,
+                                uuid,
+                                parent_tool_use_id,
+                                subtype,
                             });
                         }
                     }
@@ -509,6 +690,10 @@ impl AgentManager {
                             byte_size: Some(byte_size),
                             is_truncated: false,
                         }),
+                        session_id: None,
+                        uuid: None,
+                        parent_tool_use_id: None,
+                        subtype: None,
                     };
                     let _ = app_handle_clone.emit("agent:output", event);
                 }
@@ -553,6 +738,10 @@ impl AgentManager {
                         byte_size: Some(byte_size),
                         is_truncated: false,
                     }),
+                    session_id: None,
+                    uuid: None,
+                    parent_tool_use_id: None,
+                    subtype: None,
                 };
                 let _ = app_handle_clone2.emit("agent:output", event);
             }
@@ -562,7 +751,10 @@ impl AgentManager {
     }
 
     pub async fn send_prompt(&self, agent_id: &str, prompt: &str, app_handle: Option<tauri::AppHandle>) -> Result<(), String> {
-        eprintln!("[DEBUG] Sending prompt to agent {}: {}", agent_id, prompt);
+        // Log prompt sending
+        if let Some(ref logger) = self.logger {
+            let _ = logger.info("agent_manager", &format!("Sending prompt to agent: {}", prompt), Some(agent_id.to_string()), None).await;
+        }
 
         let agents = self.agents.lock().await;
         let agent = agents
@@ -618,9 +810,17 @@ impl AgentManager {
         stdin_tx
             .send(json_line)
             .await
-            .map_err(|e| format!("Failed to send prompt: {}", e))?;
+            .map_err(|e| {
+                if let Some(ref logger) = self.logger {
+                    let _ = tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(async {
+                            logger.error("agent_manager", &format!("Failed to send prompt: {}", e), Some(agent_id.to_string()), None).await
+                        })
+                    });
+                }
+                format!("Failed to send prompt: {}", e)
+            })?;
 
-        eprintln!("[DEBUG] Prompt sent successfully");
         Ok(())
     }
 
@@ -658,5 +858,20 @@ impl AgentManager {
 
         let stats = agent.stats.lock().await.clone();
         Ok(stats)
+    }
+
+    pub async fn get_agent_outputs(&self, agent_id: &str, last_n: usize) -> Result<Vec<AgentOutputEvent>, String> {
+        let agents = self.agents.lock().await;
+        let agent = agents
+            .get(agent_id)
+            .ok_or_else(|| "Agent not found".to_string())?;
+
+        let buffer = agent.output_buffer.lock().await;
+        let outputs = if last_n == 0 || last_n >= buffer.len() {
+            buffer.clone()
+        } else {
+            buffer[buffer.len() - last_n..].to_vec()
+        };
+        Ok(outputs)
     }
 }

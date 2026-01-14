@@ -28,6 +28,8 @@ futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 dotenvy = "0.15"
+rusqlite = { version = "0.32", features = ["bundled"] }
+dirs = "5"
 
 [profile.release]
 strip = true

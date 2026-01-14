@@ -2,13 +2,17 @@
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { addAgent, selectedAgentId } from "../stores/agents";
+  import { addPipeline, openPipeline } from "../stores/pipelines";
+  import { getAgentSettings } from "../stores/pipelineSettings";
   import type { Agent } from "../types";
+  import type { Pipeline } from "../stores/pipelines";
 
   let { onClose }: { onClose: () => void } = $props();
 
   // Default to home directory
   let workingDir = $state("/home/arrakis");
   let githubUrl = $state("");
+  let creationType = $state<'agent' | 'pipeline'>('agent');
   let isCreating = $state(false);
   let error = $state("");
   let isLoadingRepos = $state(false);
@@ -70,21 +74,68 @@
     error = "";
 
     try {
-      const agentId = await invoke<string>("create_agent", {
-        workingDir: workingDir,
-        githubUrl: githubUrl.trim() || null,
-      });
+      if (creationType === 'pipeline') {
+        // Create pipeline with user-configured settings
+        // Settings are configured via AgentSettings.svelte UI (gear icon in agent list)
+        const userRequest = `Development project in ${workingDir}${githubUrl.trim() ? ` (GitHub: ${githubUrl.trim()})` : ''}`;
 
-      const agent: Agent = {
-        id: agentId,
-        workingDir: workingDir,
-        status: "running",
-        createdAt: new Date(),
-      };
+        // Get pipeline settings from store
+        // Currently uses 'default' settings - can be made per-pipeline later by:
+        // 1. Creating settings UI in this dialog
+        // 2. Using pipeline ID instead of 'default'
+        // 3. Allowing settings override after creation
+        const settings = getAgentSettings('default');
 
-      addAgent(agent);
-      selectedAgentId.set(agentId);
-      onClose();
+        // Build backend config from frontend settings
+        // Note: Only Phase D (Checkpoints) settings are passed to backend
+        // Phase A-C (Pool, Orchestration, Verification) are frontend-only for now
+        const config = {
+          require_plan_review: settings.requirePlanReview,
+          require_final_review: settings.requireFinalReview,
+          auto_approve_on_verification: settings.autoApproveOnVerification,
+          verification_strategy: settings.enableVerification
+            ? settings.verificationStrategy
+            : null,
+          verification_n: settings.enableVerification
+            ? settings.verificationN
+            : 1,
+        };
+
+        const pipelineId = await invoke<string>("create_pipeline", {
+          userRequest,
+          config: config
+        });
+
+        // Add pipeline to store
+        const pipeline: Pipeline = {
+          id: pipelineId,
+          workingDir: workingDir,
+          userRequest: userRequest,
+          status: 'planning',
+          createdAt: new Date(),
+        };
+
+        addPipeline(pipeline);
+        openPipeline(pipelineId);
+        onClose();
+      } else {
+        // Create single agent (existing logic)
+        const agentId = await invoke<string>("create_agent", {
+          workingDir: workingDir,
+          githubUrl: githubUrl.trim() || null,
+        });
+
+        const agent: Agent = {
+          id: agentId,
+          workingDir: workingDir,
+          status: "running",
+          createdAt: new Date(),
+        };
+
+        addAgent(agent);
+        selectedAgentId.set(agentId);
+        onClose();
+      }
     } catch (e) {
       error = String(e);
       isCreating = false;
@@ -164,6 +215,32 @@
           </button>
         </div>
         <span class="helper-text">The agent will run Claude Code in this directory</span>
+      </label>
+
+      <label>
+        <span class="label-text">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6M12 17v6M5.64 5.64l4.24 4.24m6.36 6.36l4.24 4.24M1 12h6M17 12h6M5.64 18.36l4.24-4.24m6.36-6.36l4.24-4.24"/>
+          </svg>
+          Creation Type
+        </span>
+        <div class="radio-group">
+          <label class="radio-option" class:selected={creationType === 'agent'}>
+            <input type="radio" bind:group={creationType} value="agent" disabled={isCreating} />
+            <div class="radio-content">
+              <strong>Single Agent</strong>
+              <span>Direct Claude Code instance for focused tasks</span>
+            </div>
+          </label>
+          <label class="radio-option" class:selected={creationType === 'pipeline'}>
+            <input type="radio" bind:group={creationType} value="pipeline" disabled={isCreating} />
+            <div class="radio-content">
+              <strong>Pipeline</strong>
+              <span>Multi-phase workflow with orchestration & verification</span>
+            </div>
+          </label>
+        </div>
       </label>
 
       <label>
@@ -257,7 +334,7 @@
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          Create Agent
+          {creationType === 'pipeline' ? 'Create Pipeline' : 'Create Agent'}
         {/if}
       </button>
     </footer>
@@ -539,5 +616,69 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .radio-option:hover:not(:has(input:disabled)) {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+  }
+
+  .radio-option.selected {
+    background: rgba(124, 58, 237, 0.1);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .radio-option input[type="radio"] {
+    margin-top: 2px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+
+  .radio-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+  }
+
+  .radio-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .radio-content strong {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .radio-content span {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .radio-option.selected .radio-content strong {
+    color: var(--accent);
   }
 </style>

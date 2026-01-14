@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 
 const MAX_TOOL_CALLS_PER_MESSAGE: usize = 20;
 const MAX_ITERATIONS: usize = 10;
-const MAX_TOKENS: u32 = 4096;
 
 pub struct MetaAgent {
     conversation_history: Vec<Message>,
@@ -63,7 +62,6 @@ impl MetaAgent {
                 .send_message_with_tools(
                     self.conversation_history.clone(),
                     self.tool_registry.get_all_tools().to_vec(),
-                    MAX_TOKENS,
                 )
                 .await
                 .map_err(|e| format!("AI API error: {}", e))?;
@@ -199,7 +197,7 @@ impl MetaAgent {
                 self.list_worker_agents(agent_manager).await
             }
             "GetAgentOutput" => {
-                self.get_agent_output(input, app_handle).await
+                self.get_agent_output(input, agent_manager, app_handle).await
             }
             "NavigateToAgent" => {
                 self.navigate_to_agent(input, app_handle).await
@@ -209,6 +207,9 @@ impl MetaAgent {
             }
             "ShowNotification" => {
                 self.show_notification(input, app_handle).await
+            }
+            "ListDirectory" => {
+                self.list_directory(input).await
             }
             _ => json!({
                 "success": false,
@@ -227,7 +228,15 @@ impl MetaAgent {
         if working_dir.is_empty() {
             return json!({
                 "success": false,
-                "error": "working_dir is required"
+                "error": "Validation failed: working_dir is required. Use the ListDirectory tool to explore the filesystem and find a valid directory, or ask the user for a working directory path."
+            });
+        }
+
+        // Check if the directory exists
+        if !std::path::Path::new(working_dir).exists() {
+            return json!({
+                "success": false,
+                "error": format!("Validation failed: Directory '{}' does not exist. Use the ListDirectory tool to explore available directories (e.g., ListDirectory with path '~' or '/home'), or ask the user for a valid path.", working_dir)
             });
         }
 
@@ -336,7 +345,7 @@ impl MetaAgent {
         })
     }
 
-    async fn get_agent_output(&self, input: Value, _app_handle: AppHandle) -> Value {
+    async fn get_agent_output(&self, input: Value, agent_manager: Arc<Mutex<AgentManager>>, _app_handle: AppHandle) -> Value {
         let agent_id = input["agent_id"].as_str().unwrap_or("");
         let last_n = input["last_n"].as_u64().unwrap_or(10) as usize;
 
@@ -347,13 +356,66 @@ impl MetaAgent {
             });
         }
 
-        // Emit event to request output (frontend will respond via a different mechanism)
-        // For MVP, we return a placeholder
-        json!({
-            "success": true,
-            "message": format!("Requested last {} outputs for agent {}", last_n, agent_id),
-            "note": "Output retrieval requires frontend integration"
-        })
+        let manager = agent_manager.lock().await;
+        match manager.get_agent_outputs(agent_id, last_n).await {
+            Ok(outputs) => {
+                // Format outputs as readable text
+                let mut formatted_output = String::new();
+
+                for output in outputs.iter() {
+                    match output.output_type.as_str() {
+                        "text" => {
+                            formatted_output.push_str(&format!("Assistant: {}\n\n", output.content));
+                        }
+                        "tool_use" => {
+                            formatted_output.push_str(&format!("🔧 Using tool: {}\n",
+                                output.parsed_json
+                                    .as_ref()
+                                    .and_then(|j| j.get("name"))
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or("unknown")
+                            ));
+                        }
+                        "tool_result" => {
+                            formatted_output.push_str(&format!("Tool result: {}\n\n", output.content));
+                        }
+                        "result" => {
+                            formatted_output.push_str("\n--- Final Results ---\n");
+                            if let Some(parsed) = &output.parsed_json {
+                                if let Some(cost) = parsed.get("total_cost_usd").and_then(|v| v.as_f64()) {
+                                    formatted_output.push_str(&format!("Cost: ${:.4}\n", cost));
+                                }
+                                if let Some(usage) = parsed.get("usage") {
+                                    if let Some(input_tokens) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                                        if let Some(output_tokens) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                                            formatted_output.push_str(&format!("\nTokens: {} input, {} output\n", input_tokens, output_tokens));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Get agent info for working directory
+                let agent_info = manager.list_agents().await.into_iter()
+                    .find(|a| a.id == agent_id);
+                let agent_name = agent_info.map(|a| a.working_dir).unwrap_or_else(|| agent_id.to_string());
+
+                json!({
+                    "success": true,
+                    "agent_id": agent_id,
+                    "output_count": outputs.len(),
+                    "outputs": formatted_output,
+                    "summary": format!("Retrieved {} outputs from agent in {}", outputs.len(), agent_name)
+                })
+            }
+            Err(e) => json!({
+                "success": false,
+                "error": format!("Failed to get agent output: {}", e)
+            })
+        }
     }
 
     async fn navigate_to_agent(&self, input: Value, app_handle: AppHandle) -> Value {
@@ -441,5 +503,89 @@ impl MetaAgent {
                 timestamp: chrono::Utc::now().timestamp_millis() - ((self.conversation_history.len() - i) as i64 * 1000),
             })
             .collect()
+    }
+
+    async fn list_directory(&self, input: Value) -> Value {
+        let path = input["path"].as_str().unwrap_or("");
+        if path.is_empty() {
+            return json!({
+                "success": false,
+                "error": "path is required"
+            });
+        }
+
+        // Expand ~ to home directory
+        let expanded_path = if path.starts_with("~") {
+            if let Ok(home) = std::env::var("HOME") {
+                path.replacen("~", &home, 1)
+            } else {
+                path.to_string()
+            }
+        } else {
+            path.to_string()
+        };
+
+        // Check if path exists
+        let path_obj = std::path::Path::new(&expanded_path);
+        if !path_obj.exists() {
+            return json!({
+                "success": false,
+                "error": format!("Path '{}' does not exist", expanded_path)
+            });
+        }
+
+        if !path_obj.is_dir() {
+            return json!({
+                "success": false,
+                "error": format!("Path '{}' is not a directory", expanded_path)
+            });
+        }
+
+        // Read directory contents
+        match std::fs::read_dir(&expanded_path) {
+            Ok(entries) => {
+                let mut items = Vec::new();
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let file_name = entry.file_name().to_string_lossy().to_string();
+                        let file_type = if entry.path().is_dir() {
+                            "directory"
+                        } else {
+                            "file"
+                        };
+                        items.push(json!({
+                            "name": file_name,
+                            "type": file_type,
+                            "path": entry.path().to_string_lossy().to_string()
+                        }));
+                    }
+                }
+
+                // Sort: directories first, then alphabetically
+                items.sort_by(|a, b| {
+                    let a_type = a["type"].as_str().unwrap_or("");
+                    let b_type = b["type"].as_str().unwrap_or("");
+                    let a_name = a["name"].as_str().unwrap_or("");
+                    let b_name = b["name"].as_str().unwrap_or("");
+
+                    match (a_type, b_type) {
+                        ("directory", "file") => std::cmp::Ordering::Less,
+                        ("file", "directory") => std::cmp::Ordering::Greater,
+                        _ => a_name.cmp(b_name),
+                    }
+                });
+
+                json!({
+                    "success": true,
+                    "path": expanded_path,
+                    "items": items,
+                    "count": items.len()
+                })
+            }
+            Err(e) => json!({
+                "success": false,
+                "error": format!("Failed to read directory: {}", e)
+            }),
+        }
     }
 }

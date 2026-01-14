@@ -9,6 +9,9 @@
   import LayoutManager from "./lib/components/LayoutManager.svelte";
   import SplitView from "./lib/components/SplitView.svelte";
   import GridView from "./lib/components/GridView.svelte";
+  import PoolDashboard from "./lib/components/PoolDashboard.svelte";
+  import CostTracker from "./lib/components/CostTracker.svelte";
+  import PhaseProgress from "./lib/components/PhaseProgress.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
   import {
     agents,
@@ -25,10 +28,21 @@
     openAgent,
     openChat,
   } from "./lib/stores/agents";
+  import {
+    pipelines,
+    selectedPipelineId,
+    addPipeline,
+    updatePipelineStatus,
+    updatePipelinePhase,
+    updatePhaseProgress,
+  } from "./lib/stores/pipelines";
+  import type { Pipeline, PhaseProgressData } from "./lib/stores/pipelines";
   import { updateActivity } from "./lib/stores/activity";
   import type { Agent, AgentOutput, ToolEvent, AgentStatusEvent, AgentInputRequiredEvent, AgentActivityEvent, AgentStatsEvent, MetaAgentThinkingEvent, MetaAgentToolCallEvent } from "./lib/types";
 
   let showNewAgentDialog = $state(false);
+  let showPoolDashboard = $state(false);
+  let showCostTracker = $state(false);
 
   // Show toast notifications for key events
   function handleStatusChange(agentId: string, status: string) {
@@ -85,6 +99,20 @@
     if (isMod && e.shiftKey && e.key === 'C') {
       e.preventDefault();
       openChat();
+      return;
+    }
+
+    // Cmd/Ctrl + Shift + P: Toggle pool dashboard
+    if (isMod && e.shiftKey && e.key === 'P') {
+      e.preventDefault();
+      showPoolDashboard = !showPoolDashboard;
+      return;
+    }
+
+    // Cmd/Ctrl + Shift + $: Toggle cost tracker
+    if (isMod && e.shiftKey && e.key === '$') {
+      e.preventDefault();
+      showCostTracker = !showCostTracker;
       return;
     }
 
@@ -268,6 +296,43 @@
       openAgent(event.payload.agent_id);
     });
 
+    // Listen for pipeline creation events
+    const unlistenPipelineCreated = listen<{
+      pipeline_id: string;
+      working_dir: string;
+      user_request: string;
+    }>("pipeline:created", (event) => {
+      const pipeline: Pipeline = {
+        id: event.payload.pipeline_id,
+        workingDir: event.payload.working_dir,
+        userRequest: event.payload.user_request,
+        status: 'planning',
+        createdAt: new Date(),
+      };
+      addPipeline(pipeline);
+    });
+
+    // Listen for pipeline status events
+    const unlistenPipelineStatus = listen<{
+      pipeline_id: string;
+      status: Pipeline['status'];
+    }>("pipeline:status", (event) => {
+      updatePipelineStatus(event.payload.pipeline_id, event.payload.status);
+    });
+
+    // Listen for pipeline phase events
+    const unlistenPipelinePhase = listen<{
+      pipeline_id: string;
+      phase: string;
+    }>("pipeline:phase", (event) => {
+      updatePipelinePhase(event.payload.pipeline_id, event.payload.phase);
+    });
+
+    // Listen for phase progress events
+    const unlistenPhaseProgress = listen<PhaseProgressData>("pipeline:progress", (event) => {
+      updatePhaseProgress(event.payload);
+    });
+
     return () => {
       window.removeEventListener('keydown', handleKeyboardShortcuts);
       unlistenOutput.then((f) => f());
@@ -279,14 +344,37 @@
       unlistenThinking.then((f) => f());
       unlistenToolCall.then((f) => f());
       unlistenNavigate.then((f) => f());
+      unlistenPipelineCreated.then((f) => f());
+      unlistenPipelineStatus.then((f) => f());
+      unlistenPipelinePhase.then((f) => f());
+      unlistenPhaseProgress.then((f) => f());
     };
   });
 </script>
 
 <div class="app">
-  <AgentList onNewAgent={() => (showNewAgentDialog = true)} />
+  <AgentList
+    onNewAgent={() => (showNewAgentDialog = true)}
+    onTogglePoolDashboard={() => (showPoolDashboard = !showPoolDashboard)}
+    onToggleCostTracker={() => (showCostTracker = !showCostTracker)}
+  />
   <div class="main-content">
-    {#if $viewMode === 'chat'}
+    {#if showPoolDashboard}
+      <div class="pool-dashboard-container">
+        <PoolDashboard />
+      </div>
+    {/if}
+    {#if showCostTracker}
+      <div class="cost-tracker-container">
+        <CostTracker />
+      </div>
+    {/if}
+    {#if $selectedPipelineId}
+      <!-- Show pipeline view when a pipeline is selected -->
+      <div class="pipeline-view-container">
+        <PhaseProgress pipelineId={$selectedPipelineId} />
+      </div>
+    {:else if $viewMode === 'chat'}
       <ChatView />
     {:else}
       <LayoutManager />
@@ -318,5 +406,23 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .pool-dashboard-container {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cost-tracker-container {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--border);
+    max-height: 600px;
+    overflow: hidden;
+  }
+
+  .pipeline-view-container {
+    flex: 1;
+    overflow: auto;
+    padding: var(--space-lg);
   }
 </style>
