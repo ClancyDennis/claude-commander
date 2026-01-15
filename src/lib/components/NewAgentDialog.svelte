@@ -12,10 +12,12 @@
   // Default to home directory
   let workingDir = $state("/home/arrakis");
   let githubUrl = $state("");
+  let pipelineTask = $state("");
   let creationType = $state<'agent' | 'pipeline'>('agent');
   let isCreating = $state(false);
   let error = $state("");
   let isLoadingRepos = $state(false);
+  let showPipelineSettings = $state(false);
   let githubRepos = $state<Array<{
     nameWithOwner: string;
     name: string;
@@ -24,10 +26,35 @@
     updatedAt: string;
   }>>([]);
   let showRepoDropdown = $state(false);
+  let showInstructionSelector = $state(false);
+  let instructionFiles = $state<Array<{
+    id: string;
+    name: string;
+    path: string;
+    relativePath: string;
+    fileType: string;
+    size: number;
+    modified: string;
+  }>>([]);
+  let selectedInstructions = $state<Set<string>>(new Set());
+  let isLoadingInstructions = $state(false);
+
+  // Instruction Creator State
+  let showInstructionCreator = $state(false);
+  let newInstructionName = $state("");
+  let newInstructionContent = $state("");
+  let isSavingInstruction = $state(false);
 
   // Load GitHub repos on mount
   $effect(() => {
     loadGithubRepos();
+  });
+
+  // Load instruction files when working directory changes
+  $effect(() => {
+    if (workingDir.trim()) {
+      loadInstructionFiles();
+    }
   });
 
   async function loadGithubRepos() {
@@ -41,6 +68,73 @@
     } finally {
       isLoadingRepos = false;
     }
+  }
+
+  async function loadInstructionFiles() {
+    try {
+      isLoadingInstructions = true;
+      const files = await invoke<Array<any>>("list_instruction_files", {
+        workingDir: workingDir,
+      });
+      instructionFiles = files;
+    } catch (e) {
+      console.error("Failed to load instruction files:", e);
+      // Silent fail - instructions are optional
+      instructionFiles = [];
+    } finally {
+      isLoadingInstructions = false;
+    }
+  }
+
+  async function saveNewInstruction() {
+    if (!newInstructionName.trim() || !newInstructionContent.trim()) return;
+    
+    let filename = newInstructionName.trim();
+    if (!filename.endsWith('.md') && !filename.endsWith('.txt')) {
+      filename += '.md';
+    }
+    
+    isSavingInstruction = true;
+    try {
+      await invoke("save_instruction_file", {
+        workingDir,
+        filename,
+        content: newInstructionContent
+      });
+      
+      // Reset form
+      newInstructionName = "";
+      newInstructionContent = "";
+      showInstructionCreator = false;
+      
+      // Reload instructions
+      await loadInstructionFiles();
+      
+      // Auto-select the new file
+      const newFile = instructionFiles.find(f => f.name === filename);
+      if (newFile) {
+        selectedInstructions.add(newFile.id);
+        selectedInstructions = new Set(selectedInstructions);
+      }
+      
+      // Ensure selector is open to show the new selection
+      showInstructionSelector = true;
+      
+    } catch (e) {
+      console.error("Failed to save instruction:", e);
+      error = "Failed to save instruction: " + e;
+    } finally {
+      isSavingInstruction = false;
+    }
+  }
+
+  function toggleInstructionSelection(fileId: string) {
+    if (selectedInstructions.has(fileId)) {
+      selectedInstructions.delete(fileId);
+    } else {
+      selectedInstructions.add(fileId);
+    }
+    selectedInstructions = new Set(selectedInstructions); // Trigger reactivity
   }
 
   async function selectDirectory() {
@@ -70,25 +164,20 @@
       return;
     }
 
+    if (creationType === 'pipeline' && !pipelineTask.trim()) {
+      error = "Please provide a task description for the pipeline";
+      return;
+    }
+
     isCreating = true;
     error = "";
 
     try {
       if (creationType === 'pipeline') {
-        // Create pipeline with user-configured settings
-        // Settings are configured via AgentSettings.svelte UI (gear icon in agent list)
-        const userRequest = `Development project in ${workingDir}${githubUrl.trim() ? ` (GitHub: ${githubUrl.trim()})` : ''}`;
-
         // Get pipeline settings from store
-        // Currently uses 'default' settings - can be made per-pipeline later by:
-        // 1. Creating settings UI in this dialog
-        // 2. Using pipeline ID instead of 'default'
-        // 3. Allowing settings override after creation
         const settings = getAgentSettings('default');
 
         // Build backend config from frontend settings
-        // Note: Only Phase D (Checkpoints) settings are passed to backend
-        // Phase A-C (Pool, Orchestration, Verification) are frontend-only for now
         const config = {
           require_plan_review: settings.requirePlanReview,
           require_final_review: settings.requireFinalReview,
@@ -101,16 +190,23 @@
             : 1,
         };
 
+        // Create pipeline with task and config
         const pipelineId = await invoke<string>("create_pipeline", {
-          userRequest,
+          userRequest: pipelineTask.trim(),
           config: config
+        });
+
+        // Start pipeline execution immediately
+        await invoke("start_pipeline", {
+          pipelineId,
+          userRequest: pipelineTask.trim(),
         });
 
         // Add pipeline to store
         const pipeline: Pipeline = {
           id: pipelineId,
           workingDir: workingDir,
-          userRequest: userRequest,
+          userRequest: pipelineTask.trim(),
           status: 'planning',
           createdAt: new Date(),
         };
@@ -123,6 +219,9 @@
         const agentId = await invoke<string>("create_agent", {
           workingDir: workingDir,
           githubUrl: githubUrl.trim() || null,
+          selectedInstructionFiles: selectedInstructions.size > 0
+            ? Array.from(selectedInstructions)
+            : null,
         });
 
         const agent: Agent = {
@@ -146,10 +245,12 @@
     if (e.key === "Escape") {
       if (showRepoDropdown) {
         showRepoDropdown = false;
+      } else if (showInstructionCreator) {
+        showInstructionCreator = false;
       } else {
         onClose();
       }
-    } else if (e.key === "Enter" && workingDir.trim() && !showRepoDropdown) {
+    } else if (e.key === "Enter" && workingDir.trim() && !showRepoDropdown && !showInstructionCreator) {
       createAgent();
     }
   }
@@ -187,123 +288,279 @@
     </header>
 
     <div class="content">
-      <label>
-        <span class="label-text">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          Working Directory
-        </span>
-        <div class="input-group">
-          <input
-            type="text"
-            bind:value={workingDir}
-            placeholder="/path/to/your/project"
-            disabled={isCreating}
-          />
-          <button
-            type="button"
-            class="browse-btn"
-            onclick={selectDirectory}
-            disabled={isCreating}
-            title="Browse for directory"
-          >
+      {#if showInstructionCreator}
+        <div class="instruction-creator animate-slide-up">
+          <h3>Create New Instruction</h3>
+          <div class="creator-form">
+            <input 
+              type="text" 
+              bind:value={newInstructionName} 
+              placeholder="Filename (e.g., system-prompt.md)"
+              class="filename-input"
+            />
+            <textarea 
+              bind:value={newInstructionContent} 
+              placeholder="Enter instruction content..."
+              class="content-input"
+            ></textarea>
+            <div class="creator-actions">
+              <button class="secondary small" onclick={() => showInstructionCreator = false} disabled={isSavingInstruction}>Cancel</button>
+              <button class="primary small" onclick={saveNewInstruction} disabled={isSavingInstruction || !newInstructionName || !newInstructionContent}>
+                {isSavingInstruction ? 'Saving...' : 'Save Instruction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <label>
+          <span class="label-text">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            Browse
-          </button>
-        </div>
-        <span class="helper-text">The agent will run Claude Code in this directory</span>
-      </label>
-
-      <label>
-        <span class="label-text">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v6M12 17v6M5.64 5.64l4.24 4.24m6.36 6.36l4.24 4.24M1 12h6M17 12h6M5.64 18.36l4.24-4.24m6.36-6.36l4.24-4.24"/>
-          </svg>
-          Creation Type
-        </span>
-        <div class="radio-group">
-          <label class="radio-option" class:selected={creationType === 'agent'}>
-            <input type="radio" bind:group={creationType} value="agent" disabled={isCreating} />
-            <div class="radio-content">
-              <strong>Single Agent</strong>
-              <span>Direct Claude Code instance for focused tasks</span>
-            </div>
-          </label>
-          <label class="radio-option" class:selected={creationType === 'pipeline'}>
-            <input type="radio" bind:group={creationType} value="pipeline" disabled={isCreating} />
-            <div class="radio-content">
-              <strong>Pipeline</strong>
-              <span>Multi-phase workflow with orchestration & verification</span>
-            </div>
-          </label>
-        </div>
-      </label>
-
-      <label>
-        <span class="label-text">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
-          </svg>
-          GitHub Repository <span style="color: var(--text-muted); font-weight: 400;">(Optional)</span>
-        </span>
-        <div class="repo-selector">
+            Working Directory
+          </span>
           <div class="input-group">
             <input
               type="text"
-              bind:value={githubUrl}
-              placeholder="https://github.com/owner/repo"
+              bind:value={workingDir}
+              placeholder="/path/to/your/project"
               disabled={isCreating}
-              onfocus={() => githubRepos.length > 0 && (showRepoDropdown = true)}
             />
-            {#if githubRepos.length > 0}
-              <button
-                type="button"
-                class="dropdown-btn"
-                onclick={() => showRepoDropdown = !showRepoDropdown}
-                disabled={isCreating || isLoadingRepos}
-                title="Select from your repositories"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-            {/if}
+            <button
+              type="button"
+              class="browse-btn"
+              onclick={selectDirectory}
+              disabled={isCreating}
+              title="Browse for directory"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              Browse
+            </button>
           </div>
-          {#if showRepoDropdown && githubRepos.length > 0}
-            <div class="dropdown animate-slide-up">
-              {#each githubRepos as repo}
+          <span class="helper-text">The agent will run Claude Code in this directory</span>
+        </label>
+
+        <label>
+          <span class="label-text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v6M12 17v6M5.64 5.64l4.24 4.24m6.36 6.36l4.24 4.24M1 12h6M17 12h6M5.64 18.36l4.24-4.24m6.36-6.36l4.24-4.24"/>
+            </svg>
+            Creation Type
+          </span>
+          <div class="radio-group">
+            <label class="radio-option" class:selected={creationType === 'agent'}>
+              <input type="radio" bind:group={creationType} value="agent" disabled={isCreating} />
+              <div class="radio-content">
+                <strong>Single Agent</strong>
+                <span>Direct Claude Code instance for focused tasks</span>
+              </div>
+            </label>
+            <label class="radio-option" class:selected={creationType === 'pipeline'}>
+              <input type="radio" bind:group={creationType} value="pipeline" disabled={isCreating} />
+              <div class="radio-content">
+                <strong>Pipeline</strong>
+                <span>Multi-phase workflow with orchestration & verification</span>
+              </div>
+            </label>
+          </div>
+        </label>
+
+        <label>
+          <span class="label-text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+            </svg>
+            GitHub Repository <span style="color: var(--text-muted); font-weight: 400;">(Optional)</span>
+          </span>
+          <div class="repo-selector">
+            <div class="input-group">
+              <input
+                type="text"
+                bind:value={githubUrl}
+                placeholder="https://github.com/owner/repo"
+                disabled={isCreating}
+                onfocus={() => githubRepos.length > 0 && (showRepoDropdown = true)}
+              />
+              {#if githubRepos.length > 0}
                 <button
                   type="button"
-                  class="repo-item"
-                  onclick={() => selectRepo(repo)}
+                  class="dropdown-btn"
+                  onclick={() => showRepoDropdown = !showRepoDropdown}
+                  disabled={isCreating || isLoadingRepos}
+                  title="Select from your repositories"
                 >
-                  <div class="repo-header">
-                    <span class="repo-name">{repo.nameWithOwner}</span>
-                    <span class="repo-date">{new Date(repo.updatedAt).toLocaleDateString()}</span>
-                  </div>
-                  {#if repo.description}
-                    <span class="repo-description">{repo.description}</span>
-                  {/if}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </button>
-              {/each}
-            </div>
-          {/if}
-          {#if isLoadingRepos}
-            <span class="helper-text">Loading your GitHub repositories...</span>
-          {:else}
-            <span class="helper-text">
-              Link this agent to a GitHub repository for context
-              {#if githubRepos.length > 0}
-                · {githubRepos.length} repos available
               {/if}
+            </div>
+            {#if showRepoDropdown && githubRepos.length > 0}
+              <div class="dropdown animate-slide-up">
+                {#each githubRepos as repo}
+                  <button
+                    type="button"
+                    class="repo-item"
+                    onclick={() => selectRepo(repo)}
+                  >
+                    <div class="repo-header">
+                      <span class="repo-name">{repo.nameWithOwner}</span>
+                      <span class="repo-date">{new Date(repo.updatedAt).toLocaleDateString()}</span>
+                    </div>
+                    {#if repo.description}
+                      <span class="repo-description">{repo.description}</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+            {#if isLoadingRepos}
+              <span class="helper-text">Loading your GitHub repositories...</span>
+            {:else}
+              <span class="helper-text">
+                Link this agent to a GitHub repository for context
+                {#if githubRepos.length > 0}
+                  · {githubRepos.length} repos available
+                {/if}
+              </span>
+            {/if}
+          </div>
+        </label>
+
+        <label>
+          <div class="label-row">
+            <span class="label-text" style="margin-bottom: 0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Instructions <span style="color: var(--text-muted); font-weight: 400;">(Optional)</span>
             </span>
-          {/if}
-        </div>
-      </label>
+            <button class="icon-btn small" onclick={() => showInstructionCreator = true} title="Create new instruction">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New
+            </button>
+          </div>
+          
+          <div class="instructions-section">
+            <button
+              type="button"
+              class="instructions-toggle"
+              onclick={() => showInstructionSelector = !showInstructionSelector}
+              disabled={isCreating || isLoadingInstructions}
+            >
+              <span class="toggle-content">
+                {#if selectedInstructions.size > 0}
+                  <span class="badge">{selectedInstructions.size}</span>
+                {/if}
+                {selectedInstructions.size > 0
+                  ? `${selectedInstructions.size} instruction${selectedInstructions.size > 1 ? 's' : ''} selected`
+                  : 'Select instruction files'}
+              </span>
+              <svg class="chevron" class:rotated={showInstructionSelector} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {#if showInstructionSelector}
+              <div class="instructions-dropdown animate-slide-up">
+                {#if isLoadingInstructions}
+                  <div class="loading-state">
+                    <span class="spinner"></span>
+                    Loading instructions...
+                  </div>
+                {:else if instructionFiles.length === 0}
+                  <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <p>No instruction files found</p>
+                    <span class="helper-text">
+                      Create new instructions using the <strong>+ New</strong> button
+                    </span>
+                  </div>
+                {:else}
+                  <div class="instructions-list">
+                    {#each instructionFiles as file}
+                      <label class="instruction-item">
+                        <input
+                          type="checkbox"
+                          checked={selectedInstructions.has(file.id)}
+                          onchange={() => toggleInstructionSelection(file.id)}
+                          disabled={isCreating}
+                        />
+                        <div class="instruction-info">
+                          <span class="instruction-name">{file.name}</span>
+                          <span class="instruction-meta">
+                            {(file.size / 1024).toFixed(1)} KB
+                            {#if file.relativePath !== file.name}
+                              · {file.relativePath}
+                            {/if}
+                          </span>
+                        </div>
+                      </label>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </label>
+
+        {#if creationType === 'pipeline'}
+          <label>
+            <span class="label-text">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Task Description
+            </span>
+            <textarea
+              bind:value={pipelineTask}
+              placeholder="Example: Build a REST API for user authentication with JWT tokens, including tests and documentation..."
+              rows="4"
+              disabled={isCreating}
+            ></textarea>
+            <span class="helper-text">
+              Describe what you want the pipeline to accomplish. The meta-agent will break it down into phases.
+            </span>
+          </label>
+
+          <div class="settings-section">
+            <button
+              type="button"
+              class="settings-toggle"
+              onclick={() => showPipelineSettings = !showPipelineSettings}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m5.66 5.66l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m5.66-5.66l4.24-4.24"/>
+              </svg>
+              Pipeline Settings
+              <svg class="chevron" class:rotated={showPipelineSettings} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {#if showPipelineSettings}
+              <div class="settings-info animate-slide-up">
+                <p>Configure pipeline behavior via <strong>Settings</strong> (gear icon in agent list) before creating the pipeline.</p>
+                <ul>
+                  <li>Plan review checkpoints</li>
+                  <li>Final review requirements</li>
+                  <li>Verification strategies</li>
+                  <li>Auto-approval settings</li>
+                </ul>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      {/if}
 
       {#if error}
         <div class="error animate-slide-up">
@@ -324,17 +581,21 @@
       <button
         class="primary"
         onclick={createAgent}
-        disabled={isCreating || !workingDir.trim()}
+        disabled={isCreating || !workingDir.trim() || (creationType === 'pipeline' && !pipelineTask.trim())}
       >
         {#if isCreating}
           <span class="spinner"></span>
-          Creating...
+          {creationType === 'pipeline' ? 'Starting Pipeline...' : 'Creating...'}
         {:else}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
+            {#if creationType === 'pipeline'}
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            {:else}
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            {/if}
           </svg>
-          {creationType === 'pipeline' ? 'Create Pipeline' : 'Create Agent'}
+          {creationType === 'pipeline' ? 'Start Pipeline' : 'Create Agent'}
         {/if}
       </button>
     </footer>
@@ -680,5 +941,362 @@
 
   .radio-option.selected .radio-content strong {
     color: var(--accent);
+  }
+
+  textarea {
+    width: 100%;
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    transition: all 0.2s ease;
+  }
+
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .settings-section {
+    margin-top: var(--space-md);
+  }
+
+  .settings-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .settings-toggle:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .settings-toggle svg:first-child {
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+  }
+
+  .settings-toggle .chevron {
+    width: 16px;
+    height: 16px;
+    margin-left: auto;
+    transition: transform 0.2s ease;
+  }
+
+  .settings-toggle .chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .settings-info {
+    margin-top: var(--space-sm);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .settings-info p {
+    margin: 0 0 var(--space-sm) 0;
+    line-height: 1.5;
+  }
+
+  .settings-info strong {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .settings-info ul {
+    margin: 0;
+    padding-left: var(--space-lg);
+    line-height: 1.8;
+  }
+
+  .settings-info li {
+    color: var(--text-muted);
+  }
+
+  .instructions-section {
+    position: relative;
+  }
+
+  .instructions-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .instructions-toggle:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .instructions-toggle:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .toggle-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+
+  .instructions-toggle .chevron {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+  }
+
+  .instructions-toggle .chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .instructions-dropdown {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .loading-state,
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+    gap: var(--space-md);
+    text-align: center;
+  }
+
+  .loading-state {
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .empty-state svg {
+    width: 48px;
+    height: 48px;
+    color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .empty-state p {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .empty-state code {
+    background: var(--bg-tertiary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--accent);
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  }
+
+  .instructions-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .instruction-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .instruction-item:hover:not(:has(input:disabled)) {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+  }
+
+  .instruction-item:has(input:checked) {
+    background: rgba(124, 58, 237, 0.1);
+    border-color: var(--accent);
+  }
+
+  .instruction-item input[type="checkbox"] {
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .instruction-item input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+  }
+
+  .instruction-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .instruction-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .instruction-item:has(input:checked) .instruction-name {
+    color: var(--accent);
+  }
+
+  .instruction-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+  }
+
+  .icon-btn.small {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .icon-btn.small:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .icon-btn.small svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .instruction-creator {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: var(--space-md);
+    margin-bottom: var(--space-lg);
+  }
+
+  .instruction-creator h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 var(--space-md) 0;
+    color: var(--text-primary);
+  }
+
+  .creator-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .filename-input,
+  .content-input {
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+
+  .content-input {
+    min-height: 100px;
+    resize: vertical;
+  }
+
+  .filename-input:focus,
+  .content-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .creator-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+  }
+
+  button.small {
+    padding: 6px 12px;
+    font-size: 13px;
   }
 </style>

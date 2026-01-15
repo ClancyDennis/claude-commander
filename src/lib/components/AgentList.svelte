@@ -2,10 +2,11 @@
   import { agents, selectedAgentId, viewMode, openChat, openAgent } from "../stores/agents";
   import type { Agent } from "../types";
 
-  let { onNewAgent, onTogglePoolDashboard, onToggleCostTracker }: {
+  let { onNewAgent, onTogglePoolDashboard, onToggleCostTracker, onToggleDatabaseStats }: {
     onNewAgent: () => void;
     onTogglePoolDashboard?: () => void;
     onToggleCostTracker?: () => void;
+    onToggleDatabaseStats?: () => void;
   } = $props();
 
   function selectAgent(id: string) {
@@ -160,7 +161,7 @@
     {/if}
   </div>
 
-  {#if onTogglePoolDashboard || onToggleCostTracker}
+  {#if onTogglePoolDashboard || onToggleCostTracker || onToggleDatabaseStats}
     <footer class="agent-list-footer">
       {#if onTogglePoolDashboard}
         <button class="footer-btn" onclick={onTogglePoolDashboard} title="Toggle Pool Dashboard (Ctrl+Shift+P)">
@@ -170,6 +171,11 @@
       {#if onToggleCostTracker}
         <button class="footer-btn" onclick={onToggleCostTracker} title="Toggle Cost Tracker (Ctrl+Shift+$)">
           💰 Costs
+        </button>
+      {/if}
+      {#if onToggleDatabaseStats}
+        <button class="footer-btn" onclick={onToggleDatabaseStats} title="Toggle Database Stats (Ctrl+Shift+D)">
+          💾 Database
         </button>
       {/if}
     </footer>

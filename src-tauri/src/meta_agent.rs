@@ -243,7 +243,7 @@ impl MetaAgent {
         let github_url = input["github_url"].as_str().map(|s| s.to_string());
 
         let manager = agent_manager.lock().await;
-        match manager.create_agent(working_dir.to_string(), github_url, app_handle.clone()).await {
+        match manager.create_agent(working_dir.to_string(), github_url, None, crate::types::AgentSource::Meta, app_handle.clone()).await {
             Ok(agent_id) => {
                 drop(manager);
 
@@ -490,6 +490,10 @@ impl MetaAgent {
 
     pub fn clear_conversation_history(&mut self) {
         self.conversation_history.clear();
+    }
+
+    pub fn get_ai_client(&self) -> &AIClient {
+        &self.ai_client
     }
 
     pub fn get_chat_messages(&self) -> Vec<ChatMessage> {

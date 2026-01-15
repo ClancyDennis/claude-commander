@@ -36,10 +36,10 @@
 
   let promptInput = $state("");
   let outputContainer: HTMLDivElement | null = $state(null);
-  let showTools = $state(false);
-  let showStats = $state(false);
+  
+  // Side panel state
+  let activeSidePanel = $state<"none" | "tools" | "stats" | "settings">("none");
   let showExportDialog = $state(false);
-  let showSettings = $state(false);
 
   // Filtered outputs managed by OutputControls
   let filteredOutputs = $state<AgentOutput[]>([]);
@@ -59,11 +59,26 @@
     }
   });
 
+  // Smart auto-scroll
   $effect(() => {
     if (outputContainer && outputs.length > 0) {
-      outputContainer.scrollTop = outputContainer.scrollHeight;
+      const { scrollTop, scrollHeight, clientHeight } = outputContainer;
+      const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+      
+      // Auto-scroll if we are within 500px of the bottom (or if it's the first load)
+      if (distanceToBottom < 500 || scrollTop === 0) {
+        outputContainer.scrollTop = scrollHeight;
+      }
     }
   });
+
+  function toggleSidePanel(panel: "tools" | "stats" | "settings") {
+    if (activeSidePanel === panel) {
+      activeSidePanel = "none";
+    } else {
+      activeSidePanel = panel;
+    }
+  }
 
   async function sendPrompt() {
     if (!effectiveAgentId || !promptInput.trim()) return;
@@ -104,10 +119,6 @@
   function formatTimestamp(timestamp: Date): string {
     return timestamp.toLocaleTimeString();
   }
-
-  function getStatusLabel(status: string): string {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  }
 </script>
 
 {#if agent}
@@ -147,8 +158,8 @@
       <div class="actions">
         <button
           class="secondary"
-          class:active={showStats}
-          onclick={() => (showStats = !showStats)}
+          class:active={activeSidePanel === 'stats'}
+          onclick={() => toggleSidePanel('stats')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="20" x2="12" y2="10"/>
@@ -159,8 +170,8 @@
         </button>
         <button
           class="secondary"
-          class:active={showTools}
-          onclick={() => (showTools = !showTools)}
+          class:active={activeSidePanel === 'tools'}
+          onclick={() => toggleSidePanel('tools')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
@@ -169,8 +180,8 @@
         </button>
         <button
           class="secondary"
-          class:active={showSettings}
-          onclick={() => (showSettings = !showSettings)}
+          class:active={activeSidePanel === 'settings'}
+          onclick={() => toggleSidePanel('settings')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
@@ -199,7 +210,7 @@
     {/if}
 
     <div class="content">
-      <div class="output-panel" class:with-tools={showTools} class:with-stats={showStats} class:with-settings={showSettings}>
+      <div class="output-panel" class:sidebar-open={activeSidePanel !== 'none'}>
         {#if outputs.length > 0}
           <OutputControls
             outputs={outputs}
@@ -210,21 +221,33 @@
             onExport={() => showExportDialog = true}
           />
         {/if}
+        
         <div class="output" bind:this={outputContainer}>
-          {#each filteredOutputs as output, i (output.timestamp.getTime() + i)}
-            <div class="output-item {output.type} animate-slide-up" data-index={i}>
-              <div class="output-header">
-                <span class="output-type">{output.type}</span>
-                <span class="timestamp">
-                  {formatTimestamp(output.timestamp)}
-                </span>
-              </div>
-              <pre>{formatOutput(output.content)}</pre>
+          {#if outputs.length > 0 && filteredOutputs.length === 0}
+            <div class="empty-search-results">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <p>No matching results found</p>
+              <button class="secondary small" onclick={() => hasReceivedFilter = false}>Clear filters</button>
             </div>
-          {/each}
+          {:else}
+            {#each filteredOutputs as output, i (output.timestamp.getTime() + i)}
+              <div class="output-item {output.type} animate-slide-up" data-index={i}>
+                <div class="output-header">
+                  <span class="output-type">{output.type}</span>
+                  <span class="timestamp">
+                    {formatTimestamp(output.timestamp)}
+                  </span>
+                </div>
+                <pre>{formatOutput(output.content)}</pre>
+              </div>
+            {/each}
 
-          {#if agent.isProcessing}
-            <TypingIndicator />
+            {#if agent.isProcessing}
+              <TypingIndicator />
+            {/if}
           {/if}
 
           {#if outputs.length === 0}
@@ -263,17 +286,15 @@
         </div>
       </div>
 
-      {#if showStats}
-        <AgentStats agentId={effectiveAgentId} />
-      {/if}
-
-      {#if showTools}
-        <ToolActivity />
-      {/if}
-
-      {#if showSettings && effectiveAgentId}
-        <div class="settings-panel">
-          <AgentSettings agentId={effectiveAgentId} onClose={() => showSettings = false} />
+      {#if activeSidePanel !== 'none'}
+        <div class="side-panel">
+          {#if activeSidePanel === 'stats'}
+            <AgentStats agentId={effectiveAgentId} />
+          {:else if activeSidePanel === 'tools'}
+            <ToolActivity />
+          {:else if activeSidePanel === 'settings' && effectiveAgentId}
+            <AgentSettings agentId={effectiveAgentId} onClose={() => activeSidePanel = "none"} />
+          {/if}
         </div>
       {/if}
     </div>
@@ -417,51 +438,6 @@
     text-overflow: ellipsis;
   }
 
-  .status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 14px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-
-  .status.running {
-    background-color: var(--success-glow);
-    color: var(--success);
-  }
-
-  .status.running .status-dot {
-    background-color: var(--success);
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  .status.stopped {
-    background-color: rgba(160, 160, 160, 0.15);
-    color: var(--text-muted);
-  }
-
-  .status.stopped .status-dot {
-    background-color: var(--text-muted);
-  }
-
-  .status.error {
-    background-color: var(--error-glow);
-    color: var(--error);
-  }
-
-  .status.error .status-dot {
-    background-color: var(--error);
-  }
-
   .actions {
     display: flex;
     gap: var(--space-sm);
@@ -475,6 +451,12 @@
   .actions button svg {
     width: 18px;
     height: 18px;
+  }
+
+  .actions button.active {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
   }
 
   .actions button.danger {
@@ -500,14 +482,27 @@
     flex-direction: column;
     overflow: hidden;
     min-width: 0;
+    transition: flex 0.2s ease;
   }
 
-  .output-panel.with-tools {
-    flex: 2;
+  /* When sidebar is open, output panel can stay flex: 1 but the sidebar takes space */
+  /* If we want to shrink output panel relative to sidebar, we can set flex values */
+  
+  .side-panel {
+    width: 400px;
+    min-width: 300px;
+    max-width: 45%;
+    background-color: var(--bg-secondary);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideLeft 0.2s ease;
   }
 
-  .output-panel.with-stats {
-    flex: 2;
+  @keyframes slideLeft {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
   }
 
   .output {
@@ -517,6 +512,7 @@
     font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 14px;
     line-height: 1.6;
+    scroll-behavior: smooth;
   }
 
   .output-item {
@@ -576,13 +572,29 @@
     color: var(--text-primary);
   }
 
-  .empty-output {
+  .empty-output,
+  .empty-search-results {
     height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: var(--space-xl);
+    text-align: center;
+  }
+
+  .empty-search-results svg {
+    width: 64px;
+    height: 64px;
+    color: var(--text-muted);
+    opacity: 0.5;
+    margin-bottom: var(--space-md);
+  }
+  
+  .empty-search-results p {
+    color: var(--text-secondary);
+    font-size: 16px;
+    margin-bottom: var(--space-md);
   }
 
   .empty-output .empty-icon {
@@ -689,18 +701,5 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
     font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
-  }
-
-  .settings-panel {
-    flex: 1;
-    max-width: 500px;
-    border-left: 1px solid var(--border);
-    overflow-y: auto;
-  }
-
-  .output-panel.with-tools,
-  .output-panel.with-stats,
-  .output-panel.with-settings {
-    flex: 2;
   }
 </style>

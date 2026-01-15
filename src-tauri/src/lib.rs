@@ -12,7 +12,11 @@ mod orchestrator;
 mod thread_controller;
 mod pipeline_manager;
 mod verification;
+mod cost_tracker_db;
 mod cost_tracker;
+mod instruction_manager;
+mod skill_generator;
+mod agent_runs_db;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -28,6 +32,7 @@ use pipeline_manager::{PipelineManager, Pipeline, PipelineConfig};
 use verification::{VerificationEngine, VerificationConfig, VerificationResult};
 use cost_tracker::{CostTracker, SessionCostRecord, CostSummary, DateRangeCostSummary};
 use types::{AgentInfo, AgentStatistics, ChatMessage, ChatResponse};
+use agent_runs_db::{AgentRunsDB, AgentRun, RunQueryFilters, RunStats, DatabaseStats};
 
 struct AppState {
     agent_manager: Arc<Mutex<AgentManager>>,
@@ -39,17 +44,19 @@ struct AppState {
     pipeline_manager: Arc<Mutex<PipelineManager>>,
     verification_engine: Arc<Mutex<VerificationEngine>>,
     cost_tracker: Arc<Mutex<CostTracker>>,
+    agent_runs_db: Arc<AgentRunsDB>,
 }
 
 #[tauri::command]
 async fn create_agent(
     working_dir: String,
     github_url: Option<String>,
+    selected_instruction_files: Option<Vec<String>>,
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     let manager = state.agent_manager.lock().await;
-    manager.create_agent(working_dir, github_url, app_handle).await
+    manager.create_agent(working_dir, github_url, selected_instruction_files, types::AgentSource::UI, app_handle).await
 }
 
 #[tauri::command]
@@ -96,6 +103,7 @@ async fn stop_agent(agent_id: String, state: tauri::State<'_, AppState>) -> Resu
             });
 
             let record = SessionCostRecord {
+                id: None,
                 session_id: format!("session_{}", agent_id),
                 agent_id: agent_id.clone(),
                 working_dir: "unknown".to_string(), // We'll need to enhance this
@@ -382,6 +390,16 @@ async fn create_pipeline(
 }
 
 #[tauri::command]
+async fn start_pipeline(
+    pipeline_id: String,
+    user_request: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let manager = state.pipeline_manager.lock().await;
+    manager.start_pipeline(&pipeline_id, user_request).await
+}
+
+#[tauri::command]
 async fn get_pipeline(
     pipeline_id: String,
     state: tauri::State<'_, AppState>,
@@ -446,7 +464,7 @@ async fn get_cost_summary(
     state: tauri::State<'_, AppState>,
 ) -> Result<CostSummary, String> {
     let tracker = state.cost_tracker.lock().await;
-    Ok(tracker.get_cost_summary().await)
+    tracker.get_cost_summary().await
 }
 
 #[tauri::command]
@@ -466,7 +484,7 @@ async fn get_cost_by_date_range(
         .map(|dt| dt.with_timezone(&chrono::Utc));
 
     let tracker = state.cost_tracker.lock().await;
-    Ok(tracker.get_date_range_summary(start, end).await)
+    tracker.get_date_range_summary(start, end).await
 }
 
 #[tauri::command]
@@ -474,7 +492,7 @@ async fn get_current_month_cost(
     state: tauri::State<'_, AppState>,
 ) -> Result<f64, String> {
     let tracker = state.cost_tracker.lock().await;
-    Ok(tracker.get_current_month_cost().await)
+    tracker.get_current_month_cost().await
 }
 
 #[tauri::command]
@@ -482,7 +500,7 @@ async fn get_today_cost(
     state: tauri::State<'_, AppState>,
 ) -> Result<f64, String> {
     let tracker = state.cost_tracker.lock().await;
-    Ok(tracker.get_today_cost().await)
+    tracker.get_today_cost().await
 }
 
 #[tauri::command]
@@ -491,6 +509,26 @@ async fn clear_cost_history(
 ) -> Result<(), String> {
     let tracker = state.cost_tracker.lock().await;
     tracker.clear_history().await
+}
+
+#[tauri::command]
+async fn get_cost_database_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<cost_tracker::DatabaseStats, String> {
+    let tracker = state.cost_tracker.lock().await;
+    tracker.get_database_stats().await
+}
+
+// Database Stats Commands
+
+#[tauri::command]
+async fn get_database_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<DatabaseStats, String> {
+    state.agent_runs_db
+        .get_database_stats()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // Logging Commands
@@ -550,6 +588,215 @@ async fn cleanup_old_logs(
         .map_err(|e| e.to_string())
 }
 
+// Instruction File Management Commands
+
+#[tauri::command]
+async fn list_instruction_files(
+    working_dir: String,
+) -> Result<Vec<instruction_manager::InstructionFileInfo>, String> {
+    instruction_manager::list_instruction_files(&working_dir)
+}
+
+#[tauri::command]
+async fn get_instruction_file_content(
+    file_path: String,
+) -> Result<String, String> {
+    instruction_manager::get_instruction_file_content(&file_path)
+}
+
+#[tauri::command]
+async fn save_instruction_file(
+    working_dir: String,
+    filename: String,
+    content: String,
+) -> Result<(), String> {
+    instruction_manager::save_instruction_file(&working_dir, &filename, &content)
+}
+
+// Agent Runs Database Commands
+
+#[tauri::command]
+async fn get_all_runs(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<AgentRun>, String> {
+    state.agent_runs_db
+        .query_runs(RunQueryFilters::default())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_run_by_id(
+    agent_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<AgentRun>, String> {
+    state.agent_runs_db
+        .get_run(&agent_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn query_runs(
+    status: Option<String>,
+    working_dir: Option<String>,
+    source: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<AgentRun>, String> {
+    use agent_runs_db::RunStatus;
+    use crate::types::AgentSource;
+
+    let run_status = status.and_then(|s| match s.as_str() {
+        "running" => Some(RunStatus::Running),
+        "completed" => Some(RunStatus::Completed),
+        "stopped" => Some(RunStatus::Stopped),
+        "crashed" => Some(RunStatus::Crashed),
+        "waiting_input" => Some(RunStatus::WaitingInput),
+        _ => None,
+    });
+
+    let agent_source = source.and_then(|s| match s.as_str() {
+        "ui" => Some(AgentSource::UI),
+        "meta" => Some(AgentSource::Meta),
+        "pipeline" => Some(AgentSource::Pipeline),
+        "pool" => Some(AgentSource::Pool),
+        "manual" => Some(AgentSource::Manual),
+        _ => None,
+    });
+
+    let filters = RunQueryFilters {
+        status: run_status,
+        working_dir,
+        source: agent_source,
+        date_from: None,
+        date_to: None,
+        limit,
+        offset,
+    };
+
+    state.agent_runs_db
+        .query_runs(filters)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_resumable_runs(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<AgentRun>, String> {
+    state.agent_runs_db
+        .get_resumable_runs()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_run_prompts(
+    agent_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<(String, i64)>, String> {
+    state.agent_runs_db
+        .get_prompts(&agent_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_run_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<RunStats, String> {
+    state.agent_runs_db
+        .get_stats()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cleanup_old_runs(
+    days_to_keep: i64,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    state.agent_runs_db
+        .cleanup_old_runs(days_to_keep)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn resume_crashed_run(
+    agent_id: String,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // Get the run from database
+    let run = state.agent_runs_db
+        .get_run(&agent_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Run not found".to_string())?;
+
+    // Check if it can be resumed
+    if !run.can_resume {
+        return Err("This run cannot be resumed".to_string());
+    }
+
+    // Recreate the agent with the same working directory and context
+    let manager = state.agent_manager.lock().await;
+    let new_agent_id = manager.create_agent(
+        run.working_dir,
+        run.github_url,
+        None, // instruction files were already copied
+        crate::types::AgentSource::Manual,
+        app_handle,
+    ).await?;
+
+    // If there was an initial prompt, resend it
+    if let Some(initial_prompt) = run.initial_prompt {
+        manager.send_prompt(&new_agent_id, &initial_prompt, None).await?;
+    }
+
+    Ok(new_agent_id)
+}
+
+// Skill Generation Commands
+
+#[tauri::command]
+async fn generate_skill_from_instruction(
+    file_path: String,
+    working_dir: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<skill_generator::GeneratedSkill, String> {
+    let meta_agent = state.meta_agent.lock().await;
+    let ai_client = meta_agent.get_ai_client();
+
+    skill_generator::generate_skill_from_instruction(&file_path, &working_dir, ai_client).await
+}
+
+#[tauri::command]
+async fn list_generated_skills(
+    working_dir: String,
+) -> Result<Vec<skill_generator::GeneratedSkill>, String> {
+    skill_generator::list_generated_skills(&working_dir)
+}
+
+#[tauri::command]
+async fn delete_generated_skill(
+    skill_name: String,
+    working_dir: String,
+) -> Result<(), String> {
+    skill_generator::delete_generated_skill(&skill_name, &working_dir)
+}
+
+#[tauri::command]
+async fn get_skill_content(
+    skill_name: String,
+    working_dir: String,
+) -> Result<skill_generator::SkillContent, String> {
+    skill_generator::get_skill_content(&skill_name, &working_dir)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Load .env file if it exists (silently ignore if not found)
@@ -591,7 +838,37 @@ pub fn run() {
                 }
             };
 
-            let agent_manager = Arc::new(Mutex::new(AgentManager::with_logger(hook_port, logger.clone())));
+            // Initialize agent runs database early (needed for agent manager)
+            let runs_db_path = dirs::data_local_dir()
+                .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
+                .map(|d| d.join("grove").join("agent_runs.db"))
+                .unwrap_or_else(|| std::env::temp_dir().join("grove_agent_runs.db"));
+
+            // Ensure parent directory exists
+            if let Some(parent) = runs_db_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+
+            let agent_runs_db = match AgentRunsDB::new(runs_db_path.clone()) {
+                Ok(db) => {
+                    println!("✓ Agent runs database initialized at {:?}", runs_db_path);
+                    Arc::new(db)
+                }
+                Err(e) => {
+                    eprintln!("⚠ Warning: Failed to initialize agent runs database: {}", e);
+                    // Try fallback to temp directory
+                    let temp_db = std::env::temp_dir().join("grove_agent_runs.db");
+                    match AgentRunsDB::new(temp_db.clone()) {
+                        Ok(db) => {
+                            println!("✓ Agent runs database initialized at temp location: {:?}", temp_db);
+                            Arc::new(db)
+                        }
+                        Err(e2) => panic!("Failed to initialize agent runs database even in temp directory: {}", e2),
+                    }
+                }
+            };
+
+            let agent_manager = Arc::new(Mutex::new(AgentManager::with_logger_and_db(hook_port, logger.clone(), agent_runs_db.clone())));
 
             // Initialize meta-agent - tries ANTHROPIC_API_KEY first, then OPENAI_API_KEY
             let meta_agent = match MetaAgent::new() {
@@ -636,21 +913,31 @@ pub fn run() {
                 }
             });
 
-            // Initialize agent pool with default config
+            // Initialize agent pool in tracking-only mode (no auto-spawn)
             let pool_config = PoolConfig::default();
             let app_handle_for_pool = app.handle().clone();
-            let agent_pool = match tauri::async_runtime::block_on(async {
-                AgentPool::new(pool_config, agent_manager.clone(), Some(app_handle_for_pool)).await
-            }) {
-                Ok(pool) => {
-                    println!("✓ Agent pool initialized with default config");
-                    Some(pool)
-                }
-                Err(e) => {
-                    eprintln!("⚠ Warning: Failed to initialize agent pool: {}", e);
-                    None
-                }
-            };
+            let agent_pool = Some(AgentPool::new_tracking_only(
+                pool_config,
+                agent_manager.clone(),
+                Some(app_handle_for_pool)
+            ));
+            println!("✓ Agent pool initialized in tracking mode");
+
+            // Wire up auto-registration callback
+            if let Some(pool) = &agent_pool {
+                let pool_clone = pool.clone();
+                let mut manager = tauri::async_runtime::block_on(agent_manager.lock());
+                manager.set_on_agent_created(move |agent_id, source| {
+                    let pool = pool_clone.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let mut pool_lock = pool.lock().await;
+                        if let Err(e) = pool_lock.register_agent(agent_id.clone(), source).await {
+                            eprintln!("Failed to register agent {}: {}", agent_id, e);
+                        }
+                    });
+                });
+                println!("✓ Agent auto-registration callback configured");
+            }
 
             // Initialize orchestrator
             let orchestrator = Arc::new(Mutex::new(TaskOrchestrator::new(
@@ -704,6 +991,36 @@ pub fn run() {
             };
             println!("✓ Cost tracker initialized");
 
+            // Initialize agent runs database
+            let runs_db_path = dirs::data_local_dir()
+                .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
+                .map(|d| d.join("grove").join("agent_runs.db"))
+                .unwrap_or_else(|| std::env::temp_dir().join("grove_agent_runs.db"));
+
+            // Ensure parent directory exists
+            if let Some(parent) = runs_db_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+
+            let agent_runs_db = match AgentRunsDB::new(runs_db_path.clone()) {
+                Ok(db) => {
+                    println!("✓ Agent runs database initialized at {:?}", runs_db_path);
+                    Arc::new(db)
+                }
+                Err(e) => {
+                    eprintln!("⚠ Warning: Failed to initialize agent runs database: {}", e);
+                    // Try fallback to temp directory
+                    let temp_db = std::env::temp_dir().join("grove_agent_runs.db");
+                    match AgentRunsDB::new(temp_db.clone()) {
+                        Ok(db) => {
+                            println!("✓ Agent runs database initialized at temp location: {:?}", temp_db);
+                            Arc::new(db)
+                        }
+                        Err(e2) => panic!("Failed to initialize agent runs database even in temp directory: {}", e2),
+                    }
+                }
+            };
+
             app.manage(AppState {
                 agent_manager,
                 meta_agent,
@@ -714,6 +1031,7 @@ pub fn run() {
                 pipeline_manager,
                 verification_engine,
                 cost_tracker,
+                agent_runs_db,
             });
 
             Ok(())
@@ -742,6 +1060,7 @@ pub fn run() {
             get_thread_stats,
             emergency_shutdown_threads,
             create_pipeline,
+            start_pipeline,
             get_pipeline,
             list_pipelines,
             approve_pipeline_checkpoint,
@@ -753,10 +1072,27 @@ pub fn run() {
             get_current_month_cost,
             get_today_cost,
             clear_cost_history,
+            get_cost_database_stats,
+            get_database_stats,
             query_logs,
             get_recent_logs,
             get_log_stats,
-            cleanup_old_logs
+            cleanup_old_logs,
+            list_instruction_files,
+            get_instruction_file_content,
+            save_instruction_file,
+            generate_skill_from_instruction,
+            list_generated_skills,
+            delete_generated_skill,
+            get_skill_content,
+            get_all_runs,
+            get_run_by_id,
+            query_runs,
+            get_resumable_runs,
+            get_run_prompts,
+            get_run_stats,
+            cleanup_old_runs,
+            resume_crashed_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -11,6 +11,16 @@ pub enum AgentStatus {
     Processing,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentSource {
+    UI,           // Created via NewAgentDialog
+    Meta,         // Created by meta agent
+    Pipeline,     // Created by orchestration pipeline
+    Pool,         // Created by pool (legacy)
+    Manual,       // Created via API/command
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubContext {
     pub repository_url: String,
@@ -34,6 +44,9 @@ pub struct AgentInfo {
     pub pending_input: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_context: Option<GitHubContext>,
+    pub source: AgentSource,  // Track origin of agent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pooled: Option<bool>,  // Whether tracked by pool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,4 +236,16 @@ pub struct ToolCallStatistics {
     pub pending_calls: u32,
     pub average_execution_time_ms: f64,
     pub calls_by_tool: std::collections::HashMap<String, u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionFileInfo {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub relative_path: String,
+    pub file_type: String,
+    pub size: u64,
+    pub modified: String,
 }

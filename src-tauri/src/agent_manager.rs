@@ -14,6 +14,7 @@ use crate::types::{
     AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatsEvent, AgentStatus, AgentStatusEvent,
     AgentInputRequiredEvent, AgentActivityEvent, OutputMetadata,
 };
+use crate::agent_runs_db::{AgentRunsDB, AgentRun, RunStatus};
 
 pub struct AgentProcess {
     pub info: AgentInfo,
@@ -24,6 +25,7 @@ pub struct AgentProcess {
     pub pending_input: Arc<Mutex<bool>>,
     pub stats: Arc<Mutex<AgentStatistics>>,
     pub output_buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
+    pub copied_instruction_files: Vec<String>,  // Track copied files for cleanup
 }
 
 pub struct AgentManager {
@@ -31,6 +33,8 @@ pub struct AgentManager {
     pub session_to_agent: Arc<Mutex<HashMap<String, String>>>,
     pub hook_port: u16,
     pub logger: Option<Arc<Logger>>,
+    pub runs_db: Option<Arc<AgentRunsDB>>,
+    pub on_agent_created: Option<Arc<dyn Fn(String, crate::types::AgentSource) + Send + Sync>>,
 }
 
 impl AgentManager {
@@ -40,6 +44,8 @@ impl AgentManager {
             session_to_agent: Arc::new(Mutex::new(HashMap::new())),
             hook_port,
             logger: None,
+            runs_db: None,
+            on_agent_created: None,
         }
     }
 
@@ -49,13 +55,36 @@ impl AgentManager {
             session_to_agent: Arc::new(Mutex::new(HashMap::new())),
             hook_port,
             logger: Some(logger),
+            runs_db: None,
+            on_agent_created: None,
         }
+    }
+
+    pub fn with_logger_and_db(hook_port: u16, logger: Arc<Logger>, runs_db: Arc<AgentRunsDB>) -> Self {
+        Self {
+            agents: Arc::new(Mutex::new(HashMap::new())),
+            session_to_agent: Arc::new(Mutex::new(HashMap::new())),
+            hook_port,
+            logger: Some(logger),
+            runs_db: Some(runs_db),
+            on_agent_created: None,
+        }
+    }
+
+    /// Set callback to be invoked when an agent is created
+    pub fn set_on_agent_created<F>(&mut self, callback: F)
+    where
+        F: Fn(String, crate::types::AgentSource) + Send + Sync + 'static,
+    {
+        self.on_agent_created = Some(Arc::new(callback));
     }
 
     pub async fn create_agent(
         &self,
         working_dir: String,
         github_url: Option<String>,
+        selected_instruction_files: Option<Vec<String>>,
+        source: crate::types::AgentSource,
         app_handle: tauri::AppHandle,
     ) -> Result<String, String> {
         let agent_id = uuid::Uuid::new_v4().to_string();
@@ -89,6 +118,17 @@ impl AgentManager {
 
         std::fs::write(&settings_path, serde_json::to_string_pretty(&hooks_config).unwrap())
             .map_err(|e| format!("Failed to create settings file: {}", e))?;
+
+        // Copy instruction files to .claude/ directory if any are selected
+        let copied_files = if let Some(files) = selected_instruction_files {
+            crate::instruction_manager::copy_instruction_files(&working_dir, &files)
+                .unwrap_or_else(|e| {
+                    eprintln!("Warning: Failed to copy instruction files: {}", e);
+                    Vec::new()
+                })
+        } else {
+            Vec::new()
+        };
 
         // Spawn claude process (use full path since nvm paths may not be in PATH)
         // First try CLAUDE_PATH env var, then try to construct from HOME, finally fallback to just "claude"
@@ -148,7 +188,7 @@ impl AgentManager {
             .as_millis() as i64;
 
         // Build GitHub context if available
-        let github_context = github::build_github_context(&working_dir, github_url);
+        let github_context = github::build_github_context(&working_dir, github_url.clone());
 
         let agent_info = AgentInfo {
             id: agent_id.clone(),
@@ -158,7 +198,9 @@ impl AgentManager {
             last_activity: Some(now_millis),
             is_processing: false,
             pending_input: false,
-            github_context,
+            github_context: github_context.clone(),
+            source: source.clone(),
+            pooled: None,
         };
 
         // Store agent
@@ -199,8 +241,51 @@ impl AgentManager {
                     pending_input: pending_input.clone(),
                     stats: stats.clone(),
                     output_buffer: output_buffer.clone(),
+                    copied_instruction_files: copied_files,
                 },
             );
+        }
+
+        // Record run in database
+        if let Some(ref runs_db) = self.runs_db {
+            let github_context_json = github_context.as_ref()
+                .map(|gc| serde_json::to_string(gc).ok())
+                .flatten();
+
+            let run = AgentRun {
+                id: None,
+                agent_id: agent_id.clone(),
+                session_id: None,
+                working_dir: working_dir.clone(),
+                github_url: github_url.clone(),
+                github_context: github_context_json,
+                source: match source {
+                    crate::types::AgentSource::UI => "ui".to_string(),
+                    crate::types::AgentSource::Meta => "meta".to_string(),
+                    crate::types::AgentSource::Pipeline => "pipeline".to_string(),
+                    crate::types::AgentSource::Pool => "pool".to_string(),
+                    crate::types::AgentSource::Manual => "manual".to_string(),
+                },
+                status: RunStatus::Running,
+                started_at: now_millis,
+                ended_at: None,
+                last_activity: now_millis,
+                initial_prompt: None,
+                error_message: None,
+                total_prompts: 0,
+                total_tool_calls: 0,
+                total_output_bytes: 0,
+                total_tokens_used: None,
+                total_cost_usd: None,
+                can_resume: true,
+                resume_data: None,
+            };
+
+            if let Err(e) = runs_db.create_run(&run).await {
+                if let Some(ref logger) = self.logger {
+                    let _ = logger.error("agent_manager", &format!("Failed to record run in database: {}", e), Some(agent_id.clone()), None).await;
+                }
+            }
         }
 
         // Emit event to notify frontend about new agent
@@ -225,6 +310,7 @@ impl AgentManager {
         let pending_input_clone = pending_input.clone();
         let stats_clone = stats.clone();
         let output_buffer_clone = output_buffer.clone();
+        let runs_db_clone = self.runs_db.clone();
 
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
@@ -699,17 +785,66 @@ impl AgentManager {
                 }
             }
 
-            // Process ended
-            let mut agents = agents_clone.lock().await;
-            if let Some(agent) = agents.get_mut(&agent_id_clone) {
-                agent.info.status = AgentStatus::Stopped;
-            }
+            // Process ended - check if it was expected or a crash
+            let (was_stopped, final_stats) = {
+                let mut agents = agents_clone.lock().await;
+                if let Some(agent) = agents.get_mut(&agent_id_clone) {
+                    let was_stopped = agent.info.status == AgentStatus::Stopped;
+                    let stats = agent.stats.clone();
+                    if !was_stopped {
+                        agent.info.status = AgentStatus::Error;
+                    }
+                    (was_stopped, Some(stats))
+                } else {
+                    (false, None)
+                }
+            };
+
+            // Update database - mark as crashed if not explicitly stopped
+            let agent_id_for_db = agent_id_clone.clone();
+            tokio::spawn(async move {
+                if let Some(runs_db) = runs_db_clone {
+                    if let Ok(Some(mut run)) = runs_db.get_run(&agent_id_for_db).await {
+                        let now_millis = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as i64;
+
+                        if !was_stopped {
+                            run.status = RunStatus::Crashed;
+                            run.error_message = Some("Process terminated unexpectedly".to_string());
+                            run.can_resume = true; // Mark as resumable
+                        }
+
+                        run.ended_at = Some(now_millis);
+                        run.last_activity = now_millis;
+
+                        // Update final stats if available
+                        if let Some(stats) = final_stats {
+                            let stats_lock = stats.lock().await;
+                            run.total_prompts = stats_lock.total_prompts;
+                            run.total_tool_calls = stats_lock.total_tool_calls;
+                            run.total_output_bytes = stats_lock.total_output_bytes;
+                            run.total_tokens_used = stats_lock.total_tokens_used;
+                            run.total_cost_usd = stats_lock.total_cost_usd;
+                        }
+
+                        let _ = runs_db.update_run(&run).await;
+                    }
+                }
+            });
+
+            let status = if was_stopped {
+                AgentStatus::Stopped
+            } else {
+                AgentStatus::Error
+            };
 
             let _ = app_handle_clone.emit(
                 "agent:status",
                 AgentStatusEvent {
                     agent_id: agent_id_clone,
-                    status: AgentStatus::Stopped,
+                    status,
                     info: None,
                 },
             );
@@ -746,6 +881,11 @@ impl AgentManager {
                 let _ = app_handle_clone2.emit("agent:output", event);
             }
         });
+
+        // Call the on_agent_created callback if set
+        if let Some(callback) = &self.on_agent_created {
+            callback(agent_id.clone(), source.clone());
+        }
 
         Ok(agent_id)
     }
@@ -787,6 +927,31 @@ impl AgentManager {
             stats.last_activity = chrono::Utc::now().to_rfc3339();
         }
 
+        // Record prompt in database
+        if let Some(ref runs_db) = self.runs_db {
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+
+            if let Err(e) = runs_db.record_prompt(agent_id, prompt, timestamp).await {
+                if let Some(ref logger) = self.logger {
+                    let _ = logger.error("agent_manager", &format!("Failed to record prompt: {}", e), Some(agent_id.to_string()), None).await;
+                }
+            }
+
+            // Update run in database
+            if let Ok(Some(mut run)) = runs_db.get_run(agent_id).await {
+                run.last_activity = timestamp;
+                run.total_prompts += 1;
+                // Set initial prompt if this is the first one
+                if run.total_prompts == 1 {
+                    run.initial_prompt = Some(prompt.to_string());
+                }
+                let _ = runs_db.update_run(&run).await;
+            }
+        }
+
         let stdin_tx = agent
             .stdin_tx
             .as_ref()
@@ -825,6 +990,13 @@ impl AgentManager {
     }
 
     pub async fn stop_agent(&self, agent_id: &str) -> Result<(), String> {
+        // Get final stats before stopping
+        let final_stats = {
+            let agents = self.agents.lock().await;
+            agents.get(agent_id)
+                .map(|agent| agent.stats.clone())
+        };
+
         let mut agents = self.agents.lock().await;
         let agent = agents
             .get_mut(agent_id)
@@ -834,8 +1006,46 @@ impl AgentManager {
             let _ = child.kill().await;
         }
 
+        // Clean up copied instruction files
+        if !agent.copied_instruction_files.is_empty() {
+            let working_dir = agent.info.working_dir.clone();
+            let copied_files = agent.copied_instruction_files.clone();
+            if let Err(e) = crate::instruction_manager::cleanup_instruction_files(
+                &working_dir,
+                &copied_files
+            ) {
+                eprintln!("Warning: Failed to cleanup instruction files: {}", e);
+            }
+        }
+
         agent.info.status = AgentStatus::Stopped;
         agent.stdin_tx = None;
+
+        // Update run in database
+        if let Some(ref runs_db) = self.runs_db {
+            if let Ok(Some(mut run)) = runs_db.get_run(agent_id).await {
+                let now_millis = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64;
+
+                run.status = RunStatus::Stopped;
+                run.ended_at = Some(now_millis);
+                run.last_activity = now_millis;
+
+                // Update stats if available
+                if let Some(stats) = final_stats {
+                    let stats_lock = stats.lock().await;
+                    run.total_prompts = stats_lock.total_prompts;
+                    run.total_tool_calls = stats_lock.total_tool_calls;
+                    run.total_output_bytes = stats_lock.total_output_bytes;
+                    run.total_tokens_used = stats_lock.total_tokens_used;
+                    run.total_cost_usd = stats_lock.total_cost_usd;
+                }
+
+                let _ = runs_db.update_run(&run).await;
+            }
+        }
 
         Ok(())
     }

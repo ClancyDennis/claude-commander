@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
+use serde_json::json;
+use tauri::Emitter;
 use crate::agent_manager::AgentManager;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,13 +47,15 @@ pub struct TaskAssignment {
 
 #[derive(Clone, Serialize, Default)]
 pub struct PoolStats {
-    pub total_agents: usize,
-    pub idle_agents: usize,
-    pub busy_agents: usize,
+    pub total_agents: usize,           // ALL agents in system
+    pub idle_agents: usize,            // Idle in pool
+    pub busy_agents: usize,            // Busy from pool
     pub utilization: f32,              // busy / total
     pub tasks_completed: u64,
     pub average_task_time: f32,        // seconds
     pub uptime: Duration,
+    pub by_source: HashMap<String, usize>,  // Agent counts by source
+    pub pooled_count: usize,           // Total tracked by pool
 }
 
 #[derive(Debug)]
@@ -61,6 +65,7 @@ pub enum PoolError {
     ChannelClosed,
     SpawnFailed(String),
     AgentCrashed(String),
+    NoAgentsAvailable,
 }
 
 impl std::fmt::Display for PoolError {
@@ -71,6 +76,7 @@ impl std::fmt::Display for PoolError {
             PoolError::ChannelClosed => write!(f, "Internal channel closed unexpectedly."),
             PoolError::SpawnFailed(e) => write!(f, "Failed to spawn agent: {}", e),
             PoolError::AgentCrashed(id) => write!(f, "Agent {} crashed unexpectedly.", id),
+            PoolError::NoAgentsAvailable => write!(f, "No agents available in pool."),
         }
     }
 }
@@ -117,7 +123,8 @@ impl AgentPool {
             }
         }
 
-        // Start auto-scaler
+        // Start auto-scaler (disabled - kept for backwards compatibility)
+        #[cfg(feature = "pool_auto_scale")]
         if config.auto_scale {
             let pool_clone = pool.clone();
             let scaler_handle = tokio::spawn(Self::auto_scale_loop(pool_clone));
@@ -127,7 +134,26 @@ impl AgentPool {
         Ok(pool)
     }
 
-    /// Get an idle agent from the pool (or spawn if none available)
+    /// Initialize pool in tracking-only mode (no auto-spawn)
+    pub fn new_tracking_only(
+        config: PoolConfig,
+        agent_manager: Arc<Mutex<AgentManager>>,
+        app_handle: Option<tauri::AppHandle>,
+    ) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self {
+            config,
+            idle_agents: VecDeque::new(),
+            busy_agents: HashMap::new(),
+            agent_manager,
+            stats: Arc::new(Mutex::new(PoolStats::default())),
+            auto_scaler: None,  // No auto-scaler in tracking mode
+            waiting_queue: VecDeque::new(),
+            start_time: Instant::now(),
+            app_handle,
+        }))
+    }
+
+    /// Get an idle agent from the pool (tracking mode - no auto-spawn)
     pub async fn acquire_agent(&mut self) -> Result<String, PoolError> {
         // Try to get idle agent
         if let Some(agent_id) = self.idle_agents.pop_front() {
@@ -135,26 +161,9 @@ impl AgentPool {
             return Ok(agent_id);
         }
 
-        // Try to scale up
-        if self.total_agents() < self.config.max_size {
-            return self.spawn_agent().await.map_err(|e| PoolError::SpawnFailed(e));
-        }
-
-        // Queue the request with timeout
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.waiting_queue.push_back(tx);
-
-        if self.waiting_queue.len() > self.config.max_queue_size {
-            return Err(PoolError::QueueFull);
-        }
-
-        let timeout_duration = self.config.queue_timeout;
-
-        match tokio::time::timeout(timeout_duration, rx).await {
-            Ok(Ok(agent_id)) => Ok(agent_id),
-            Ok(Err(_)) => Err(PoolError::ChannelClosed),
-            Err(_) => Err(PoolError::Timeout),
-        }
+        // No agents available - return error
+        // NOTE: We no longer spawn agents here (tracking mode only)
+        Err(PoolError::NoAgentsAvailable)
     }
 
     /// Mark agent as busy with task
@@ -178,13 +187,42 @@ impl AgentPool {
         self.update_stats().await;
     }
 
+    /// Register an existing agent with the pool for tracking
+    pub async fn register_agent(
+        &mut self,
+        agent_id: String,
+        source: crate::types::AgentSource,
+    ) -> Result<(), String> {
+        // Add to idle queue
+        self.idle_agents.push_back(agent_id.clone());
+
+        // Mark agent as pooled in AgentManager
+        let manager = self.agent_manager.lock().await;
+        if let Some(agent) = manager.agents.lock().await.get_mut(&agent_id) {
+            agent.info.pooled = Some(true);
+        }
+        drop(manager);
+
+        self.update_stats().await;
+
+        // Emit event
+        if let Some(app) = &self.app_handle {
+            app.emit("pool:agent_registered", json!({
+                "agent_id": agent_id,
+                "source": source,
+            })).ok();
+        }
+
+        Ok(())
+    }
+
     /// Spawn a new agent in the pool
     async fn spawn_agent(&mut self) -> Result<String, String> {
         let working_dir = self.config.default_working_dir.clone();
         let manager = self.agent_manager.lock().await;
 
         let agent_id = if let Some(app_handle) = &self.app_handle {
-            manager.create_agent(working_dir, None, app_handle.clone()).await?
+            manager.create_agent(working_dir, None, None, crate::types::AgentSource::Pool, app_handle.clone()).await?
         } else {
             return Err("Pool requires app_handle to spawn agents".to_string());
         };
@@ -210,7 +248,8 @@ impl AgentPool {
         Ok(())
     }
 
-    /// Auto-scaling background loop
+    /// Auto-scaling background loop (disabled in tracking mode)
+    #[cfg(feature = "pool_auto_scale")]
     async fn auto_scale_loop(pool: Arc<Mutex<Self>>) {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
@@ -256,7 +295,42 @@ impl AgentPool {
     }
 
     pub async fn get_stats(&self) -> PoolStats {
-        self.stats.lock().await.clone()
+        let manager = self.agent_manager.lock().await;
+        let all_agents = manager.agents.lock().await;
+
+        // Count ALL agents, not just pool-tracked
+        let total_agents = all_agents.len();
+        let idle_count = self.idle_agents.len();
+        let busy_count = self.busy_agents.len();
+        let pooled_count = idle_count + busy_count;
+
+        // Breakdown by source
+        let mut by_source = HashMap::new();
+        for agent in all_agents.values() {
+            let source_str = format!("{:?}", agent.info.source).to_lowercase();
+            *by_source.entry(source_str).or_insert(0) += 1;
+        }
+
+        drop(all_agents);
+        drop(manager);
+
+        let stats_lock = self.stats.lock().await;
+
+        PoolStats {
+            total_agents,
+            idle_agents: idle_count,
+            busy_agents: busy_count,
+            utilization: if total_agents > 0 {
+                busy_count as f32 / total_agents as f32
+            } else {
+                0.0
+            },
+            tasks_completed: stats_lock.tasks_completed,
+            average_task_time: stats_lock.average_task_time,
+            uptime: self.start_time.elapsed(),
+            by_source,
+            pooled_count,
+        }
     }
 
     /// Graceful shutdown

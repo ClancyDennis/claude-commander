@@ -12,7 +12,7 @@
   } = $props();
 
   let searchQuery = $state("");
-  let filterType = $state<string>("all");
+  let filterType = $state<string>("text");
 
   // Get unique output types for filter dropdown
   const outputTypes = $derived.by(() => {
@@ -245,6 +245,12 @@
   .filter-select:focus {
     outline: none;
     border-color: var(--accent);
+  }
+
+  .filter-select option {
+    background-color: white;
+    color: #1a1a1a;
+    padding: 8px;
   }
 
   .action-buttons {

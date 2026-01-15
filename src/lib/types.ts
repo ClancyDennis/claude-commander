@@ -206,3 +206,36 @@ export interface DailyCost {
   costUsd: number;
   sessionCount: number;
 }
+
+export interface InstructionFileInfo {
+  id: string;
+  name: string;
+  path: string;
+  relativePath: string;
+  fileType: 'txt' | 'md';
+  size: number;
+  modified: string;
+  hasSkill?: boolean;      // Whether a skill was generated from this file
+  skillName?: string;      // Name of the generated skill
+}
+
+export interface GeneratedSkill {
+  skillName: string;
+  skillPath: string;
+  sourceFile: string;
+  generatedAt: string;
+}
+
+export interface SkillContent {
+  skillName: string;
+  skillMd: string;
+  referenceMd?: string;
+  examplesMd?: string;
+  scripts: SkillScript[];
+}
+
+export interface SkillScript {
+  name: string;
+  content: string;
+  language: string;
+}

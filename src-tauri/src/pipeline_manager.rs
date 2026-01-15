@@ -194,7 +194,7 @@ impl PipelineManager {
         ]
     }
 
-    /// Start a new pipeline execution
+    /// Create a new pipeline (does not start execution automatically)
     pub async fn create_pipeline(
         &self,
         user_request: String,
@@ -222,6 +222,19 @@ impl PipelineManager {
             *self.config.lock().await = cfg;
         }
 
+        Ok(pipeline_id)
+    }
+
+    /// Start pipeline execution (call this after user provides task)
+    pub async fn start_pipeline(&self, pipeline_id: &str, user_request: String) -> Result<(), String> {
+        // Update the user request
+        {
+            let mut pipelines = self.pipelines.lock().await;
+            let pipeline = pipelines.get_mut(pipeline_id)
+                .ok_or("Pipeline not found")?;
+            pipeline.user_request = user_request;
+        }
+
         // Start pipeline execution in background
         let pipelines = self.pipelines.clone();
         let meta_agent = self.meta_agent.clone();
@@ -229,7 +242,7 @@ impl PipelineManager {
         let orchestrator = self.orchestrator.clone();
         let verification_engine = self.verification_engine.clone();
         let config_arc = self.config.clone();
-        let pipeline_id_clone = pipeline_id.clone();
+        let pipeline_id_clone = pipeline_id.to_string();
 
         tokio::spawn(async move {
             Self::execute_pipeline(
@@ -243,7 +256,7 @@ impl PipelineManager {
             ).await;
         });
 
-        Ok(pipeline_id)
+        Ok(())
     }
 
     /// Main pipeline execution loop - phase-based

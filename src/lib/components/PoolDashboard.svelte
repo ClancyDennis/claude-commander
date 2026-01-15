@@ -9,6 +9,8 @@
     utilization: number;
     tasks_completed: number;
     average_task_time: number;
+    by_source: Record<string, number>;  // NEW
+    pooled_count: number;  // NEW
   }
 
   let stats = $state<PoolStats>({
@@ -18,7 +20,12 @@
     utilization: 0,
     tasks_completed: 0,
     average_task_time: 0,
+    by_source: {},
+    pooled_count: 0,
   });
+
+  // Computed property for source breakdown
+  let sourceBreakdown = $derived(stats.by_source || {});
 
   let autoRefresh = $state(true);
   let refreshInterval: number;
@@ -129,7 +136,56 @@
       <span class="metric-label">Avg Task Time:</span>
       <span class="metric-value">{stats.average_task_time.toFixed(2)}s</span>
     </div>
+    <div class="metric">
+      <span class="metric-label">Tracked by Pool:</span>
+      <span class="metric-value">{stats.pooled_count} / {stats.total_agents}</span>
+    </div>
   </div>
+
+  {#if Object.keys(sourceBreakdown).length > 0}
+    <div class="source-breakdown">
+      <h3>Agents by Source</h3>
+      <div class="source-grid">
+        {#each Object.entries(sourceBreakdown) as [source, count]}
+          <div class="source-card">
+            <div class="source-icon">
+              {#if source === 'ui'}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              {:else if source === 'meta'}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                  <path d="M2 17l10 5 10-5"/>
+                  <path d="M2 12l10 5 10-5"/>
+                </svg>
+              {:else if source === 'pipeline'}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <path d="M22 6l-10 7L2 6"/>
+                </svg>
+              {:else if source === 'pool'}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v6m0 6v6M4.93 4.93l4.24 4.24m5.66 5.66l4.24 4.24M1 12h6m6 0h6M4.93 19.07l4.24-4.24m5.66-5.66l4.24-4.24"/>
+                </svg>
+              {:else}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 8v8m-4-4h8"/>
+                </svg>
+              {/if}
+            </div>
+            <div class="source-info">
+              <div class="source-name">{source.toUpperCase()}</div>
+              <div class="source-count">{count}</div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -258,6 +314,69 @@
   .metric-value {
     font-size: 16px;
     font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .source-breakdown {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+  }
+
+  .source-breakdown h3 {
+    margin: 0 0 var(--space-md) 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .source-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--space-sm);
+  }
+
+  .source-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .source-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--accent);
+  }
+
+  .source-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .source-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .source-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .source-count {
+    font-size: 18px;
+    font-weight: 700;
     color: var(--text-primary);
   }
 </style>

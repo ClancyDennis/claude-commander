@@ -50,6 +50,9 @@ export interface AgentPipelineSettings {
   requireFinalReview: boolean;
   autoValidationCommand: string;
   autoApproveOnVerification: boolean;
+
+  // Instruction Files
+  instructionFiles: string[];  // Array of relative paths to enabled files
 }
 
 export const defaultSettings: AgentPipelineSettings = {
@@ -79,6 +82,9 @@ export const defaultSettings: AgentPipelineSettings = {
   requireFinalReview: true,
   autoValidationCommand: 'cargo check',
   autoApproveOnVerification: false,
+
+  // Instruction Files
+  instructionFiles: [],
 };
 
 // Map of agent ID to settings

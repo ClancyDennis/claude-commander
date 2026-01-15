@@ -11,6 +11,7 @@
   import GridView from "./lib/components/GridView.svelte";
   import PoolDashboard from "./lib/components/PoolDashboard.svelte";
   import CostTracker from "./lib/components/CostTracker.svelte";
+  import DatabaseStats from "./lib/components/DatabaseStats.svelte";
   import PhaseProgress from "./lib/components/PhaseProgress.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
   import {
@@ -43,6 +44,7 @@
   let showNewAgentDialog = $state(false);
   let showPoolDashboard = $state(false);
   let showCostTracker = $state(false);
+  let showDatabaseStats = $state(false);
 
   // Show toast notifications for key events
   function handleStatusChange(agentId: string, status: string) {
@@ -113,6 +115,13 @@
     if (isMod && e.shiftKey && e.key === '$') {
       e.preventDefault();
       showCostTracker = !showCostTracker;
+      return;
+    }
+
+    // Cmd/Ctrl + Shift + D: Toggle database stats
+    if (isMod && e.shiftKey && e.key === 'D') {
+      e.preventDefault();
+      showDatabaseStats = !showDatabaseStats;
       return;
     }
 
@@ -357,6 +366,7 @@
     onNewAgent={() => (showNewAgentDialog = true)}
     onTogglePoolDashboard={() => (showPoolDashboard = !showPoolDashboard)}
     onToggleCostTracker={() => (showCostTracker = !showCostTracker)}
+    onToggleDatabaseStats={() => (showDatabaseStats = !showDatabaseStats)}
   />
   <div class="main-content">
     {#if showPoolDashboard}
@@ -367,6 +377,11 @@
     {#if showCostTracker}
       <div class="cost-tracker-container">
         <CostTracker />
+      </div>
+    {/if}
+    {#if showDatabaseStats}
+      <div class="database-stats-container">
+        <DatabaseStats />
       </div>
     {/if}
     {#if $selectedPipelineId}
@@ -418,6 +433,11 @@
     border-bottom: 1px solid var(--border);
     max-height: 600px;
     overflow: hidden;
+  }
+
+  .database-stats-container {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--border);
   }
 
   .pipeline-view-container {
