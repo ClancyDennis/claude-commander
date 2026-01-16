@@ -86,11 +86,25 @@
   }
 
   function formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString();
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch (e) {
+      console.error('Error formatting date:', e);
+      return dateStr;
+    }
   }
 
   function formatDateTime(dateStr: string): string {
-    return new Date(dateStr).toLocaleString();
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        return dateStr;
+      }
+      return date.toLocaleString();
+    } catch (e) {
+      console.error('Error formatting datetime:', e);
+      return dateStr;
+    }
   }
 
   $: if (dateRangeType !== 'custom') {
@@ -238,38 +252,42 @@
           {/if}
         </div>
 
-        {#if summary?.sessionRecords && summary.sessionRecords.length > 0}
+        {#if summary?.sessionRecords && Array.isArray(summary.sessionRecords) && summary.sessionRecords.length > 0}
           <div class="session-list">
             {#each summary.sessionRecords.slice().reverse() as session}
-              <div class="session-card">
-                <div class="session-header">
-                  <div class="session-time">{formatDateTime(session.startedAt)}</div>
-                  <div class="session-cost">{formatCost(session.totalCostUsd)}</div>
+              {#if session && session.startedAt && session.workingDir}
+                <div class="session-card">
+                  <div class="session-header">
+                    <div class="session-time">{formatDateTime(session.startedAt)}</div>
+                    <div class="session-cost">{formatCost(session.totalCostUsd ?? 0)}</div>
+                  </div>
+                  <div class="session-details">
+                    <div class="session-detail">
+                      <span class="detail-label">Project:</span>
+                      <span class="detail-value" title={session.workingDir}>
+                        {session.workingDir.split('/').pop() || session.workingDir}
+                      </span>
+                    </div>
+                    <div class="session-stats">
+                      <span>🔤 {formatNumber(session.totalTokens ?? 0)} tokens</span>
+                      <span>💬 {session.totalPrompts ?? 0} prompts</span>
+                      <span>🔧 {session.totalToolCalls ?? 0} tool calls</span>
+                    </div>
+                  </div>
+                  {#if session.modelUsage && typeof session.modelUsage === 'object'}
+                    <div class="session-models">
+                      {#each Object.entries(session.modelUsage) as [model, usage]}
+                        {#if usage && typeof usage.costUsd === 'number'}
+                          <div class="model-usage">
+                            <span class="model-name">{model}</span>
+                            <span class="model-cost">{formatCost(usage.costUsd)}</span>
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
-                <div class="session-details">
-                  <div class="session-detail">
-                    <span class="detail-label">Project:</span>
-                    <span class="detail-value" title={session.workingDir}>
-                      {session.workingDir.split('/').pop() || session.workingDir}
-                    </span>
-                  </div>
-                  <div class="session-stats">
-                    <span>🔤 {formatNumber(session.totalTokens)} tokens</span>
-                    <span>💬 {session.totalPrompts} prompts</span>
-                    <span>🔧 {session.totalToolCalls} tool calls</span>
-                  </div>
-                </div>
-                {#if session.modelUsage}
-                  <div class="session-models">
-                    {#each Object.entries(session.modelUsage) as [model, usage]}
-                      <div class="model-usage">
-                        <span class="model-name">{model}</span>
-                        <span class="model-cost">{formatCost(usage.costUsd)}</span>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
+              {/if}
             {/each}
           </div>
         {:else}

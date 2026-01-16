@@ -133,7 +133,7 @@ impl AIClient {
     }
 
     /// List available Claude models (requires API call)
-    pub async fn list_claude_models(api_key: &str) -> Result<Vec<String>, AIError> {
+    pub async fn list_claude_models(_api_key: &str) -> Result<Vec<String>, AIError> {
         // Note: Anthropic doesn't have a public models endpoint yet
         // Return known models in order of preference
         Ok(vec![
@@ -213,6 +213,7 @@ impl AIClient {
     ) -> Result<AIResponse, AIError> {
         let mut body = json!({
             "model": model,
+            "max_tokens": 4096,
             "messages": messages,
         });
 

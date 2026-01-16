@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -11,6 +12,26 @@ pub enum AgentStatus {
     Processing,
 }
 
+impl AgentStatus {
+    /// Returns the status as a lowercase string slice
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentStatus::Running => "running",
+            AgentStatus::Stopped => "stopped",
+            AgentStatus::Error => "error",
+            AgentStatus::WaitingForInput => "waitingforinput",
+            AgentStatus::Idle => "idle",
+            AgentStatus::Processing => "processing",
+        }
+    }
+}
+
+impl fmt::Display for AgentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentSource {
@@ -19,6 +40,25 @@ pub enum AgentSource {
     Pipeline,     // Created by orchestration pipeline
     Pool,         // Created by pool (legacy)
     Manual,       // Created via API/command
+}
+
+impl AgentSource {
+    /// Returns the source as a lowercase string slice
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentSource::UI => "ui",
+            AgentSource::Meta => "meta",
+            AgentSource::Pipeline => "pipeline",
+            AgentSource::Pool => "pool",
+            AgentSource::Manual => "manual",
+        }
+    }
+}
+
+impl fmt::Display for AgentSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

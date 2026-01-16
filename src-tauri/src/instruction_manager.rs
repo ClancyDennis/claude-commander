@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
+
+use crate::utils::validation::{validate_instruction_filename, is_allowed_instruction_file};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,10 +17,19 @@ pub struct InstructionFileInfo {
 }
 
 /// Scan .grove-instructions/ directory for .txt and .md files
+/// Also checks for bundled resources in release builds
 pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileInfo>, String> {
     let instructions_dir = Path::new(working_dir).join(".grove-instructions");
 
-    // If directory doesn't exist, return empty list (not an error)
+    // If directory doesn't exist, try to initialize from bundled resources
+    if !instructions_dir.exists() {
+        // Try to find bundled resources and copy them
+        if let Err(e) = initialize_instruction_files(working_dir) {
+            eprintln!("Warning: Could not initialize instruction files from bundle: {}", e);
+        }
+    }
+
+    // Try again after initialization
     if !instructions_dir.exists() {
         return Ok(Vec::new());
     }
@@ -32,6 +43,92 @@ pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileIn
     files.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(files)
+}
+
+/// Initialize .grove-instructions directory with bundled default files
+/// In development, this copies from the project's .grove-instructions
+/// In release, this uses bundled resources
+fn initialize_instruction_files(working_dir: &str) -> Result<(), String> {
+    let dest_dir = Path::new(working_dir).join(".grove-instructions");
+
+    // Create directory
+    fs::create_dir_all(&dest_dir)
+        .map_err(|e| format!("Failed to create .grove-instructions directory: {}", e))?;
+
+    // Try to find source files
+    // In development: use relative path from executable
+    // In release: use bundled resources path
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+    let exe_dir = exe_path.parent()
+        .ok_or("Failed to get executable directory")?;
+
+    // Try multiple possible locations for bundled resources
+    let possible_sources = vec![
+        exe_dir.join(".grove-instructions"),                    // Adjacent to exe (some bundles)
+        exe_dir.join("../Resources/.grove-instructions"),       // macOS app bundle
+        exe_dir.join("resources/.grove-instructions"),          // Windows/Linux bundle
+        exe_dir.join("../../.grove-instructions"),              // Development (target/debug or target/release)
+        exe_dir.join("../../../.grove-instructions"),           // Development alternate structure
+    ];
+
+    for source_dir in possible_sources {
+        if source_dir.exists() && source_dir.is_dir() {
+            // Copy all instruction files
+            copy_directory_contents(&source_dir, &dest_dir)?;
+            return Ok(());
+        }
+    }
+
+    // If no bundled resources found, create empty directory (not an error)
+    Ok(())
+}
+
+/// Copy contents of one directory to another (recursively, only .md and .txt files)
+fn copy_directory_contents(src: &Path, dest: &Path) -> Result<(), String> {
+    let entries = fs::read_dir(src)
+        .map_err(|e| format!("Failed to read source directory: {}", e))?;
+
+    let mut copied_count = 0;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            // Recursively copy subdirectories
+            let dir_name = path.file_name()
+                .ok_or("Invalid directory name")?;
+            let dest_subdir = dest.join(dir_name);
+
+            fs::create_dir_all(&dest_subdir)
+                .map_err(|e| format!("Failed to create subdirectory: {}", e))?;
+
+            copy_directory_contents(&path, &dest_subdir)?;
+        } else if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if ext == "txt" || ext == "md" {
+                    let filename = path.file_name()
+                        .ok_or("Invalid filename")?;
+                    let dest_path = dest.join(filename);
+
+                    // Only copy if destination doesn't exist (don't overwrite user files)
+                    if !dest_path.exists() {
+                        fs::copy(&path, &dest_path)
+                            .map_err(|e| format!("Failed to copy file: {}", e))?;
+                        copied_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if copied_count > 0 {
+        eprintln!("Initialized .grove-instructions with {} bundled files", copied_count);
+    }
+
+    Ok(())
 }
 
 fn scan_directory(
@@ -50,50 +147,49 @@ fn scan_directory(
             // Recursively scan subdirectories
             scan_directory(base_dir, &path, files)?;
         } else if path.is_file() {
-            // Check extension
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext == "txt" || ext == "md" {
-                    // Get metadata
-                    let metadata = fs::metadata(&path)
-                        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+            // Check extension using validation utility
+            if is_allowed_instruction_file(&path) {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("txt");
+                // Get metadata
+                let metadata = fs::metadata(&path)
+                    .map_err(|e| format!("Failed to read file metadata: {}", e))?;
 
-                    let modified = metadata.modified()
-                        .map_err(|e| format!("Failed to get modified time: {}", e))?;
+                let modified = metadata.modified()
+                    .map_err(|e| format!("Failed to get modified time: {}", e))?;
 
-                    // Convert to ISO 8601 string
-                    let modified_iso = {
-                        use std::time::{SystemTime, UNIX_EPOCH};
-                        let duration = modified.duration_since(UNIX_EPOCH)
-                            .map_err(|e| format!("Invalid modified time: {}", e))?;
-                        let secs = duration.as_secs();
+                // Convert to ISO 8601 string
+                let modified_iso = {
+                    use std::time::UNIX_EPOCH;
+                    let duration = modified.duration_since(UNIX_EPOCH)
+                        .map_err(|e| format!("Invalid modified time: {}", e))?;
+                    let secs = duration.as_secs();
 
-                        // Simple ISO 8601 formatting (UTC)
-                        let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
-                            .ok_or_else(|| "Failed to convert timestamp".to_string())?;
-                        datetime.to_rfc3339()
-                    };
+                    // Simple ISO 8601 formatting (UTC)
+                    let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                        .ok_or_else(|| "Failed to convert timestamp".to_string())?;
+                    datetime.to_rfc3339()
+                };
 
-                    // Get relative path from .grove-instructions/
-                    let relative_path = path.strip_prefix(base_dir)
-                        .map_err(|e| format!("Failed to get relative path: {}", e))?
-                        .to_string_lossy()
-                        .to_string();
+                // Get relative path from .grove-instructions/
+                let relative_path = path.strip_prefix(base_dir)
+                    .map_err(|e| format!("Failed to get relative path: {}", e))?
+                    .to_string_lossy()
+                    .to_string();
 
-                    let filename = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
+                let filename = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
 
-                    files.push(InstructionFileInfo {
-                        id: relative_path.clone(),
-                        name: filename,
-                        path: path.to_string_lossy().to_string(),
-                        relative_path,
-                        file_type: ext.to_string(),
-                        size: metadata.len(),
-                        modified: modified_iso,
-                    });
-                }
+                files.push(InstructionFileInfo {
+                    id: relative_path.clone(),
+                    name: filename,
+                    path: path.to_string_lossy().to_string(),
+                    relative_path,
+                    file_type: ext.to_string(),
+                    size: metadata.len(),
+                    modified: modified_iso,
+                });
             }
         }
     }
@@ -109,15 +205,8 @@ pub fn save_instruction_file(working_dir: &str, filename: &str, content: &str) -
         fs::create_dir_all(&instructions_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    // Validate filename
-    if !filename.ends_with(".md") && !filename.ends_with(".txt") {
-        return Err("Filename must end with .md or .txt".to_string());
-    }
-    
-    // Validate filename characters (basic check)
-    if filename.contains('/') || filename.contains('\\') {
-        return Err("Invalid filename".to_string());
-    }
+    // Validate filename using shared validation utility
+    validate_instruction_filename(filename)?;
 
     let path = instructions_dir.join(filename);
     fs::write(path, content).map_err(|e| format!("Failed to write file: {}", e))?;
@@ -138,12 +227,8 @@ pub fn get_instruction_file_content(file_path: &str) -> Result<String, String> {
         return Err("Path is not a file".to_string());
     }
 
-    // Check extension
-    let ext = path.extension()
-        .and_then(|e| e.to_str())
-        .ok_or("Invalid file extension")?;
-
-    if ext != "txt" && ext != "md" {
+    // Check extension using validation utility
+    if !is_allowed_instruction_file(path) {
         return Err("Only .txt and .md files are allowed".to_string());
     }
 

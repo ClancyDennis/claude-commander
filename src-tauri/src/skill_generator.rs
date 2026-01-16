@@ -1,0 +1,435 @@
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::fs;
+use crate::ai_client::AIClient;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratedSkill {
+    pub skill_name: String,
+    pub skill_path: String,
+    pub source_file: String,
+    pub generated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillContent {
+    pub skill_name: String,
+    pub skill_md: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_md: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub examples_md: Option<String>,
+    #[serde(default)]
+    pub scripts: Vec<SkillScript>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillScript {
+    pub name: String,
+    pub content: String,
+    pub language: String,
+}
+
+const SKILL_GENERATION_PROMPT: &str = r###"You are a skill generator for Claude Code. Convert the following instruction document into a well-structured Claude Code skill.
+
+## Input Document
+
+<document>
+{instruction_content}
+</document>
+
+## Output Format
+
+Generate a JSON object with the following structure:
+
+```json
+{
+  "skill_name": "kebab-case-name",
+  "skill_md": "Content for SKILL.md...",
+  "reference_md": "Content for reference.md...",
+  "examples_md": "Content for examples.md...",
+  "scripts": []
+}
+```
+
+## Guidelines
+
+### skill_name
+- Use kebab-case (lowercase with hyphens)
+- Descriptive and concise (e.g., "api-design-guidelines")
+- Should reflect the main topic of the instruction
+
+### SKILL.md (Required)
+- Start with a # header with the skill name (human-readable, Title Case)
+- Add a brief 1-2 sentence description
+- Include "## When to use" section explaining when this skill applies
+- List "## Key Concepts" or "## Overview" with main topics
+- Keep it concise (under 500 words)
+- Focus on WHEN and WHY to use this skill
+- Use clear markdown formatting
+
+### reference.md (Optional)
+- Extract detailed guidelines, specifications, rules
+- Organize into clear sections with ## headers
+- Include technical details, parameters, configurations
+- Can be longer and more comprehensive
+- Use markdown formatting (tables, code blocks, lists)
+- If the instruction document is short or doesn't have detailed technical info, you can omit this
+
+### examples.md (Optional)
+- Provide 2-5 concrete usage examples
+- Show before/after code samples where applicable
+- Include common patterns and edge cases
+- Make examples realistic and practical
+- Use markdown code blocks with language tags
+- If examples aren't applicable, you can omit this
+
+### scripts (Optional)
+- Only if the instruction document explicitly suggests automation or includes scripts
+- Keep scripts simple and focused
+- Include clear comments
+- Most instruction documents won't need scripts, so this will usually be empty
+
+## Important
+- Return ONLY the JSON object, no additional text or markdown formatting
+- Ensure all JSON strings are properly escaped
+- If a field is optional and not applicable, omit it or set to null
+- Make the skill_md engaging and helpful, not just a dry summary
+
+Now generate the skill content:"###;
+
+/// Generate a Claude Code skill from an instruction file using AI
+pub async fn generate_skill_from_instruction(
+    instruction_file_path: &str,
+    working_dir: &str,
+    ai_client: &AIClient,
+) -> Result<GeneratedSkill, String> {
+    // 1. Read instruction file
+    let instruction_content = fs::read_to_string(instruction_file_path)
+        .map_err(|e| format!("Failed to read instruction file: {}", e))?;
+
+    // Extract filename for default skill name
+    let file_name = Path::new(instruction_file_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("Invalid file name")?;
+
+    // 2. Construct prompt
+    let prompt = SKILL_GENERATION_PROMPT.replace("{instruction_content}", &instruction_content);
+
+    // 3. Call AI to generate skill content
+    let messages = vec![crate::ai_client::Message {
+        role: "user".to_string(),
+        content: prompt.clone(),
+    }];
+
+    let response = ai_client
+        .send_message(messages)
+        .await
+        .map_err(|e| format!("AI generation failed: {}", e))?;
+
+    // Extract text content from response
+    let mut ai_response = String::new();
+    for block in response.content {
+        if let crate::ai_client::ContentBlock::Text { text } = block {
+            ai_response.push_str(&text);
+        }
+    }
+
+    // 4. Parse AI response into SkillContent
+    let skill_content: SkillContent = parse_skill_response(&ai_response, file_name)?;
+
+    // 5. Create skill directory structure and write files
+    let skill_path = create_skill_directory(working_dir, &skill_content)?;
+
+    // 6. Return metadata
+    Ok(GeneratedSkill {
+        skill_name: skill_content.skill_name.clone(),
+        skill_path,
+        source_file: instruction_file_path.to_string(),
+        generated_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
+
+fn parse_skill_response(ai_response: &str, fallback_name: &str) -> Result<SkillContent, String> {
+    // Try to extract JSON from response (AI might wrap it in markdown)
+    let json_str = if ai_response.trim().starts_with('{') {
+        ai_response.trim()
+    } else {
+        // Try to extract from markdown code block
+        if let Some(start) = ai_response.find("```json") {
+            if let Some(end) = ai_response[start..].find("```") {
+                let json_start = start + 7; // length of "```json\n"
+                let json_end = start + end;
+                &ai_response[json_start..json_end].trim()
+            } else {
+                return Err("Could not find closing ``` for JSON block".to_string());
+            }
+        } else if let Some(start) = ai_response.find('{') {
+            if let Some(end) = ai_response.rfind('}') {
+                &ai_response[start..=end]
+            } else {
+                return Err("Could not find valid JSON in AI response".to_string());
+            }
+        } else {
+            return Err("No JSON found in AI response".to_string());
+        }
+    };
+
+    let mut skill_content: SkillContent = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse AI response as JSON: {}", e))?;
+
+    // Validate and sanitize skill_name
+    if skill_content.skill_name.is_empty() {
+        skill_content.skill_name = sanitize_skill_name(fallback_name);
+    } else {
+        skill_content.skill_name = sanitize_skill_name(&skill_content.skill_name);
+    }
+
+    // Validate required fields
+    if skill_content.skill_md.trim().is_empty() {
+        return Err("Generated skill_md is empty".to_string());
+    }
+
+    Ok(skill_content)
+}
+
+fn sanitize_skill_name(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c
+            } else if c.is_whitespace() || c == '_' || c == '-' {
+                '-'
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn create_skill_directory(working_dir: &str, skill_content: &SkillContent) -> Result<String, String> {
+    let skills_dir = Path::new(working_dir).join(".claude").join("skills");
+    let skill_dir = skills_dir.join(&skill_content.skill_name);
+
+    // Create skill directory
+    fs::create_dir_all(&skill_dir)
+        .map_err(|e| format!("Failed to create skill directory: {}", e))?;
+
+    // Write SKILL.md
+    fs::write(skill_dir.join("SKILL.md"), &skill_content.skill_md)
+        .map_err(|e| format!("Failed to write SKILL.md: {}", e))?;
+
+    // Write reference.md if present
+    if let Some(ref reference) = skill_content.reference_md {
+        if !reference.trim().is_empty() {
+            fs::write(skill_dir.join("reference.md"), reference)
+                .map_err(|e| format!("Failed to write reference.md: {}", e))?;
+        }
+    }
+
+    // Write examples.md if present
+    if let Some(ref examples) = skill_content.examples_md {
+        if !examples.trim().is_empty() {
+            fs::write(skill_dir.join("examples.md"), examples)
+                .map_err(|e| format!("Failed to write examples.md: {}", e))?;
+        }
+    }
+
+    // Write scripts if present
+    if !skill_content.scripts.is_empty() {
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir)
+            .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
+
+        for script in &skill_content.scripts {
+            let ext = match script.language.as_str() {
+                "python" => "py",
+                "bash" | "shell" => "sh",
+                "javascript" => "js",
+                "typescript" => "ts",
+                _ => "txt",
+            };
+            let script_path = scripts_dir.join(format!("{}.{}", script.name, ext));
+            fs::write(&script_path, &script.content)
+                .map_err(|e| format!("Failed to write script {}: {}", script.name, e))?;
+
+            // Make shell scripts executable
+            #[cfg(unix)]
+            if ext == "sh" {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&script_path).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&script_path, perms).ok();
+            }
+        }
+    }
+
+    Ok(skill_dir.to_string_lossy().to_string())
+}
+
+/// List all generated skills in a working directory
+pub fn list_generated_skills(working_dir: &str) -> Result<Vec<GeneratedSkill>, String> {
+    let skills_dir = Path::new(working_dir).join(".claude").join("skills");
+
+    if !skills_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut skills = Vec::new();
+
+    let entries = fs::read_dir(&skills_dir)
+        .map_err(|e| format!("Failed to read skills directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let skill_md_path = path.join("SKILL.md");
+            if skill_md_path.exists() {
+                let skill_name = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                // Try to read metadata (we don't store source_file, so it's unknown)
+                let metadata = fs::metadata(&skill_md_path)
+                    .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+                let modified = metadata.modified()
+                    .map_err(|e| format!("Failed to get modified time: {}", e))?;
+
+                let generated_at = {
+                    use std::time::UNIX_EPOCH;
+                    let duration = modified.duration_since(UNIX_EPOCH)
+                        .map_err(|e| format!("Invalid modified time: {}", e))?;
+                    let secs = duration.as_secs();
+                    let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                        .ok_or_else(|| "Failed to convert timestamp".to_string())?;
+                    datetime.to_rfc3339()
+                };
+
+                skills.push(GeneratedSkill {
+                    skill_name: skill_name.clone(),
+                    skill_path: path.to_string_lossy().to_string(),
+                    source_file: "unknown".to_string(),
+                    generated_at,
+                });
+            }
+        }
+    }
+
+    skills.sort_by(|a, b| a.skill_name.cmp(&b.skill_name));
+
+    Ok(skills)
+}
+
+/// Delete a generated skill
+pub fn delete_generated_skill(skill_name: &str, working_dir: &str) -> Result<(), String> {
+    let skill_dir = Path::new(working_dir)
+        .join(".claude")
+        .join("skills")
+        .join(skill_name);
+
+    if !skill_dir.exists() {
+        return Err(format!("Skill '{}' not found", skill_name));
+    }
+
+    fs::remove_dir_all(&skill_dir)
+        .map_err(|e| format!("Failed to delete skill: {}", e))?;
+
+    Ok(())
+}
+
+/// Get the content of a skill
+pub fn get_skill_content(skill_name: &str, working_dir: &str) -> Result<SkillContent, String> {
+    let skill_dir = Path::new(working_dir)
+        .join(".claude")
+        .join("skills")
+        .join(skill_name);
+
+    if !skill_dir.exists() {
+        return Err(format!("Skill '{}' not found", skill_name));
+    }
+
+    let skill_md = fs::read_to_string(skill_dir.join("SKILL.md"))
+        .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
+
+    let reference_md = skill_dir.join("reference.md").exists().then(|| {
+        fs::read_to_string(skill_dir.join("reference.md")).ok()
+    }).flatten();
+
+    let examples_md = skill_dir.join("examples.md").exists().then(|| {
+        fs::read_to_string(skill_dir.join("examples.md")).ok()
+    }).flatten();
+
+    let scripts = Vec::new(); // TODO: Read scripts if needed
+
+    Ok(SkillContent {
+        skill_name: skill_name.to_string(),
+        skill_md,
+        reference_md,
+        examples_md,
+        scripts,
+    })
+}
+
+/// Clean up generated skills tracked in the list
+pub fn cleanup_generated_skills(
+    working_dir: &str,
+    generated_skill_names: &[String],
+) -> Result<(), String> {
+    for skill_name in generated_skill_names {
+        if let Err(e) = delete_generated_skill(skill_name, working_dir) {
+            eprintln!("Warning: Failed to cleanup skill {}: {}", skill_name, e);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_skill_name() {
+        assert_eq!(sanitize_skill_name("API Guidelines"), "api-guidelines");
+        assert_eq!(sanitize_skill_name("my_cool_skill"), "my-cool-skill");
+        assert_eq!(sanitize_skill_name("test--multiple---dashes"), "test-multiple-dashes");
+        assert_eq!(sanitize_skill_name("Special!@#Characters"), "special-characters");
+    }
+
+    #[test]
+    fn test_parse_skill_response_json() {
+        let response = r###"{"skill_name":"test-skill","skill_md":"# Test\nContent","reference_md":null,"examples_md":null,"scripts":[]}"###;
+        let result = parse_skill_response(response, "fallback");
+        assert!(result.is_ok());
+        let skill = result.unwrap();
+        assert_eq!(skill.skill_name, "test-skill");
+    }
+
+    #[test]
+    fn test_parse_skill_response_markdown_wrapped() {
+        let response = r###"
+Here's the skill:
+
+```json
+{
+  "skill_name": "test-skill",
+  "skill_md": "# Test\nContent",
+  "scripts": []
+}
+```
+"###;
+        let result = parse_skill_response(response, "fallback");
+        assert!(result.is_ok());
+        let skill = result.unwrap();
+        assert_eq!(skill.skill_name, "test-skill");
+    }
+}

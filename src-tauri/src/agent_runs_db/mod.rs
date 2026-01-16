@@ -1,87 +1,24 @@
+// Agent runs database module
+//
+// Manages persistence of agent run records including statistics,
+// cost tracking, and prompt history.
+
+mod cost;
+mod models;
+
 use rusqlite::{params, Connection, Result as SqliteResult};
-use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::fs;
 use tokio::sync::Mutex;
-use chrono::{DateTime, Utc};
 
-use crate::types::AgentSource;
+pub use models::{
+    AgentRun, CostSummary, DailyCost, DatabaseStats, DateRangeCostSummary, ModelCostBreakdown,
+    RunQueryFilters, RunStats, RunStatus, SessionCostRecord,
+};
+use models::format_bytes;
 
-/// Run status - tracks the lifecycle of an agent run
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum RunStatus {
-    Running,      // Currently active
-    Completed,    // Finished successfully
-    Stopped,      // Manually stopped
-    Crashed,      // Process crashed or failed
-    WaitingInput, // Waiting for user input
-}
-
-impl RunStatus {
-    fn to_string(&self) -> &'static str {
-        match self {
-            RunStatus::Running => "running",
-            RunStatus::Completed => "completed",
-            RunStatus::Stopped => "stopped",
-            RunStatus::Crashed => "crashed",
-            RunStatus::WaitingInput => "waiting_input",
-        }
-    }
-
-    fn from_string(s: &str) -> Self {
-        match s {
-            "running" => RunStatus::Running,
-            "completed" => RunStatus::Completed,
-            "stopped" => RunStatus::Stopped,
-            "crashed" => RunStatus::Crashed,
-            "waiting_input" => RunStatus::WaitingInput,
-            _ => RunStatus::Crashed,
-        }
-    }
-}
-
-/// A record of an agent run - stored in the database
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRun {
-    pub id: Option<i64>,
-    pub agent_id: String,
-    pub session_id: Option<String>,
-    pub working_dir: String,
-    pub github_url: Option<String>,
-    pub github_context: Option<String>, // JSON serialized
-    pub source: String,
-    pub status: RunStatus,
-    pub started_at: i64,         // Unix timestamp in milliseconds
-    pub ended_at: Option<i64>,   // Unix timestamp in milliseconds
-    pub last_activity: i64,      // Unix timestamp in milliseconds
-    pub initial_prompt: Option<String>,
-    pub error_message: Option<String>,
-
-    // Statistics
-    pub total_prompts: u32,
-    pub total_tool_calls: u32,
-    pub total_output_bytes: u64,
-    pub total_tokens_used: Option<u32>,
-    pub total_cost_usd: Option<f64>,
-
-    // Recovery information
-    pub can_resume: bool,
-    pub resume_data: Option<String>, // JSON serialized state for recovery
-}
-
-/// Query filters for searching runs
-#[derive(Debug, Clone, Default)]
-pub struct RunQueryFilters {
-    pub status: Option<RunStatus>,
-    pub working_dir: Option<String>,
-    pub source: Option<AgentSource>,
-    pub date_from: Option<DateTime<Utc>>,
-    pub date_to: Option<DateTime<Utc>>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
+use cost::CostOperations;
 
 pub struct AgentRunsDB {
     db: Arc<Mutex<Connection>>,
@@ -113,6 +50,7 @@ impl AgentRunsDB {
                 total_output_bytes INTEGER DEFAULT 0,
                 total_tokens_used INTEGER,
                 total_cost_usd REAL,
+                model_usage TEXT,
                 can_resume INTEGER DEFAULT 0,
                 resume_data TEXT
             )",
@@ -159,6 +97,16 @@ impl AgentRunsDB {
             [],
         )?;
 
+        // Migration: Add model_usage column if it doesn't exist
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(agent_runs)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if !columns.contains(&"model_usage".to_string()) {
+            conn.execute("ALTER TABLE agent_runs ADD COLUMN model_usage TEXT", [])?;
+        }
+
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
             db_path,
@@ -174,9 +122,9 @@ impl AgentRunsDB {
                 agent_id, session_id, working_dir, github_url, github_context,
                 source, status, started_at, ended_at, last_activity,
                 initial_prompt, error_message, total_prompts, total_tool_calls,
-                total_output_bytes, total_tokens_used, total_cost_usd,
+                total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                 can_resume, resume_data
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 run.agent_id,
                 run.session_id,
@@ -184,7 +132,7 @@ impl AgentRunsDB {
                 run.github_url,
                 run.github_context,
                 run.source,
-                run.status.to_string(),
+                run.status.to_str(),
                 run.started_at,
                 run.ended_at,
                 run.last_activity,
@@ -195,6 +143,7 @@ impl AgentRunsDB {
                 run.total_output_bytes,
                 run.total_tokens_used,
                 run.total_cost_usd,
+                run.model_usage,
                 if run.can_resume { 1 } else { 0 },
                 run.resume_data,
             ],
@@ -219,13 +168,14 @@ impl AgentRunsDB {
                 total_output_bytes = ?9,
                 total_tokens_used = ?10,
                 total_cost_usd = ?11,
-                can_resume = ?12,
-                resume_data = ?13
+                model_usage = ?12,
+                can_resume = ?13,
+                resume_data = ?14
             WHERE agent_id = ?1",
             params![
                 run.agent_id,
                 run.session_id,
-                run.status.to_string(),
+                run.status.to_str(),
                 run.ended_at,
                 run.last_activity,
                 run.error_message,
@@ -234,6 +184,7 @@ impl AgentRunsDB {
                 run.total_output_bytes,
                 run.total_tokens_used,
                 run.total_cost_usd,
+                run.model_usage,
                 if run.can_resume { 1 } else { 0 },
                 run.resume_data,
             ],
@@ -250,15 +201,15 @@ impl AgentRunsDB {
             "SELECT id, agent_id, session_id, working_dir, github_url, github_context,
                     source, status, started_at, ended_at, last_activity,
                     initial_prompt, error_message, total_prompts, total_tool_calls,
-                    total_output_bytes, total_tokens_used, total_cost_usd,
+                    total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                     can_resume, resume_data
-             FROM agent_runs WHERE agent_id = ?1"
+             FROM agent_runs WHERE agent_id = ?1",
         )?;
 
         let mut rows = stmt.query(params![agent_id])?;
 
         if let Some(row) = rows.next()? {
-            Ok(Some(self.row_to_run(row)?))
+            Ok(Some(row_to_run(row)?))
         } else {
             Ok(None)
         }
@@ -271,14 +222,15 @@ impl AgentRunsDB {
         let mut query = "SELECT id, agent_id, session_id, working_dir, github_url, github_context,
                                 source, status, started_at, ended_at, last_activity,
                                 initial_prompt, error_message, total_prompts, total_tool_calls,
-                                total_output_bytes, total_tokens_used, total_cost_usd,
+                                total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                                 can_resume, resume_data
-                         FROM agent_runs WHERE 1=1".to_string();
+                         FROM agent_runs WHERE 1=1"
+            .to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(status) = filters.status {
             query.push_str(" AND status = ?");
-            params.push(Box::new(status.to_string().to_string()));
+            params.push(Box::new(status.to_str().to_string()));
         }
 
         if let Some(working_dir) = filters.working_dir {
@@ -287,15 +239,8 @@ impl AgentRunsDB {
         }
 
         if let Some(source) = filters.source {
-            let source_str = match source {
-                AgentSource::UI => "ui",
-                AgentSource::Meta => "meta",
-                AgentSource::Pipeline => "pipeline",
-                AgentSource::Pool => "pool",
-                AgentSource::Manual => "manual",
-            };
             query.push_str(" AND source = ?");
-            params.push(Box::new(source_str.to_string()));
+            params.push(Box::new(source.as_str().to_string()));
         }
 
         if let Some(date_from) = filters.date_from {
@@ -321,9 +266,7 @@ impl AgentRunsDB {
         let mut stmt = db.prepare(&query)?;
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-        let runs = stmt.query_map(param_refs.as_slice(), |row| {
-            self.row_to_run(row)
-        })?;
+        let runs = stmt.query_map(param_refs.as_slice(), |row| row_to_run(row))?;
 
         let mut result = Vec::new();
         for run in runs {
@@ -338,13 +281,18 @@ impl AgentRunsDB {
         self.query_runs(RunQueryFilters {
             status: Some(RunStatus::Crashed),
             ..Default::default()
-        }).await.map(|runs| {
-            runs.into_iter().filter(|r| r.can_resume).collect()
         })
+        .await
+        .map(|runs| runs.into_iter().filter(|r| r.can_resume).collect())
     }
 
     /// Record a prompt sent to an agent
-    pub async fn record_prompt(&self, agent_id: &str, prompt: &str, timestamp: i64) -> SqliteResult<()> {
+    pub async fn record_prompt(
+        &self,
+        agent_id: &str,
+        prompt: &str,
+        timestamp: i64,
+    ) -> SqliteResult<()> {
         let db = self.db.lock().await;
 
         db.execute(
@@ -360,12 +308,10 @@ impl AgentRunsDB {
         let db = self.db.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT prompt, timestamp FROM agent_prompts WHERE agent_id = ?1 ORDER BY timestamp ASC"
+            "SELECT prompt, timestamp FROM agent_prompts WHERE agent_id = ?1 ORDER BY timestamp ASC",
         )?;
 
-        let prompts = stmt.query_map(params![agent_id], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
+        let prompts = stmt.query_map(params![agent_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         let mut result = Vec::new();
         for prompt in prompts {
@@ -378,7 +324,8 @@ impl AgentRunsDB {
     /// Clean up old runs (older than days_to_keep)
     pub async fn cleanup_old_runs(&self, days_to_keep: i64) -> SqliteResult<usize> {
         let db = self.db.lock().await;
-        let cutoff_timestamp = chrono::Utc::now().timestamp_millis() - (days_to_keep * 24 * 60 * 60 * 1000);
+        let cutoff_timestamp =
+            chrono::Utc::now().timestamp_millis() - (days_to_keep * 24 * 60 * 60 * 1000);
 
         // Delete associated prompts first
         db.execute(
@@ -395,53 +342,23 @@ impl AgentRunsDB {
         )
     }
 
-    /// Helper to convert a row to AgentRun
-    fn row_to_run(&self, row: &rusqlite::Row) -> SqliteResult<AgentRun> {
-        let status_str: String = row.get(7)?;
-        let can_resume_int: i32 = row.get(18)?;
-
-        Ok(AgentRun {
-            id: Some(row.get(0)?),
-            agent_id: row.get(1)?,
-            session_id: row.get(2)?,
-            working_dir: row.get(3)?,
-            github_url: row.get(4)?,
-            github_context: row.get(5)?,
-            source: row.get(6)?,
-            status: RunStatus::from_string(&status_str),
-            started_at: row.get(8)?,
-            ended_at: row.get(9)?,
-            last_activity: row.get(10)?,
-            initial_prompt: row.get(11)?,
-            error_message: row.get(12)?,
-            total_prompts: row.get(13)?,
-            total_tool_calls: row.get(14)?,
-            total_output_bytes: row.get(15)?,
-            total_tokens_used: row.get(16)?,
-            total_cost_usd: row.get(17)?,
-            can_resume: can_resume_int != 0,
-            resume_data: row.get(19)?,
-        })
-    }
-
     /// Get statistics about all runs
     pub async fn get_stats(&self) -> SqliteResult<RunStats> {
         let db = self.db.lock().await;
 
-        let total: i64 = db.query_row(
-            "SELECT COUNT(*) FROM agent_runs",
-            [],
-            |row| row.get(0),
-        )?;
+        let total: i64 =
+            db.query_row("SELECT COUNT(*) FROM agent_runs", [], |row| row.get(0))?;
 
         let by_status: Vec<(String, i64)> = {
-            let mut stmt = db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
+            let mut stmt =
+                db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
 
         let by_source: Vec<(String, i64)> = {
-            let mut stmt = db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
+            let mut stmt =
+                db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
@@ -472,37 +389,29 @@ impl AgentRunsDB {
         let db = self.db.lock().await;
 
         // Get database file size
-        let db_size_bytes = fs::metadata(&self.db_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        // Format size as human readable
+        let db_size_bytes = fs::metadata(&self.db_path).map(|m| m.len()).unwrap_or(0);
         let db_size_formatted = format_bytes(db_size_bytes);
 
         // Get total runs
-        let total_runs: i64 = db.query_row(
-            "SELECT COUNT(*) FROM agent_runs",
-            [],
-            |row| row.get(0),
-        )?;
+        let total_runs: i64 =
+            db.query_row("SELECT COUNT(*) FROM agent_runs", [], |row| row.get(0))?;
 
         // Get total prompts
-        let total_prompts: i64 = db.query_row(
-            "SELECT COUNT(*) FROM agent_prompts",
-            [],
-            |row| row.get(0),
-        )?;
+        let total_prompts: i64 =
+            db.query_row("SELECT COUNT(*) FROM agent_prompts", [], |row| row.get(0))?;
 
         // Get runs by status
         let runs_by_status: Vec<(String, i64)> = {
-            let mut stmt = db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
+            let mut stmt =
+                db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
 
         // Get runs by source
         let runs_by_source: Vec<(String, i64)> = {
-            let mut stmt = db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
+            let mut stmt =
+                db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
@@ -524,41 +433,77 @@ impl AgentRunsDB {
             total_cost_usd,
         })
     }
-}
 
-/// Format bytes into human readable size
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    // Cost operations - delegated to CostOperations
 
-    if bytes == 0 {
-        return "0 B".to_string();
+    /// Get cost summary aggregated by working directory
+    pub async fn get_cost_by_working_dir(&self) -> SqliteResult<Vec<(String, f64)>> {
+        CostOperations::new(&self.db).get_cost_by_working_dir().await
     }
 
-    let base = 1024_f64;
-    let exp = (bytes as f64).log(base).floor() as usize;
-    let exp = exp.min(UNITS.len() - 1);
+    /// Get daily cost breakdown
+    pub async fn get_daily_costs(&self, days: i64) -> SqliteResult<Vec<DailyCost>> {
+        CostOperations::new(&self.db).get_daily_costs(days).await
+    }
 
-    let size = bytes as f64 / base.powi(exp as i32);
+    /// Get total cost for current month
+    pub async fn get_current_month_cost(&self) -> Result<f64, String> {
+        CostOperations::new(&self.db).get_current_month_cost().await
+    }
 
-    format!("{:.2} {}", size, UNITS[exp])
+    /// Get total cost for today
+    pub async fn get_today_cost(&self) -> Result<f64, String> {
+        CostOperations::new(&self.db).get_today_cost().await
+    }
+
+    /// Get cost summary - aggregated from all agent runs
+    pub async fn get_cost_summary(&self) -> Result<CostSummary, String> {
+        CostOperations::new(&self.db).get_cost_summary().await
+    }
+
+    /// Get date range cost summary
+    pub async fn get_date_range_summary(
+        &self,
+        start_date: Option<chrono::DateTime<chrono::Utc>>,
+        end_date: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<DateRangeCostSummary, String> {
+        CostOperations::new(&self.db)
+            .get_date_range_summary(start_date, end_date)
+            .await
+    }
+
+    /// Clear all cost history
+    pub async fn clear_cost_history(&self) -> Result<(), String> {
+        CostOperations::new(&self.db).clear_cost_history().await
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RunStats {
-    pub total_runs: i64,
-    pub by_status: Vec<(String, i64)>,
-    pub by_source: Vec<(String, i64)>,
-    pub total_cost_usd: f64,
-    pub resumable_runs: i64,
-}
+/// Helper to convert a row to AgentRun
+fn row_to_run(row: &rusqlite::Row) -> SqliteResult<AgentRun> {
+    let status_str: String = row.get(7)?;
+    let can_resume_int: i32 = row.get(19)?;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DatabaseStats {
-    pub db_size_bytes: u64,
-    pub db_size_formatted: String,
-    pub total_runs: i64,
-    pub total_prompts: i64,
-    pub runs_by_status: Vec<(String, i64)>,
-    pub runs_by_source: Vec<(String, i64)>,
-    pub total_cost_usd: f64,
+    Ok(AgentRun {
+        id: Some(row.get(0)?),
+        agent_id: row.get(1)?,
+        session_id: row.get(2)?,
+        working_dir: row.get(3)?,
+        github_url: row.get(4)?,
+        github_context: row.get(5)?,
+        source: row.get(6)?,
+        status: RunStatus::from_str(&status_str),
+        started_at: row.get(8)?,
+        ended_at: row.get(9)?,
+        last_activity: row.get(10)?,
+        initial_prompt: row.get(11)?,
+        error_message: row.get(12)?,
+        total_prompts: row.get(13)?,
+        total_tool_calls: row.get(14)?,
+        total_output_bytes: row.get(15)?,
+        total_tokens_used: row.get(16)?,
+        total_cost_usd: row.get(17)?,
+        model_usage: row.get(18)?,
+        can_resume: can_resume_int != 0,
+        resume_data: row.get(20)?,
+    })
 }

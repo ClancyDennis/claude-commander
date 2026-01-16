@@ -1,22 +1,24 @@
-mod agent_manager;
-mod hook_server;
-mod types;
-mod meta_agent;
-mod tool_registry;
-mod claude_client;
-mod ai_client;
-mod github;
-mod logger;
-mod pool_manager;
-mod orchestrator;
-mod thread_controller;
-mod pipeline_manager;
-mod verification;
-mod cost_tracker_db;
-mod cost_tracker;
-mod instruction_manager;
-mod skill_generator;
-mod agent_runs_db;
+pub mod agent_manager;
+pub mod hook_server;
+pub mod types;
+pub mod meta_agent;
+pub mod tool_registry;
+pub mod claude_client;
+pub mod ai_client;
+pub mod github;
+pub mod logger;
+pub mod pool_manager;
+pub mod orchestrator;
+pub mod thread_controller;
+pub mod pipeline_manager;
+pub mod verification;
+pub mod instruction_manager;
+pub mod skill_generator;
+pub mod agent_runs_db;
+pub mod auto_pipeline;
+pub mod utils;
+pub mod commands;
+pub mod events;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -24,777 +26,27 @@ use tokio::sync::Mutex;
 
 use agent_manager::AgentManager;
 use meta_agent::MetaAgent;
-use logger::{Logger, LogEntry, LogLevel, LogStats};
-use pool_manager::{AgentPool, PoolConfig, PoolStats};
-use orchestrator::{TaskOrchestrator, Workflow};
-use thread_controller::{ThreadController, ThreadConfig, ThreadStats};
-use pipeline_manager::{PipelineManager, Pipeline, PipelineConfig};
-use verification::{VerificationEngine, VerificationConfig, VerificationResult};
-use cost_tracker::{CostTracker, SessionCostRecord, CostSummary, DateRangeCostSummary};
-use types::{AgentInfo, AgentStatistics, ChatMessage, ChatResponse};
-use agent_runs_db::{AgentRunsDB, AgentRun, RunQueryFilters, RunStats, DatabaseStats};
-
-struct AppState {
-    agent_manager: Arc<Mutex<AgentManager>>,
-    meta_agent: Arc<Mutex<MetaAgent>>,
-    logger: Arc<Logger>,
-    agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    orchestrator: Arc<Mutex<TaskOrchestrator>>,
-    thread_controller: Arc<Mutex<ThreadController>>,
-    pipeline_manager: Arc<Mutex<PipelineManager>>,
-    verification_engine: Arc<Mutex<VerificationEngine>>,
-    cost_tracker: Arc<Mutex<CostTracker>>,
-    agent_runs_db: Arc<AgentRunsDB>,
-}
-
-#[tauri::command]
-async fn create_agent(
-    working_dir: String,
-    github_url: Option<String>,
-    selected_instruction_files: Option<Vec<String>>,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    let manager = state.agent_manager.lock().await;
-    manager.create_agent(working_dir, github_url, selected_instruction_files, types::AgentSource::UI, app_handle).await
-}
-
-#[tauri::command]
-async fn send_prompt(
-    agent_id: String,
-    prompt: String,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    let manager = state.agent_manager.lock().await;
-    manager.send_prompt(&agent_id, &prompt, Some(app_handle)).await
-}
-
-#[tauri::command]
-async fn stop_agent(agent_id: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Get agent stats before stopping
-    let stats = {
-        let manager = state.agent_manager.lock().await;
-        manager.get_agent_statistics(&agent_id).await.ok()
-    };
-
-    // Stop the agent
-    {
-        let manager = state.agent_manager.lock().await;
-        manager.stop_agent(&agent_id).await?;
-    }
-
-    // Record costs to persistent storage
-    if let Some(stats) = stats {
-        if let Some(cost) = stats.total_cost_usd {
-            let cost_tracker = state.cost_tracker.lock().await;
-
-            // Convert model usage to cost tracker format
-            let model_usage = stats.model_usage.map(|usage| {
-                usage.into_iter().map(|(model, stats_data)| {
-                    (model, cost_tracker::ModelCostBreakdown {
-                        input_tokens: stats_data.input_tokens.unwrap_or(0),
-                        output_tokens: stats_data.output_tokens.unwrap_or(0),
-                        cache_creation_input_tokens: stats_data.cache_creation_input_tokens.unwrap_or(0),
-                        cache_read_input_tokens: stats_data.cache_read_input_tokens.unwrap_or(0),
-                        cost_usd: stats_data.cost_usd.unwrap_or(0.0),
-                    })
-                }).collect()
-            });
-
-            let record = SessionCostRecord {
-                id: None,
-                session_id: format!("session_{}", agent_id),
-                agent_id: agent_id.clone(),
-                working_dir: "unknown".to_string(), // We'll need to enhance this
-                started_at: stats.session_start,
-                ended_at: Some(chrono::Utc::now().to_rfc3339()),
-                total_cost_usd: cost,
-                total_tokens: stats.total_tokens_used.unwrap_or(0) as u64,
-                total_prompts: stats.total_prompts,
-                total_tool_calls: stats.total_tool_calls,
-                model_usage,
-            };
-
-            cost_tracker.record_session(record).await.ok();
-        }
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn list_agents(state: tauri::State<'_, AppState>) -> Result<Vec<AgentInfo>, String> {
-    let manager = state.agent_manager.lock().await;
-    Ok(manager.list_agents().await)
-}
-
-#[tauri::command]
-async fn get_agent_statistics(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<AgentStatistics, String> {
-    let manager = state.agent_manager.lock().await;
-    manager.get_agent_statistics(&agent_id).await
-}
-
-#[tauri::command]
-async fn send_chat_message(
-    message: String,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<ChatResponse, String> {
-    let mut meta_agent = state.meta_agent.lock().await;
-    meta_agent
-        .process_user_message(message, state.agent_manager.clone(), app_handle)
-        .await
-}
-
-#[tauri::command]
-async fn get_chat_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<ChatMessage>, String> {
-    let meta_agent = state.meta_agent.lock().await;
-    Ok(meta_agent.get_chat_messages())
-}
-
-#[tauri::command]
-async fn clear_chat_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let mut meta_agent = state.meta_agent.lock().await;
-    meta_agent.clear_conversation_history();
-    Ok(())
-}
-
-#[tauri::command]
-async fn process_agent_results(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<ChatResponse, String> {
-    // Get agent outputs
-    let manager = state.agent_manager.lock().await;
-    let outputs = manager.get_agent_outputs(&agent_id, 0).await?;
-
-    // Get agent info
-    let agents = manager.list_agents().await;
-    let agent_info = agents.iter().find(|a| a.id == agent_id);
-    let agent_name = agent_info.map(|a| a.working_dir.clone()).unwrap_or_else(|| agent_id.clone());
-
-    // Format outputs
-    let mut formatted_output = format!("Results from agent in {}:\n\n", agent_name);
-
-    for output in outputs.iter() {
-        match output.output_type.as_str() {
-            "text" => {
-                formatted_output.push_str(&format!("Assistant: {}\n\n", output.content));
-            }
-            "tool_use" => {
-                // Extract tool name from content
-                let tool_name = if output.content.contains("Using tool:") {
-                    output.content.lines().next().unwrap_or("Unknown tool")
-                } else {
-                    "Using tool"
-                };
-                formatted_output.push_str(&format!("{}\n", tool_name));
-            }
-            "tool_result" => {
-                // Truncate long tool results
-                let truncated = if output.content.len() > 500 {
-                    format!("{}...[truncated]", &output.content[..500])
-                } else {
-                    output.content.clone()
-                };
-                formatted_output.push_str(&format!("Result: {}\n\n", truncated));
-            }
-            "result" => {
-                formatted_output.push_str("\n--- Final Results ---\n");
-                if let Some(parsed) = &output.parsed_json {
-                    if let Some(cost) = parsed.get("total_cost_usd").and_then(|v| v.as_f64()) {
-                        formatted_output.push_str(&format!("Cost: ${:.4}\n", cost));
-                    }
-                    if let Some(usage) = parsed.get("usage") {
-                        if let Some(input_tokens) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
-                            if let Some(output_tokens) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
-                                formatted_output.push_str(&format!("Tokens: {} input, {} output\n", input_tokens, output_tokens));
-                            }
-                        }
-                    }
-                }
-                formatted_output.push_str("\n");
-            }
-            _ => {}
-        }
-    }
-
-    drop(manager);
-
-    // Process the formatted output as a user message through the meta agent
-    let mut meta_agent = state.meta_agent.lock().await;
-    let response = meta_agent.process_user_message(
-        formatted_output,
-        state.agent_manager.clone(),
-        app_handle
-    ).await?;
-
-    Ok(response)
-}
-
-#[tauri::command]
-async fn list_github_repos() -> Result<Vec<serde_json::Value>, String> {
-    use std::process::Command;
-
-    // Run gh repo list with JSON output
-    let output = Command::new("gh")
-        .args([
-            "repo",
-            "list",
-            "--limit",
-            "100",
-            "--json",
-            "nameWithOwner,name,description,updatedAt,url",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute gh command: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh command failed: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let repos: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
-
-    Ok(repos)
-}
-
-#[tauri::command]
-async fn get_pool_stats(state: tauri::State<'_, AppState>) -> Result<PoolStats, String> {
-    if let Some(pool_arc) = &state.agent_pool {
-        let pool = pool_arc.lock().await;
-        Ok(pool.get_stats().await)
-    } else {
-        Err("Pool not initialized".to_string())
-    }
-}
-
-#[tauri::command]
-async fn configure_pool(
-    config: PoolConfig,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    // This would require mutable access to AppState which isn't supported
-    // For now, pool configuration is set at startup only
-    Err("Pool reconfiguration not yet supported".to_string())
-}
-
-#[tauri::command]
-async fn request_pool_agent(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    if let Some(pool_arc) = &state.agent_pool {
-        let mut pool = pool_arc.lock().await;
-        pool.acquire_agent().await.map_err(|e| e.to_string())
-    } else {
-        Err("Pool not initialized".to_string())
-    }
-}
-
-#[tauri::command]
-async fn release_pool_agent(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    if let Some(pool_arc) = &state.agent_pool {
-        let mut pool = pool_arc.lock().await;
-        pool.release_agent(agent_id).await;
-        Ok(())
-    } else {
-        Err("Pool not initialized".to_string())
-    }
-}
-
-#[tauri::command]
-async fn create_workflow_from_request(
-    request: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    let orchestrator = state.orchestrator.lock().await;
-    orchestrator.create_workflow_from_request(&request).await
-}
-
-#[tauri::command]
-async fn execute_workflow(
-    workflow_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let orchestrator = state.orchestrator.lock().await;
-    orchestrator.execute_workflow(&workflow_id).await
-}
-
-#[tauri::command]
-async fn get_workflow(
-    workflow_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Workflow, String> {
-    let orchestrator = state.orchestrator.lock().await;
-    orchestrator
-        .get_workflow(&workflow_id)
-        .await
-        .ok_or_else(|| "Workflow not found".to_string())
-}
-
-#[tauri::command]
-async fn list_workflows(state: tauri::State<'_, AppState>) -> Result<Vec<Workflow>, String> {
-    let orchestrator = state.orchestrator.lock().await;
-    Ok(orchestrator.list_workflows().await)
-}
-
-#[tauri::command]
-async fn get_thread_config(state: tauri::State<'_, AppState>) -> Result<ThreadConfig, String> {
-    let controller = state.thread_controller.lock().await;
-    Ok(controller.get_config().await)
-}
-
-#[tauri::command]
-async fn update_thread_config(
-    config: ThreadConfig,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let controller = state.thread_controller.lock().await;
-    controller.update_config(config).await;
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_thread_stats(state: tauri::State<'_, AppState>) -> Result<ThreadStats, String> {
-    let controller = state.thread_controller.lock().await;
-    Ok(controller.get_stats().await)
-}
-
-#[tauri::command]
-async fn emergency_shutdown_threads(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let controller = state.thread_controller.lock().await;
-    controller.emergency_shutdown().await
-}
-
-#[tauri::command]
-async fn create_pipeline(
-    user_request: String,
-    config: Option<PipelineConfig>,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    let manager = state.pipeline_manager.lock().await;
-    manager.create_pipeline(user_request, config).await
-}
-
-#[tauri::command]
-async fn start_pipeline(
-    pipeline_id: String,
-    user_request: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let manager = state.pipeline_manager.lock().await;
-    manager.start_pipeline(&pipeline_id, user_request).await
-}
-
-#[tauri::command]
-async fn get_pipeline(
-    pipeline_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Pipeline, String> {
-    let manager = state.pipeline_manager.lock().await;
-    manager.get_pipeline(&pipeline_id).await
-        .ok_or_else(|| "Pipeline not found".to_string())
-}
-
-#[tauri::command]
-async fn list_pipelines(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<Pipeline>, String> {
-    let manager = state.pipeline_manager.lock().await;
-    Ok(manager.list_pipelines().await)
-}
-
-#[tauri::command]
-async fn approve_pipeline_checkpoint(
-    pipeline_id: String,
-    phase_index: usize,
-    approved: bool,
-    comment: Option<String>,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let manager = state.pipeline_manager.lock().await;
-    manager.approve_checkpoint(&pipeline_id, phase_index, approved, comment).await
-}
-
-#[tauri::command]
-async fn get_pipeline_config(
-    state: tauri::State<'_, AppState>,
-) -> Result<PipelineConfig, String> {
-    let manager = state.pipeline_manager.lock().await;
-    Ok(manager.get_config().await)
-}
-
-#[tauri::command]
-async fn update_pipeline_config(
-    config: PipelineConfig,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let manager = state.pipeline_manager.lock().await;
-    manager.update_config(config).await;
-    Ok(())
-}
-
-#[tauri::command]
-async fn run_best_of_n_verification(
-    prompt: String,
-    config: VerificationConfig,
-    state: tauri::State<'_, AppState>,
-) -> Result<VerificationResult, String> {
-    let engine = state.verification_engine.lock().await;
-    engine.best_of_n(&prompt, config).await
-}
-
-// Cost Tracking Commands
-
-#[tauri::command]
-async fn get_cost_summary(
-    state: tauri::State<'_, AppState>,
-) -> Result<CostSummary, String> {
-    let tracker = state.cost_tracker.lock().await;
-    tracker.get_cost_summary().await
-}
-
-#[tauri::command]
-async fn get_cost_by_date_range(
-    start_date: Option<String>,
-    end_date: Option<String>,
-    state: tauri::State<'_, AppState>,
-) -> Result<DateRangeCostSummary, String> {
-    use chrono::DateTime;
-
-    let start = start_date
-        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
-    let end = end_date
-        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
-    let tracker = state.cost_tracker.lock().await;
-    tracker.get_date_range_summary(start, end).await
-}
-
-#[tauri::command]
-async fn get_current_month_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
-    let tracker = state.cost_tracker.lock().await;
-    tracker.get_current_month_cost().await
-}
-
-#[tauri::command]
-async fn get_today_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
-    let tracker = state.cost_tracker.lock().await;
-    tracker.get_today_cost().await
-}
-
-#[tauri::command]
-async fn clear_cost_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let tracker = state.cost_tracker.lock().await;
-    tracker.clear_history().await
-}
-
-#[tauri::command]
-async fn get_cost_database_stats(
-    state: tauri::State<'_, AppState>,
-) -> Result<cost_tracker::DatabaseStats, String> {
-    let tracker = state.cost_tracker.lock().await;
-    tracker.get_database_stats().await
-}
-
-// Database Stats Commands
-
-#[tauri::command]
-async fn get_database_stats(
-    state: tauri::State<'_, AppState>,
-) -> Result<DatabaseStats, String> {
-    state.agent_runs_db
-        .get_database_stats()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// Logging Commands
-
-#[tauri::command]
-async fn query_logs(
-    level: Option<String>,
-    component: Option<String>,
-    agent_id: Option<String>,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<LogEntry>, String> {
-    let log_level = level.and_then(|l| match l.as_str() {
-        "debug" => Some(LogLevel::Debug),
-        "info" => Some(LogLevel::Info),
-        "warning" => Some(LogLevel::Warning),
-        "error" => Some(LogLevel::Error),
-        _ => None,
-    });
-
-    state.logger
-        .query(log_level, component, agent_id, limit, offset)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_recent_logs(
-    limit: usize,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<LogEntry>, String> {
-    state.logger
-        .recent(limit)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_log_stats(
-    state: tauri::State<'_, AppState>,
-) -> Result<LogStats, String> {
-    state.logger
-        .stats()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn cleanup_old_logs(
-    days_to_keep: i64,
-    state: tauri::State<'_, AppState>,
-) -> Result<usize, String> {
-    state.logger
-        .cleanup(days_to_keep)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// Instruction File Management Commands
-
-#[tauri::command]
-async fn list_instruction_files(
-    working_dir: String,
-) -> Result<Vec<instruction_manager::InstructionFileInfo>, String> {
-    instruction_manager::list_instruction_files(&working_dir)
-}
-
-#[tauri::command]
-async fn get_instruction_file_content(
-    file_path: String,
-) -> Result<String, String> {
-    instruction_manager::get_instruction_file_content(&file_path)
-}
-
-#[tauri::command]
-async fn save_instruction_file(
-    working_dir: String,
-    filename: String,
-    content: String,
-) -> Result<(), String> {
-    instruction_manager::save_instruction_file(&working_dir, &filename, &content)
-}
-
-// Agent Runs Database Commands
-
-#[tauri::command]
-async fn get_all_runs(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<AgentRun>, String> {
-    state.agent_runs_db
-        .query_runs(RunQueryFilters::default())
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_run_by_id(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Option<AgentRun>, String> {
-    state.agent_runs_db
-        .get_run(&agent_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn query_runs(
-    status: Option<String>,
-    working_dir: Option<String>,
-    source: Option<String>,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<AgentRun>, String> {
-    use agent_runs_db::RunStatus;
-    use crate::types::AgentSource;
-
-    let run_status = status.and_then(|s| match s.as_str() {
-        "running" => Some(RunStatus::Running),
-        "completed" => Some(RunStatus::Completed),
-        "stopped" => Some(RunStatus::Stopped),
-        "crashed" => Some(RunStatus::Crashed),
-        "waiting_input" => Some(RunStatus::WaitingInput),
-        _ => None,
-    });
-
-    let agent_source = source.and_then(|s| match s.as_str() {
-        "ui" => Some(AgentSource::UI),
-        "meta" => Some(AgentSource::Meta),
-        "pipeline" => Some(AgentSource::Pipeline),
-        "pool" => Some(AgentSource::Pool),
-        "manual" => Some(AgentSource::Manual),
-        _ => None,
-    });
-
-    let filters = RunQueryFilters {
-        status: run_status,
-        working_dir,
-        source: agent_source,
-        date_from: None,
-        date_to: None,
-        limit,
-        offset,
-    };
-
-    state.agent_runs_db
-        .query_runs(filters)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_resumable_runs(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<AgentRun>, String> {
-    state.agent_runs_db
-        .get_resumable_runs()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_run_prompts(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<(String, i64)>, String> {
-    state.agent_runs_db
-        .get_prompts(&agent_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_run_stats(
-    state: tauri::State<'_, AppState>,
-) -> Result<RunStats, String> {
-    state.agent_runs_db
-        .get_stats()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn cleanup_old_runs(
-    days_to_keep: i64,
-    state: tauri::State<'_, AppState>,
-) -> Result<usize, String> {
-    state.agent_runs_db
-        .cleanup_old_runs(days_to_keep)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn resume_crashed_run(
-    agent_id: String,
-    state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    // Get the run from database
-    let run = state.agent_runs_db
-        .get_run(&agent_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Run not found".to_string())?;
-
-    // Check if it can be resumed
-    if !run.can_resume {
-        return Err("This run cannot be resumed".to_string());
-    }
-
-    // Recreate the agent with the same working directory and context
-    let manager = state.agent_manager.lock().await;
-    let new_agent_id = manager.create_agent(
-        run.working_dir,
-        run.github_url,
-        None, // instruction files were already copied
-        crate::types::AgentSource::Manual,
-        app_handle,
-    ).await?;
-
-    // If there was an initial prompt, resend it
-    if let Some(initial_prompt) = run.initial_prompt {
-        manager.send_prompt(&new_agent_id, &initial_prompt, None).await?;
-    }
-
-    Ok(new_agent_id)
-}
-
-// Skill Generation Commands
-
-#[tauri::command]
-async fn generate_skill_from_instruction(
-    file_path: String,
-    working_dir: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<skill_generator::GeneratedSkill, String> {
-    let meta_agent = state.meta_agent.lock().await;
-    let ai_client = meta_agent.get_ai_client();
-
-    skill_generator::generate_skill_from_instruction(&file_path, &working_dir, ai_client).await
-}
-
-#[tauri::command]
-async fn list_generated_skills(
-    working_dir: String,
-) -> Result<Vec<skill_generator::GeneratedSkill>, String> {
-    skill_generator::list_generated_skills(&working_dir)
-}
-
-#[tauri::command]
-async fn delete_generated_skill(
-    skill_name: String,
-    working_dir: String,
-) -> Result<(), String> {
-    skill_generator::delete_generated_skill(&skill_name, &working_dir)
-}
-
-#[tauri::command]
-async fn get_skill_content(
-    skill_name: String,
-    working_dir: String,
-) -> Result<skill_generator::SkillContent, String> {
-    skill_generator::get_skill_content(&skill_name, &working_dir)
+use logger::Logger;
+use pool_manager::{AgentPool, PoolConfig};
+use orchestrator::TaskOrchestrator;
+use thread_controller::ThreadController;
+use pipeline_manager::PipelineManager;
+use verification::VerificationEngine;
+use agent_runs_db::AgentRunsDB;
+use auto_pipeline::AutoPipelineManager;
+
+// Make AppState public so commands module can access it
+pub struct AppState {
+    pub agent_manager: Arc<Mutex<AgentManager>>,
+    pub meta_agent: Arc<Mutex<MetaAgent>>,
+    pub logger: Arc<Logger>,
+    pub agent_pool: Option<Arc<Mutex<AgentPool>>>,
+    pub orchestrator: Arc<Mutex<TaskOrchestrator>>,
+    pub thread_controller: Arc<Mutex<ThreadController>>,
+    pub pipeline_manager: Arc<Mutex<PipelineManager>>,
+    pub verification_engine: Arc<Mutex<VerificationEngine>>,
+    pub agent_runs_db: Arc<AgentRunsDB>,
+    pub auto_pipeline_manager: Arc<Mutex<AutoPipelineManager>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -907,7 +159,7 @@ pub fn run() {
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) =
-                    hook_server::start_hook_server(agent_manager_clone, app_handle, hook_port).await
+                    hook_server::start_hook_server(agent_manager_clone, Arc::new(app_handle), hook_port).await
                 {
                     eprintln!("Hook server error: {}", e);
                 }
@@ -979,47 +231,15 @@ pub fn run() {
             )));
             println!("✓ Pipeline manager initialized");
 
-            // Initialize cost tracker
-            let cost_tracker = match CostTracker::new(None) {
-                Ok(tracker) => Arc::new(Mutex::new(tracker)),
+            // Initialize auto-pipeline manager
+            let auto_pipeline_manager = match AutoPipelineManager::new() {
+                Ok(manager) => Arc::new(Mutex::new(manager)),
                 Err(e) => {
-                    eprintln!("⚠ Warning: Failed to initialize cost tracker: {}", e);
-                    eprintln!("  Cost tracking will not persist across sessions.");
-                    // Create a tracker with a temporary location as fallback
-                    Arc::new(Mutex::new(CostTracker::new(Some(std::env::temp_dir())).unwrap()))
+                    eprintln!("⚠ Warning: Failed to initialize auto-pipeline manager: {}", e);
+                    panic!("Auto-pipeline manager is required: {}", e);
                 }
             };
-            println!("✓ Cost tracker initialized");
-
-            // Initialize agent runs database
-            let runs_db_path = dirs::data_local_dir()
-                .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
-                .map(|d| d.join("grove").join("agent_runs.db"))
-                .unwrap_or_else(|| std::env::temp_dir().join("grove_agent_runs.db"));
-
-            // Ensure parent directory exists
-            if let Some(parent) = runs_db_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-
-            let agent_runs_db = match AgentRunsDB::new(runs_db_path.clone()) {
-                Ok(db) => {
-                    println!("✓ Agent runs database initialized at {:?}", runs_db_path);
-                    Arc::new(db)
-                }
-                Err(e) => {
-                    eprintln!("⚠ Warning: Failed to initialize agent runs database: {}", e);
-                    // Try fallback to temp directory
-                    let temp_db = std::env::temp_dir().join("grove_agent_runs.db");
-                    match AgentRunsDB::new(temp_db.clone()) {
-                        Ok(db) => {
-                            println!("✓ Agent runs database initialized at temp location: {:?}", temp_db);
-                            Arc::new(db)
-                        }
-                        Err(e2) => panic!("Failed to initialize agent runs database even in temp directory: {}", e2),
-                    }
-                }
-            };
+            println!("✓ Auto-pipeline manager initialized");
 
             app.manage(AppState {
                 agent_manager,
@@ -1030,69 +250,87 @@ pub fn run() {
                 thread_controller,
                 pipeline_manager,
                 verification_engine,
-                cost_tracker,
                 agent_runs_db,
+                auto_pipeline_manager,
             });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            create_agent,
-            send_prompt,
-            stop_agent,
-            list_agents,
-            get_agent_statistics,
-            send_chat_message,
-            get_chat_history,
-            clear_chat_history,
-            process_agent_results,
-            list_github_repos,
-            get_pool_stats,
-            configure_pool,
-            request_pool_agent,
-            release_pool_agent,
-            create_workflow_from_request,
-            execute_workflow,
-            get_workflow,
-            list_workflows,
-            get_thread_config,
-            update_thread_config,
-            get_thread_stats,
-            emergency_shutdown_threads,
-            create_pipeline,
-            start_pipeline,
-            get_pipeline,
-            list_pipelines,
-            approve_pipeline_checkpoint,
-            get_pipeline_config,
-            update_pipeline_config,
-            run_best_of_n_verification,
-            get_cost_summary,
-            get_cost_by_date_range,
-            get_current_month_cost,
-            get_today_cost,
-            clear_cost_history,
-            get_cost_database_stats,
-            get_database_stats,
-            query_logs,
-            get_recent_logs,
-            get_log_stats,
-            cleanup_old_logs,
-            list_instruction_files,
-            get_instruction_file_content,
-            save_instruction_file,
-            generate_skill_from_instruction,
-            list_generated_skills,
-            delete_generated_skill,
-            get_skill_content,
-            get_all_runs,
-            get_run_by_id,
-            query_runs,
-            get_resumable_runs,
-            get_run_prompts,
-            get_run_stats,
-            cleanup_old_runs,
-            resume_crashed_run
+            // Agent commands
+            commands::create_agent,
+            commands::send_prompt,
+            commands::stop_agent,
+            commands::list_agents,
+            commands::get_agent_statistics,
+            commands::list_github_repos,
+            commands::resume_crashed_run,
+            // Chat commands
+            commands::send_chat_message,
+            commands::get_chat_history,
+            commands::clear_chat_history,
+            commands::process_agent_results,
+            // Pool commands
+            commands::get_pool_stats,
+            commands::configure_pool,
+            commands::request_pool_agent,
+            commands::release_pool_agent,
+            // Workflow commands
+            commands::create_workflow_from_request,
+            commands::execute_workflow,
+            commands::get_workflow,
+            commands::list_workflows,
+            commands::get_thread_config,
+            commands::update_thread_config,
+            commands::get_thread_stats,
+            commands::emergency_shutdown_threads,
+            // Pipeline commands
+            commands::create_pipeline,
+            commands::start_pipeline,
+            commands::get_pipeline,
+            commands::list_pipelines,
+            commands::approve_pipeline_checkpoint,
+            commands::get_pipeline_config,
+            commands::update_pipeline_config,
+            commands::run_best_of_n_verification,
+            // Cost commands
+            commands::get_cost_summary,
+            commands::get_cost_by_date_range,
+            commands::get_current_month_cost,
+            commands::get_today_cost,
+            commands::clear_cost_history,
+            commands::get_cost_by_working_dir,
+            commands::get_daily_costs,
+            commands::get_runs_current_month_cost,
+            commands::get_runs_today_cost,
+            // Logging commands
+            commands::query_logs,
+            commands::get_recent_logs,
+            commands::get_log_stats,
+            commands::cleanup_old_logs,
+            // Instruction commands
+            commands::list_instruction_files,
+            commands::get_instruction_file_content,
+            commands::save_instruction_file,
+            // Skill commands
+            commands::generate_skill_from_instruction,
+            commands::list_generated_skills,
+            commands::delete_generated_skill,
+            commands::get_skill_content,
+            // Database commands
+            commands::get_database_stats,
+            commands::get_cost_database_stats,
+            commands::get_all_runs,
+            commands::get_run_by_id,
+            commands::query_runs,
+            commands::get_resumable_runs,
+            commands::get_run_prompts,
+            commands::get_run_stats,
+            commands::cleanup_old_runs,
+            // Auto-pipeline commands
+            commands::create_auto_pipeline,
+            commands::start_auto_pipeline,
+            commands::get_auto_pipeline
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

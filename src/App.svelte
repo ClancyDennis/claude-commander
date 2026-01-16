@@ -5,6 +5,7 @@
   import AgentList from "./lib/components/AgentList.svelte";
   import AgentView from "./lib/components/AgentView.svelte";
   import ChatView from "./lib/components/ChatView.svelte";
+  import HistoricalRunView from "./lib/components/HistoricalRunView.svelte";
   import NewAgentDialog from "./lib/components/NewAgentDialog.svelte";
   import LayoutManager from "./lib/components/LayoutManager.svelte";
   import SplitView from "./lib/components/SplitView.svelte";
@@ -28,6 +29,8 @@
     addMetaAgentToolCall,
     openAgent,
     openChat,
+    sidebarMode,
+    selectedHistoricalRun,
   } from "./lib/stores/agents";
   import {
     pipelines,
@@ -37,6 +40,8 @@
     updatePipelinePhase,
     updatePhaseProgress,
   } from "./lib/stores/pipelines";
+  import { autoPipelines } from "./lib/stores/autoPipelines";
+  import type { AutoPipeline } from "./lib/types";
   import type { Pipeline, PhaseProgressData } from "./lib/stores/pipelines";
   import { updateActivity } from "./lib/stores/activity";
   import type { Agent, AgentOutput, ToolEvent, AgentStatusEvent, AgentInputRequiredEvent, AgentActivityEvent, AgentStatsEvent, MetaAgentThinkingEvent, MetaAgentToolCallEvent } from "./lib/types";
@@ -342,6 +347,61 @@
       updatePhaseProgress(event.payload);
     });
 
+    // Listen for auto-pipeline step completion
+    const unlistenAutoPipelineStep = listen<{
+      pipeline_id: string;
+      step_number: number;
+      output: any;
+    }>("auto_pipeline:step_completed", (event) => {
+      // Update the auto-pipeline in the store
+      autoPipelines.update(map => {
+        // Fetch updated pipeline data from backend
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke<AutoPipeline>("get_auto_pipeline", {
+            pipelineId: event.payload.pipeline_id
+          }).then(pipeline => {
+            autoPipelines.update(m => {
+              m.set(pipeline.id, pipeline);
+              return m;
+            });
+          });
+        });
+        return map;
+      });
+
+      showToast({
+        type: "info",
+        message: `Auto-pipeline step ${event.payload.step_number} completed`,
+      });
+    });
+
+    // Listen for auto-pipeline completion
+    const unlistenAutoPipelineComplete = listen<{
+      pipeline_id: string;
+      verification_report: any;
+    }>("auto_pipeline:completed", (event) => {
+      // Update the auto-pipeline in the store
+      autoPipelines.update(map => {
+        // Fetch updated pipeline data from backend
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke<AutoPipeline>("get_auto_pipeline", {
+            pipelineId: event.payload.pipeline_id
+          }).then(pipeline => {
+            autoPipelines.update(m => {
+              m.set(pipeline.id, pipeline);
+              return m;
+            });
+          });
+        });
+        return map;
+      });
+
+      showToast({
+        type: "success",
+        message: "Auto-pipeline completed successfully!",
+      });
+    });
+
     return () => {
       window.removeEventListener('keydown', handleKeyboardShortcuts);
       unlistenOutput.then((f) => f());
@@ -357,6 +417,8 @@
       unlistenPipelineStatus.then((f) => f());
       unlistenPipelinePhase.then((f) => f());
       unlistenPhaseProgress.then((f) => f());
+      unlistenAutoPipelineStep.then((f) => f());
+      unlistenAutoPipelineComplete.then((f) => f());
     };
   });
 </script>
@@ -389,6 +451,9 @@
       <div class="pipeline-view-container">
         <PhaseProgress pipelineId={$selectedPipelineId} />
       </div>
+    {:else if $sidebarMode === 'history' && $selectedHistoricalRun}
+      <!-- Show historical run view when in history mode and a run is selected -->
+      <HistoricalRunView />
     {:else if $viewMode === 'chat'}
       <ChatView />
     {:else}

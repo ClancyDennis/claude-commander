@@ -87,7 +87,7 @@ impl TaskOrchestrator {
         user_request: &str,
     ) -> Result<String, String> {
         // Use meta-agent to decompose request into tasks
-        let decomposition_prompt = format!(
+        let _decomposition_prompt = format!(
             "Analyze this request and break it into a workflow of sub-tasks:\n\n{}\n\n\
              Return a JSON array of tasks, each with:\n\
              - id: unique identifier (use task1, task2, etc.)\n\

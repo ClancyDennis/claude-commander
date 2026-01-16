@@ -1,5 +1,5 @@
 import { writable, derived } from "svelte/store";
-import type { Agent, AgentOutput, ToolEvent, ChatMessage, MetaAgentToolCallEvent, AgentStatistics } from "../types";
+import type { Agent, AgentOutput, ToolEvent, ChatMessage, MetaAgentToolCallEvent, AgentStatistics, AgentRun } from "../types";
 
 export const agents = writable<Map<string, Agent>>(new Map());
 export const selectedAgentId = writable<string | null>(null);
@@ -10,6 +10,11 @@ export const agentOutputs = writable<Map<string, AgentOutput[]>>(new Map());
 export const toolEvents = writable<Map<string, ToolEvent[]>>(new Map());
 export const viewedAgents = writable<Set<string>>(new Set());
 export const agentStats = writable<Map<string, AgentStatistics>>(new Map());
+
+// History mode stores
+export const sidebarMode = writable<'running' | 'history'>('running');
+export const historicalRuns = writable<AgentRun[]>([]);
+export const selectedHistoricalRun = writable<AgentRun | null>(null);
 
 // Chat-related stores for meta-agent
 export const metaAgentChat = writable<ChatMessage[]>([]);
@@ -238,4 +243,21 @@ export function updateAgentStats(agentId: string, stats: AgentStatistics) {
     map.set(agentId, stats);
     return new Map(map);
   });
+}
+
+// History mode functions
+export function toggleSidebarMode() {
+  sidebarMode.update((current) => current === 'running' ? 'history' : 'running');
+}
+
+export function setSidebarMode(mode: 'running' | 'history') {
+  sidebarMode.set(mode);
+}
+
+export function setHistoricalRuns(runs: AgentRun[]) {
+  historicalRuns.set(runs);
+}
+
+export function selectHistoricalRun(run: AgentRun | null) {
+  selectedHistoricalRun.set(run);
 }

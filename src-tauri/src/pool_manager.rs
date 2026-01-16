@@ -222,7 +222,7 @@ impl AgentPool {
         let manager = self.agent_manager.lock().await;
 
         let agent_id = if let Some(app_handle) = &self.app_handle {
-            manager.create_agent(working_dir, None, None, crate::types::AgentSource::Pool, app_handle.clone()).await?
+            manager.create_agent(working_dir, None, None, crate::types::AgentSource::Pool, Arc::new(app_handle.clone())).await?
         } else {
             return Err("Pool requires app_handle to spawn agents".to_string());
         };

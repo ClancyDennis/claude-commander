@@ -227,7 +227,7 @@ impl VerificationEngine {
     pub async fn spawn_verification_agent(
         &self,
         target_agent_id: &str,
-        verification_prompt: &str
+        _verification_prompt: &str
     ) -> Result<VerificationReport, String> {
         // Check if agent pool is available
         let pool = self.agent_pool.as_ref()

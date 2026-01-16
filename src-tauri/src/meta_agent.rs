@@ -243,14 +243,14 @@ impl MetaAgent {
         let github_url = input["github_url"].as_str().map(|s| s.to_string());
 
         let manager = agent_manager.lock().await;
-        match manager.create_agent(working_dir.to_string(), github_url, None, crate::types::AgentSource::Meta, app_handle.clone()).await {
+        match manager.create_agent(working_dir.to_string(), github_url, None, crate::types::AgentSource::Meta, Arc::new(app_handle.clone())).await {
             Ok(agent_id) => {
                 drop(manager);
 
                 // Send initial prompt if provided
                 if let Some(initial_prompt) = input["initial_prompt"].as_str() {
                     let manager = agent_manager.lock().await;
-                    if let Err(e) = manager.send_prompt(&agent_id, initial_prompt, Some(app_handle.clone())).await {
+                    if let Err(e) = manager.send_prompt(&agent_id, initial_prompt, Some(Arc::new(app_handle.clone()))).await {
                         return json!({
                             "success": true,
                             "agent_id": agent_id,
@@ -297,7 +297,7 @@ impl MetaAgent {
         }
 
         let manager = agent_manager.lock().await;
-        match manager.send_prompt(agent_id, prompt, Some(app_handle)).await {
+        match manager.send_prompt(agent_id, prompt, Some(Arc::new(app_handle))).await {
             Ok(_) => json!({
                 "success": true,
                 "message": "Prompt sent successfully"

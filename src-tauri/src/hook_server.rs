@@ -6,7 +6,6 @@ use axum::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::Emitter;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
@@ -21,13 +20,13 @@ struct PendingToolCall {
 
 pub struct HookServerState {
     pub agent_manager: Arc<Mutex<AgentManager>>,
-    pub app_handle: tauri::AppHandle,
+    pub app_handle: Arc<dyn crate::events::AppEventEmitter>,
     pub pending_tools: Arc<Mutex<HashMap<String, PendingToolCall>>>,
 }
 
 pub async fn start_hook_server(
     agent_manager: Arc<Mutex<AgentManager>>,
-    app_handle: tauri::AppHandle,
+    app_handle: Arc<dyn crate::events::AppEventEmitter>,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = Arc::new(HookServerState {
@@ -100,7 +99,7 @@ async fn handle_hook(
                 timestamp: now,
             };
 
-            let _ = state.app_handle.emit("agent:tool", event);
+            let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
         } else if input.hook_event_name == "PostToolUse" {
             // Try to find the matching PreToolUse
             let mut pending = state.pending_tools.lock().await;
@@ -156,7 +155,7 @@ async fn handle_hook(
                 timestamp: start_time,
             };
 
-            let _ = state.app_handle.emit("agent:tool", event);
+            let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
         }
     }
 

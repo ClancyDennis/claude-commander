@@ -239,3 +239,71 @@ export interface SkillScript {
   content: string;
   language: string;
 }
+
+// Agent Run History Types
+export type RunStatus = "running" | "completed" | "stopped" | "crashed" | "waiting_input";
+
+export interface AgentRun {
+  id?: number;
+  agent_id: string;
+  session_id?: string;
+  working_dir: string;
+  github_url?: string;
+  github_context?: string;
+  source: string;
+  status: RunStatus;
+  started_at: number;
+  ended_at?: number;
+  last_activity: number;
+  initial_prompt?: string;
+  error_message?: string;
+  total_prompts: number;
+  total_tool_calls: number;
+  total_output_bytes: number;
+  total_tokens_used?: number;
+  total_cost_usd?: number;
+  model_usage?: string;
+  can_resume: boolean;
+  resume_data?: string;
+}
+
+export interface ModelCostBreakdown {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  cost_usd: number;
+}
+
+export interface RunStats {
+  total_runs: number;
+  by_status: [string, number][];
+  by_source: [string, number][];
+  total_cost_usd: number;
+  resumable_runs: number;
+}
+
+export interface AutoPipeline {
+  id: string;
+  user_request: string;
+  working_dir: string;
+  status: 'running' | 'completed' | 'failed';
+  steps: AutoPipelineStep[];
+  questions: string[];
+  answers: string[];
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface AutoPipelineStep {
+  step_number: number;
+  role: 'Planning' | 'Building' | 'Verifying';
+  agent_id?: string;
+  status: 'Pending' | 'Running' | 'Completed' | 'Failed';
+  output?: {
+    raw_text: string;
+    structured_data?: any;
+  };
+  started_at?: string;
+  completed_at?: string;
+}

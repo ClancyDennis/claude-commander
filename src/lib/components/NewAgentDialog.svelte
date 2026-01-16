@@ -4,7 +4,7 @@
   import { addAgent, selectedAgentId } from "../stores/agents";
   import { addPipeline, openPipeline } from "../stores/pipelines";
   import { getAgentSettings } from "../stores/pipelineSettings";
-  import type { Agent } from "../types";
+  import type { Agent, GeneratedSkill, SkillContent, InstructionFileInfo } from "../types";
   import type { Pipeline } from "../stores/pipelines";
 
   let { onClose }: { onClose: () => void } = $props();
@@ -13,7 +13,7 @@
   let workingDir = $state("/home/arrakis");
   let githubUrl = $state("");
   let pipelineTask = $state("");
-  let creationType = $state<'agent' | 'pipeline'>('agent');
+  let creationType = $state<'agent' | 'pipeline' | 'auto-pipeline'>('agent');
   let isCreating = $state(false);
   let error = $state("");
   let isLoadingRepos = $state(false);
@@ -27,15 +27,7 @@
   }>>([]);
   let showRepoDropdown = $state(false);
   let showInstructionSelector = $state(false);
-  let instructionFiles = $state<Array<{
-    id: string;
-    name: string;
-    path: string;
-    relativePath: string;
-    fileType: string;
-    size: number;
-    modified: string;
-  }>>([]);
+  let instructionFiles = $state<Array<InstructionFileInfo>>([]);
   let selectedInstructions = $state<Set<string>>(new Set());
   let isLoadingInstructions = $state(false);
 
@@ -44,6 +36,11 @@
   let newInstructionName = $state("");
   let newInstructionContent = $state("");
   let isSavingInstruction = $state(false);
+
+  // Skill Generation State
+  let generatingSkillForFile = $state<string | null>(null);
+  let generatedSkills = $state<Map<string, GeneratedSkill>>(new Map());
+  let skillGenerationError = $state<string | null>(null);
 
   // Load GitHub repos on mount
   $effect(() => {
@@ -77,12 +74,107 @@
         workingDir: workingDir,
       });
       instructionFiles = files;
+
+      // Check for existing skills after loading files
+      await checkExistingSkills();
     } catch (e) {
       console.error("Failed to load instruction files:", e);
       // Silent fail - instructions are optional
       instructionFiles = [];
     } finally {
       isLoadingInstructions = false;
+    }
+  }
+
+  async function checkExistingSkills() {
+    try {
+      const skills = await invoke<GeneratedSkill[]>("list_generated_skills", {
+        workingDir,
+      });
+
+      // Match skills to instruction files by name heuristics
+      for (const skill of skills) {
+        for (const file of instructionFiles) {
+          // Simple matching: skill name derived from file name
+          const expectedSkillName = file.name
+            .replace(/\.(txt|md)$/, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-');
+
+          if (skill.skillName === expectedSkillName) {
+            file.hasSkill = true;
+            file.skillName = skill.skillName;
+            generatedSkills.set(file.id, skill);
+          }
+        }
+      }
+
+      instructionFiles = [...instructionFiles]; // Trigger reactivity
+    } catch (e) {
+      console.error("Failed to check existing skills:", e);
+    }
+  }
+
+  async function generateSkillForInstruction(file: InstructionFileInfo) {
+    generatingSkillForFile = file.id;
+    skillGenerationError = null;
+
+    try {
+      const result = await invoke<GeneratedSkill>("generate_skill_from_instruction", {
+        filePath: file.path,
+        workingDir: workingDir,
+      });
+
+      generatedSkills.set(file.id, result);
+      file.hasSkill = true;
+      file.skillName = result.skillName;
+
+      // Re-trigger reactivity
+      instructionFiles = [...instructionFiles];
+    } catch (error) {
+      skillGenerationError = `Failed to generate skill: ${error}`;
+      console.error("Skill generation error:", error);
+    } finally {
+      generatingSkillForFile = null;
+    }
+  }
+
+  async function viewSkillContent(skillName: string) {
+    try {
+      const content = await invoke<SkillContent>("get_skill_content", {
+        skillName,
+        workingDir: workingDir,
+      });
+
+      // For now, log to console - could create a modal later
+      console.log("Skill content:", content);
+      alert(`Skill: ${content.skillName}\n\n${content.skillMd.substring(0, 500)}...\n\nFull content logged to console.`);
+    } catch (error) {
+      console.error("Failed to load skill:", error);
+      alert(`Failed to load skill: ${error}`);
+    }
+  }
+
+  async function deleteSkill(file: InstructionFileInfo) {
+    if (!file.skillName) return;
+
+    if (!confirm(`Delete skill "${file.skillName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await invoke("delete_generated_skill", {
+        skillName: file.skillName,
+        workingDir: workingDir,
+      });
+
+      file.hasSkill = false;
+      file.skillName = undefined;
+      generatedSkills.delete(file.id);
+      instructionFiles = [...instructionFiles];
+    } catch (error) {
+      console.error("Failed to delete skill:", error);
+      alert(`Failed to delete skill: ${error}`);
     }
   }
 
@@ -164,7 +256,7 @@
       return;
     }
 
-    if (creationType === 'pipeline' && !pipelineTask.trim()) {
+    if ((creationType === 'pipeline' || creationType === 'auto-pipeline') && !pipelineTask.trim()) {
       error = "Please provide a task description for the pipeline";
       return;
     }
@@ -213,6 +305,22 @@
 
         addPipeline(pipeline);
         openPipeline(pipelineId);
+        onClose();
+      } else if (creationType === 'auto-pipeline') {
+        // Create automated 3-step pipeline
+        const pipelineId = await invoke<string>("create_auto_pipeline", {
+          userRequest: pipelineTask.trim(),
+          workingDir: workingDir,
+        });
+
+        // Start pipeline execution immediately
+        await invoke("start_auto_pipeline", {
+          pipelineId,
+        });
+
+        // Note: The AutoPipelineView component will handle displaying this
+        // For now, we'll just close the dialog
+        // TODO: Add navigation to auto-pipeline view or add to a store
         onClose();
       } else {
         // Create single agent (existing logic)
@@ -365,6 +473,13 @@
                 <span>Multi-phase workflow with orchestration & verification</span>
               </div>
             </label>
+            <label class="radio-option" class:selected={creationType === 'auto-pipeline'}>
+              <input type="radio" bind:group={creationType} value="auto-pipeline" disabled={isCreating} />
+              <div class="radio-content">
+                <strong>Auto Pipeline</strong>
+                <span>3-step automated pipeline: Planning → Building → Verification</span>
+              </div>
+            </label>
           </div>
         </label>
 
@@ -503,17 +618,72 @@
                               · {file.relativePath}
                             {/if}
                           </span>
+                          {#if file.hasSkill}
+                            <span class="skill-badge success">
+                              ✓ Skill: {file.skillName}
+                            </span>
+                          {/if}
+                        </div>
+                        <div class="instruction-actions">
+                          {#if generatingSkillForFile === file.id}
+                            <button class="icon-btn tiny" disabled>
+                              <div class="spinner"></div>
+                              Generating...
+                            </button>
+                          {:else if file.hasSkill}
+                            <button
+                              class="icon-btn tiny"
+                              onclick={(e) => { e.preventDefault(); viewSkillContent(file.skillName!) }}
+                              title="View skill content"
+                              type="button"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </svg>
+                              View
+                            </button>
+                            <button
+                              class="icon-btn tiny danger"
+                              onclick={(e) => { e.preventDefault(); deleteSkill(file) }}
+                              title="Delete skill"
+                              type="button"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                              </svg>
+                              Delete
+                            </button>
+                          {:else}
+                            <button
+                              class="icon-btn tiny primary"
+                              onclick={(e) => { e.preventDefault(); generateSkillForInstruction(file) }}
+                              title="Generate Claude Code skill from this instruction"
+                              type="button"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                              </svg>
+                              Generate Skill
+                            </button>
+                          {/if}
                         </div>
                       </label>
                     {/each}
                   </div>
+                  {#if skillGenerationError}
+                    <div class="error-banner">
+                      {skillGenerationError}
+                    </div>
+                  {/if}
                 {/if}
               </div>
             {/if}
           </div>
         </label>
 
-        {#if creationType === 'pipeline'}
+        {#if creationType === 'pipeline' || creationType === 'auto-pipeline'}
           <label>
             <span class="label-text">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -523,12 +693,16 @@
             </span>
             <textarea
               bind:value={pipelineTask}
-              placeholder="Example: Build a REST API for user authentication with JWT tokens, including tests and documentation..."
+              placeholder={creationType === 'auto-pipeline'
+                ? "Example: Add dark mode support to the application..."
+                : "Example: Build a REST API for user authentication with JWT tokens, including tests and documentation..."}
               rows="4"
               disabled={isCreating}
             ></textarea>
             <span class="helper-text">
-              Describe what you want the pipeline to accomplish. The meta-agent will break it down into phases.
+              {creationType === 'auto-pipeline'
+                ? "Describe your task. The auto-pipeline will plan, build, and verify automatically."
+                : "Describe what you want the pipeline to accomplish. The meta-agent will break it down into phases."}
             </span>
           </label>
 
@@ -581,11 +755,11 @@
       <button
         class="primary"
         onclick={createAgent}
-        disabled={isCreating || !workingDir.trim() || (creationType === 'pipeline' && !pipelineTask.trim())}
+        disabled={isCreating || !workingDir.trim() || ((creationType === 'pipeline' || creationType === 'auto-pipeline') && !pipelineTask.trim())}
       >
         {#if isCreating}
           <span class="spinner"></span>
-          {creationType === 'pipeline' ? 'Starting Pipeline...' : 'Creating...'}
+          {creationType === 'pipeline' ? 'Starting Pipeline...' : creationType === 'auto-pipeline' ? 'Starting Auto Pipeline...' : 'Creating...'}
         {:else}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             {#if creationType === 'pipeline'}
@@ -1212,6 +1386,102 @@
   .instruction-meta {
     font-size: 12px;
     color: var(--text-muted);
+  }
+
+  .skill-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  .skill-badge.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  .instruction-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .icon-btn.tiny {
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+
+  .icon-btn.tiny:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .icon-btn.tiny.primary {
+    background: rgba(124, 58, 237, 0.1);
+    border-color: rgba(124, 58, 237, 0.3);
+    color: var(--accent);
+  }
+
+  .icon-btn.tiny.primary:hover:not(:disabled) {
+    background: rgba(124, 58, 237, 0.2);
+    border-color: var(--accent);
+  }
+
+  .icon-btn.tiny.danger {
+    color: #ef4444;
+  }
+
+  .icon-btn.tiny.danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+
+  .icon-btn.tiny:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .icon-btn.tiny svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .error-banner {
+    padding: 12px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 13px;
   }
 
   .label-row {
