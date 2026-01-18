@@ -1,13 +1,12 @@
 <script lang="ts">
   import { agents, selectedAgentId, viewMode, openChat, openAgent, sidebarMode, historicalRuns, toggleSidebarMode, setHistoricalRuns, selectHistoricalRun } from "../stores/agents";
-  import type { Agent, AgentRun, RunStatus } from "../types";
+  import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "../stores/autoPipelines";
+  import type { Agent, AgentRun, RunStatus, AutoPipeline } from "../types";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
-  let { onNewAgent, onTogglePoolDashboard, onToggleCostTracker, onToggleDatabaseStats }: {
+  let { onNewAgent, onToggleDatabaseStats }: {
     onNewAgent: () => void;
-    onTogglePoolDashboard?: () => void;
-    onToggleCostTracker?: () => void;
     onToggleDatabaseStats?: () => void;
   } = $props();
 
@@ -41,9 +40,26 @@
 
   function isSelected(id: string | null): boolean {
     if (id === null) {
-      return $viewMode === 'chat';
+      return $viewMode === 'chat' && !$selectedAutoPipelineId;
     }
-    return $viewMode === 'agent' && $selectedAgentId === id;
+    return $viewMode === 'agent' && $selectedAgentId === id && !$selectedAutoPipelineId;
+  }
+
+  function isPipelineSelected(id: string): boolean {
+    return $selectedAutoPipelineId === id;
+  }
+
+  function handleSelectPipeline(id: string) {
+    selectAutoPipeline(id);
+  }
+
+  function getPipelineStatusColor(status: string): string {
+    switch (status) {
+      case 'Completed': return '#10b981'; // green
+      case 'Running': return 'var(--accent)';
+      case 'Failed': return 'var(--error)';
+      default: return 'var(--text-muted)';
+    }
   }
 
   function getStatusColor(status: Agent["status"] | RunStatus): string {
@@ -135,10 +151,14 @@
   <header>
     <div class="logo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
         <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v4M12 19v4M1 12h4M19 12h4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        <line x1="12" y1="2" x2="12" y2="6"/>
+        <line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="6" y2="12"/>
+        <line x1="18" y1="12" x2="22" y2="12"/>
       </svg>
-      <span>Claude Agents</span>
+      <span>Claude Commander</span>
     </div>
     <button class="primary new-btn" onclick={onNewAgent}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -182,28 +202,65 @@
     {#if $sidebarMode === 'running'}
       <!-- Chat Assistant entry -->
       <ul>
-        <li
-          class="chat-assistant"
-          class:selected={isSelected(null)}
-          onclick={() => openChat()}
-          role="button"
-          tabindex="0"
-          onkeydown={(e) => e.key === "Enter" && openChat()}
-        >
-          <div class="chat-icon">💬</div>
-          <div class="info">
-            <div class="name-row">
-              <span class="name">Chat Assistant</span>
+        <li>
+          <button
+            class="agent-btn chat-assistant"
+            class:selected={isSelected(null)}
+            onclick={() => openChat()}
+          >
+            <div class="chat-icon">🎯</div>
+            <div class="info">
+              <div class="name-row">
+                <span class="name">System Commander</span>
+              </div>
+              <div class="meta-row">
+                <span class="path">Mission control for Claude</span>
+              </div>
             </div>
-            <div class="meta-row">
-              <span class="path">AI-native control</span>
-            </div>
-          </div>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9,6 15,12 9,18"/>
-          </svg>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9,6 15,12 9,18"/>
+            </svg>
+          </button>
         </li>
       </ul>
+
+      <!-- Auto Pipelines Section -->
+      {#if $autoPipelines.size > 0}
+        <div class="separator">
+          <span>Auto Pipelines ({$autoPipelines.size})</span>
+        </div>
+        <ul>
+          {#each [...$autoPipelines.values()] as pipeline (pipeline.id)}
+            <li>
+              <button
+                class="agent-btn pipeline-btn"
+                class:selected={isPipelineSelected(pipeline.id)}
+                onclick={() => handleSelectPipeline(pipeline.id)}
+              >
+                <div class="status-indicator" style="background-color: {getPipelineStatusColor(pipeline.status)}">
+                  {#if pipeline.status === 'Running'}
+                    <span class="pulse"></span>
+                  {/if}
+                </div>
+                <div class="info">
+                  <div class="name-row">
+                    <span class="name">Pipeline</span>
+                    <span class="pipeline-status-badge" style="background-color: {getPipelineStatusColor(pipeline.status)}">
+                      {pipeline.status}
+                    </span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="path pipeline-request">{pipeline.user_request.length > 40 ? pipeline.user_request.substring(0, 40) + '...' : pipeline.user_request}</span>
+                  </div>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9,6 15,12 9,18"/>
+                </svg>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
 
       <!-- Separator -->
       {#if $agents.size > 0}
@@ -227,46 +284,46 @@
       {:else}
         <ul>
           {#each [...$agents.values()] as agent (agent.id)}
-            <li
-              class:selected={isSelected(agent.id)}
-              onclick={() => selectAgent(agent.id)}
-              role="button"
-              tabindex="0"
-              onkeydown={(e) => e.key === "Enter" && selectAgent(agent.id)}
-            >
-              <div class="status-indicator" style="background-color: {getStatusColor(agent.status)}">
-                {#if agent.status === "running" || agent.status === "waitingforinput"}
-                  <span class="pulse"></span>
-                {/if}
-                {#if agent.isProcessing}
-                  <div class="processing-ring"></div>
-                {/if}
-              </div>
-              <div class="info">
-                <div class="name-row">
-                  <span class="name">{formatPath(agent.workingDir)}</span>
-                  {#if agent.unreadOutputs && agent.unreadOutputs > 0}
-                    <span class="unread-badge animate-badge-pop">{agent.unreadOutputs}</span>
+            <li>
+              <button
+                class="agent-btn"
+                class:selected={isSelected(agent.id)}
+                onclick={() => selectAgent(agent.id)}
+              >
+                <div class="status-indicator" style="background-color: {getStatusColor(agent.status)}">
+                  {#if agent.status === "running" || agent.status === "waitingforinput"}
+                    <span class="pulse"></span>
+                  {/if}
+                  {#if agent.isProcessing}
+                    <div class="processing-ring"></div>
                   {/if}
                 </div>
-                <div class="meta-row">
-                  <span class="path">{agent.workingDir}</span>
-                  {#if agent.lastActivity}
-                    <span class="activity-time">{formatTime(agent.lastActivity)}</span>
-                  {/if}
+                <div class="info">
+                  <div class="name-row">
+                    <span class="name">{formatPath(agent.workingDir)}</span>
+                    {#if agent.unreadOutputs && agent.unreadOutputs > 0}
+                      <span class="unread-badge animate-badge-pop">{agent.unreadOutputs}</span>
+                    {/if}
+                  </div>
+                  <div class="meta-row">
+                    <span class="path">{agent.workingDir}</span>
+                    {#if agent.lastActivity}
+                      <span class="activity-time">{formatTime(agent.lastActivity)}</span>
+                    {/if}
+                  </div>
                 </div>
-              </div>
-              {#if agent.pendingInput}
-                <div class="pending-input-icon" title="Waiting for input">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                {#if agent.pendingInput}
+                  <div class="pending-input-icon" title="Waiting for input">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                    </svg>
+                  </div>
+                {:else}
+                  <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9,6 15,12 9,18"/>
                   </svg>
-                </div>
-              {:else}
-                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9,6 15,12 9,18"/>
-                </svg>
-              {/if}
+                {/if}
+              </button>
             </li>
           {/each}
         </ul>
@@ -292,37 +349,37 @@
       {:else}
         <ul>
           {#each $historicalRuns as run (run.agent_id)}
-            <li
-              role="button"
-              tabindex="0"
-              onclick={() => selectHistoricalRunItem(run)}
-              onkeydown={(e) => e.key === "Enter" && selectHistoricalRunItem(run)}
-            >
-              <div class="status-indicator" style="background-color: {getStatusColor(run.status)}">
-                {#if run.status === "running"}
-                  <span class="pulse"></span>
-                {/if}
-              </div>
-              <div class="info">
-                <div class="name-row">
-                  <span class="name">{formatPath(run.working_dir)}</span>
-                  <span class="status-badge" style="background-color: {getStatusColor(run.status)}">
-                    {getStatusLabel(run.status)}
-                  </span>
+            <li>
+              <button
+                class="agent-btn"
+                onclick={() => selectHistoricalRunItem(run)}
+              >
+                <div class="status-indicator" style="background-color: {getStatusColor(run.status)}">
+                  {#if run.status === "running"}
+                    <span class="pulse"></span>
+                  {/if}
                 </div>
-                <div class="meta-row">
-                  <span class="path">{formatDate(run.started_at)}</span>
-                  <span class="activity-time">{formatDuration(run.started_at, run.ended_at)}</span>
-                </div>
-                {#if run.initial_prompt}
-                  <div class="run-prompt">
-                    {run.initial_prompt.length > 60 ? run.initial_prompt.substring(0, 60) + '...' : run.initial_prompt}
+                <div class="info">
+                  <div class="name-row">
+                    <span class="name">{formatPath(run.working_dir)}</span>
+                    <span class="status-badge" style="background-color: {getStatusColor(run.status)}">
+                      {getStatusLabel(run.status)}
+                    </span>
                   </div>
-                {/if}
-              </div>
-              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9,6 15,12 9,18"/>
-              </svg>
+                  <div class="meta-row">
+                    <span class="path">{formatDate(run.started_at)}</span>
+                    <span class="activity-time">{formatDuration(run.started_at, run.ended_at)}</span>
+                  </div>
+                  {#if run.initial_prompt}
+                    <div class="run-prompt">
+                      {run.initial_prompt.length > 60 ? run.initial_prompt.substring(0, 60) + '...' : run.initial_prompt}
+                    </div>
+                  {/if}
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9,6 15,12 9,18"/>
+                </svg>
+              </button>
             </li>
           {/each}
         </ul>
@@ -330,23 +387,11 @@
     {/if}
   </div>
 
-  {#if onTogglePoolDashboard || onToggleCostTracker || onToggleDatabaseStats}
+  {#if onToggleDatabaseStats}
     <footer class="agent-list-footer">
-      {#if onTogglePoolDashboard}
-        <button class="footer-btn" onclick={onTogglePoolDashboard} title="Toggle Pool Dashboard (Ctrl+Shift+P)">
-          🏊 Pool
-        </button>
-      {/if}
-      {#if onToggleCostTracker}
-        <button class="footer-btn" onclick={onToggleCostTracker} title="Toggle Cost Tracker (Ctrl+Shift+$)">
-          💰 Costs
-        </button>
-      {/if}
-      {#if onToggleDatabaseStats}
-        <button class="footer-btn" onclick={onToggleDatabaseStats} title="Toggle Database Stats (Ctrl+Shift+D)">
-          💾 Database
-        </button>
-      {/if}
+      <button class="footer-btn" onclick={onToggleDatabaseStats} title="Toggle Database Stats (Ctrl+Shift+D)">
+        💾 Database
+      </button>
     </footer>
   {/if}
 </aside>
@@ -453,24 +498,32 @@
   }
 
   li {
+    padding: 0;
+    margin-bottom: var(--space-sm);
+  }
+
+  .agent-btn {
+    width: 100%;
     padding: var(--space-md) var(--space-lg);
     display: flex;
     align-items: center;
     gap: 16px;
     cursor: pointer;
     border-radius: 12px;
-    margin-bottom: var(--space-sm);
     transition: all 0.2s ease;
     background-color: var(--bg-tertiary);
     border: 1px solid transparent;
+    text-align: left;
+    font: inherit;
+    color: inherit;
   }
 
-  li:hover {
+  .agent-btn:hover {
     background-color: var(--bg-elevated);
     border-color: var(--border);
   }
 
-  li.selected {
+  .agent-btn.selected {
     background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(147, 51, 234, 0.1) 100%);
     border-color: var(--accent);
     box-shadow: 0 0 16px var(--accent-glow);
@@ -603,7 +656,7 @@
     flex-shrink: 0;
   }
 
-  li.selected .chevron {
+  .agent-btn.selected .chevron {
     color: var(--accent);
   }
 
@@ -723,5 +776,34 @@
   .footer-btn:hover {
     background: var(--bg-tertiary);
     border-color: var(--accent);
+  }
+
+  .pipeline-btn {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .pipeline-btn.selected {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.15) 100%);
+    border-color: #10b981;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+  }
+
+  .pipeline-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 10px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .pipeline-request {
+    font-style: italic;
   }
 </style>

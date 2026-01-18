@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::types::{HookInput, ToolEventPayload};
+use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
 
 #[derive(Debug, Clone)]
 struct PendingToolCall {
@@ -84,13 +84,16 @@ async fn handle_hook(
             });
             drop(pending);
 
+            // Clone tool_input for use in multiple places
+            let tool_input_value = input.tool_input.clone().unwrap_or(serde_json::Value::Null);
+
             // Emit pending event
             let event = ToolEventPayload {
                 agent_id: agent_id.clone(),
                 session_id: input.session_id.clone(),
                 hook_event_name: input.hook_event_name.clone(),
                 tool_name: tool_name.clone(),
-                tool_input: input.tool_input.unwrap_or(serde_json::Value::Null),
+                tool_input: tool_input_value.clone(),
                 tool_response: None,
                 tool_call_id: tool_call_id.clone(),
                 status: Some("pending".to_string()),
@@ -100,6 +103,16 @@ async fn handle_hook(
             };
 
             let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
+
+            // Emit enhanced activity event for UI status display
+            let activity = format_agent_activity(tool_name, &Some(tool_input_value));
+            let activity_event = AgentActivityDetailEvent {
+                agent_id: agent_id.clone(),
+                activity,
+                tool_name: tool_name.clone(),
+                timestamp: now,
+            };
+            let _ = state.app_handle.emit("agent:activity", serde_json::to_value(activity_event).unwrap());
         } else if input.hook_event_name == "PostToolUse" {
             // Try to find the matching PreToolUse
             let mut pending = state.pending_tools.lock().await;
@@ -160,4 +173,110 @@ async fn handle_hook(
     }
 
     StatusCode::OK
+}
+
+/// Format a human-readable activity description based on tool name and input
+fn format_agent_activity(tool_name: &str, tool_input: &Option<serde_json::Value>) -> String {
+    let input = tool_input.as_ref();
+
+    match tool_name {
+        "Read" => {
+            let file_path = input
+                .and_then(|i| i.get("file_path"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("file");
+            // Shorten long paths
+            let short_path = if file_path.len() > 40 {
+                format!("...{}", &file_path[file_path.len()-37..])
+            } else {
+                file_path.to_string()
+            };
+            format!("Reading {}", short_path)
+        }
+        "Write" => {
+            let file_path = input
+                .and_then(|i| i.get("file_path"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("file");
+            let short_path = if file_path.len() > 40 {
+                format!("...{}", &file_path[file_path.len()-37..])
+            } else {
+                file_path.to_string()
+            };
+            format!("Writing {}", short_path)
+        }
+        "Edit" => {
+            let file_path = input
+                .and_then(|i| i.get("file_path"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("file");
+            let short_path = if file_path.len() > 40 {
+                format!("...{}", &file_path[file_path.len()-37..])
+            } else {
+                file_path.to_string()
+            };
+            format!("Editing {}", short_path)
+        }
+        "Bash" => {
+            let command = input
+                .and_then(|i| i.get("command"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("command");
+            // Truncate long commands
+            let short_cmd = if command.len() > 35 {
+                format!("{}...", &command[..32])
+            } else {
+                command.to_string()
+            };
+            format!("Running: {}", short_cmd)
+        }
+        "Grep" => {
+            let pattern = input
+                .and_then(|i| i.get("pattern"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("pattern");
+            format!("Searching for '{}'", pattern)
+        }
+        "Glob" => {
+            let pattern = input
+                .and_then(|i| i.get("pattern"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("*");
+            format!("Finding files: {}", pattern)
+        }
+        "Task" => {
+            let description = input
+                .and_then(|i| i.get("description"))
+                .and_then(|d| d.as_str())
+                .unwrap_or("task");
+            format!("Running task: {}", description)
+        }
+        "WebFetch" => {
+            let url = input
+                .and_then(|i| i.get("url"))
+                .and_then(|u| u.as_str())
+                .unwrap_or("URL");
+            // Extract domain from URL
+            let domain = url.split("//")
+                .nth(1)
+                .and_then(|s| s.split('/').next())
+                .unwrap_or(url);
+            format!("Fetching {}", domain)
+        }
+        "WebSearch" => {
+            let query = input
+                .and_then(|i| i.get("query"))
+                .and_then(|q| q.as_str())
+                .unwrap_or("query");
+            let short_query = if query.len() > 30 {
+                format!("{}...", &query[..27])
+            } else {
+                query.to_string()
+            };
+            format!("Searching: {}", short_query)
+        }
+        "TodoWrite" => "Updating task list".to_string(),
+        "AskUserQuestion" => "Asking question".to_string(),
+        _ => format!("Using {}", tool_name),
+    }
 }

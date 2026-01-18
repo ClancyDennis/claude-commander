@@ -375,7 +375,6 @@
     color: var(--text-muted);
   }
 
-  .loading svg,
   .error-message svg,
   .empty-state svg {
     width: 48px;

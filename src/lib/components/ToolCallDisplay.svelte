@@ -20,11 +20,17 @@
     ShowNotification: "🔔",
   };
 
-  const icon = toolIcons[toolCall.toolName] || "⚙️";
+  const icon = $derived(toolIcons[toolCall.toolName] || "⚙️");
 </script>
 
 <div class="tool-call" class:expanded>
-  <div class="tool-header" onclick={() => (expanded = !expanded)}>
+  <div
+    class="tool-header"
+    onclick={() => (expanded = !expanded)}
+    role="button"
+    tabindex="0"
+    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (expanded = !expanded)}
+  >
     <span class="tool-icon">{icon}</span>
     <span class="tool-name">{toolCall.toolName}</span>
     <span class="expand-icon">{expanded ? "▼" : "▶"}</span>

@@ -10,8 +10,6 @@
   import LayoutManager from "./lib/components/LayoutManager.svelte";
   import SplitView from "./lib/components/SplitView.svelte";
   import GridView from "./lib/components/GridView.svelte";
-  import PoolDashboard from "./lib/components/PoolDashboard.svelte";
-  import CostTracker from "./lib/components/CostTracker.svelte";
   import DatabaseStats from "./lib/components/DatabaseStats.svelte";
   import PhaseProgress from "./lib/components/PhaseProgress.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
@@ -31,6 +29,11 @@
     openChat,
     sidebarMode,
     selectedHistoricalRun,
+    addOrchestratorToolCall,
+    addOrchestratorStateChange,
+    addOrchestratorDecision,
+    clearOrchestratorActivity,
+    incrementStepToolCount,
   } from "./lib/stores/agents";
   import {
     pipelines,
@@ -40,15 +43,14 @@
     updatePipelinePhase,
     updatePhaseProgress,
   } from "./lib/stores/pipelines";
-  import { autoPipelines } from "./lib/stores/autoPipelines";
+  import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "./lib/stores/autoPipelines";
+  import AutoPipelineView from "./lib/components/AutoPipelineView.svelte";
   import type { AutoPipeline } from "./lib/types";
   import type { Pipeline, PhaseProgressData } from "./lib/stores/pipelines";
   import { updateActivity } from "./lib/stores/activity";
   import type { Agent, AgentOutput, ToolEvent, AgentStatusEvent, AgentInputRequiredEvent, AgentActivityEvent, AgentStatsEvent, MetaAgentThinkingEvent, MetaAgentToolCallEvent } from "./lib/types";
 
   let showNewAgentDialog = $state(false);
-  let showPoolDashboard = $state(false);
-  let showCostTracker = $state(false);
   let showDatabaseStats = $state(false);
 
   // Show toast notifications for key events
@@ -106,20 +108,6 @@
     if (isMod && e.shiftKey && e.key === 'C') {
       e.preventDefault();
       openChat();
-      return;
-    }
-
-    // Cmd/Ctrl + Shift + P: Toggle pool dashboard
-    if (isMod && e.shiftKey && e.key === 'P') {
-      e.preventDefault();
-      showPoolDashboard = !showPoolDashboard;
-      return;
-    }
-
-    // Cmd/Ctrl + Shift + $: Toggle cost tracker
-    if (isMod && e.shiftKey && e.key === '$') {
-      e.preventDefault();
-      showCostTracker = !showCostTracker;
       return;
     }
 
@@ -185,6 +173,7 @@
       execution_time_ms?: number;
       timestamp: number;
     }>("agent:tool", (event) => {
+      console.log("[Frontend] Received agent:tool event:", event.payload.tool_name, event.payload.hook_event_name);
       const toolEvent: ToolEvent = {
         agentId: event.payload.agent_id,
         sessionId: event.payload.session_id,
@@ -203,6 +192,7 @@
 
     // Listen for status changes and new agents
     const unlistenStatus = listen<AgentStatusEvent>("agent:status", (event) => {
+      console.log("[Frontend] Received agent:status event:", event.payload.agent_id, event.payload.status);
       // Check if this is a new agent (has info property)
       if (event.payload.info) {
         const info = event.payload.info;
@@ -262,6 +252,7 @@
     const unlistenActivity = listen<AgentActivityEvent>(
       "agent:activity",
       (event) => {
+        console.log("[Frontend] Received agent:activity event:", event.payload.agent_id);
         const lastActivity = event.payload.last_activity
           ? new Date(event.payload.last_activity)
           : new Date();
@@ -347,26 +338,66 @@
       updatePhaseProgress(event.payload);
     });
 
+    // Listen for auto-pipeline started event
+    const unlistenAutoPipelineStarted = listen<AutoPipeline | { pipeline_id: string }>("auto_pipeline:started", (event) => {
+      const payload = event.payload;
+      const pipelineId = 'id' in payload ? payload.id : payload.pipeline_id;
+
+      console.log("[Frontend] Auto-pipeline started:", pipelineId);
+
+      // Clear previous orchestrator activity when a NEW pipeline starts
+      clearOrchestratorActivity();
+
+      // Check if we received the full pipeline object
+      if ('id' in payload && 'status' in payload) {
+        // We got the full object, update store immediately
+        autoPipelines.update(m => {
+          m.set(payload.id, payload as AutoPipeline);
+          return new Map(m);
+        });
+        selectAutoPipeline(payload.id);
+      } else {
+        // Fallback to fetch if we only got the ID
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke<AutoPipeline>("get_auto_pipeline", {
+            pipelineId
+          }).then(pipeline => {
+            autoPipelines.update(m => {
+              m.set(pipeline.id, pipeline);
+              return new Map(m);
+            });
+            // Immediately select this pipeline to show orchestrator view
+            selectAutoPipeline(pipelineId);
+          }).catch(err => {
+            console.error("[Frontend] Failed to fetch pipeline:", err);
+            // Still try to select it
+            selectAutoPipeline(pipelineId);
+          });
+        });
+      }
+
+      showToast({
+        type: "info",
+        message: "Auto-pipeline started",
+      });
+    });
+
     // Listen for auto-pipeline step completion
     const unlistenAutoPipelineStep = listen<{
       pipeline_id: string;
       step_number: number;
       output: any;
     }>("auto_pipeline:step_completed", (event) => {
-      // Update the auto-pipeline in the store
-      autoPipelines.update(map => {
-        // Fetch updated pipeline data from backend
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke<AutoPipeline>("get_auto_pipeline", {
-            pipelineId: event.payload.pipeline_id
-          }).then(pipeline => {
-            autoPipelines.update(m => {
-              m.set(pipeline.id, pipeline);
-              return m;
-            });
+      // Fetch updated pipeline data from backend
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke<AutoPipeline>("get_auto_pipeline", {
+          pipelineId: event.payload.pipeline_id
+        }).then(pipeline => {
+          autoPipelines.update(m => {
+            m.set(pipeline.id, pipeline);
+            return new Map(m);
           });
         });
-        return map;
       });
 
       showToast({
@@ -380,25 +411,113 @@
       pipeline_id: string;
       verification_report: any;
     }>("auto_pipeline:completed", (event) => {
-      // Update the auto-pipeline in the store
-      autoPipelines.update(map => {
-        // Fetch updated pipeline data from backend
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke<AutoPipeline>("get_auto_pipeline", {
-            pipelineId: event.payload.pipeline_id
-          }).then(pipeline => {
-            autoPipelines.update(m => {
-              m.set(pipeline.id, pipeline);
-              return m;
-            });
+      // Fetch updated pipeline data from backend
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke<AutoPipeline>("get_auto_pipeline", {
+          pipelineId: event.payload.pipeline_id
+        }).then(pipeline => {
+          autoPipelines.update(m => {
+            m.set(pipeline.id, pipeline);
+            return new Map(m);
           });
         });
-        return map;
       });
 
       showToast({
         type: "success",
         message: "Auto-pipeline completed successfully!",
+      });
+    });
+
+    // Listen for step status changes (Running, Completed, etc.)
+    const unlistenStepStatus = listen<{
+      pipeline_id: string;
+      step_number: number;
+      status: string;
+    }>("auto_pipeline:step_status", (event) => {
+      console.log("[Frontend] Step status change:", event.payload.step_number, event.payload.status);
+      // Fetch updated pipeline data from backend to get the full state
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke<AutoPipeline>("get_auto_pipeline", {
+          pipelineId: event.payload.pipeline_id
+        }).then(pipeline => {
+          autoPipelines.update(m => {
+            m.set(pipeline.id, pipeline);
+            return new Map(m);
+          });
+        });
+      });
+    });
+
+    // Listen for orchestrator tool start events
+    const unlistenOrchestratorToolStart = listen<{
+      tool_name: string;
+      tool_input: Record<string, unknown>;
+      current_state: string;
+      iteration: number;
+    }>("orchestrator:tool_start", (event) => {
+      console.log("[Frontend] Orchestrator tool start:", event.payload.tool_name);
+      addOrchestratorToolCall({
+        tool_name: event.payload.tool_name,
+        tool_input: event.payload.tool_input,
+        current_state: event.payload.current_state,
+        iteration: event.payload.iteration,
+        timestamp: Date.now(),
+      });
+    });
+
+    // Listen for orchestrator tool complete events
+    const unlistenOrchestratorToolComplete = listen<{
+      tool_name: string;
+      is_error: boolean;
+      summary: string;
+      current_state: string;
+      step_number?: number;
+    }>("orchestrator:tool_complete", (event) => {
+      console.log("[Frontend] Orchestrator tool complete:", event.payload.tool_name, event.payload.is_error ? "(error)" : "", "step:", event.payload.step_number);
+      // Increment step tool count for real-time tracking
+      if (event.payload.step_number && event.payload.step_number > 0) {
+        incrementStepToolCount(event.payload.step_number);
+      }
+    });
+
+    // Listen for orchestrator state change events
+    const unlistenOrchestratorStateChange = listen<{
+      old_state: string;
+      new_state: string;
+      iteration: number;
+      generated_skills: number;
+      generated_subagents: number;
+      claudemd_generated: boolean;
+    }>("orchestrator:state_changed", (event) => {
+      console.log("[Frontend] Orchestrator state change:", event.payload.old_state, "->", event.payload.new_state);
+      addOrchestratorStateChange({
+        old_state: event.payload.old_state,
+        new_state: event.payload.new_state,
+        iteration: event.payload.iteration,
+        generated_skills: event.payload.generated_skills,
+        generated_subagents: event.payload.generated_subagents,
+        claudemd_generated: event.payload.claudemd_generated,
+        timestamp: Date.now(),
+      });
+    });
+
+    // Listen for orchestrator decision events
+    const unlistenOrchestratorDecision = listen<{
+      pipeline_id: string;
+      decision: string;
+      reasoning: string;
+      issues: string[];
+      suggestions: string[];
+    }>("auto_pipeline:decision", (event) => {
+      console.log("[Frontend] Orchestrator decision:", event.payload.decision);
+      addOrchestratorDecision({
+        pipeline_id: event.payload.pipeline_id,
+        decision: event.payload.decision as any,
+        reasoning: event.payload.reasoning,
+        issues: event.payload.issues,
+        suggestions: event.payload.suggestions,
+        timestamp: Date.now(),
       });
     });
 
@@ -417,8 +536,14 @@
       unlistenPipelineStatus.then((f) => f());
       unlistenPipelinePhase.then((f) => f());
       unlistenPhaseProgress.then((f) => f());
+      unlistenAutoPipelineStarted.then((f) => f());
       unlistenAutoPipelineStep.then((f) => f());
       unlistenAutoPipelineComplete.then((f) => f());
+      unlistenStepStatus.then((f) => f());
+      unlistenOrchestratorToolStart.then((f) => f());
+      unlistenOrchestratorToolComplete.then((f) => f());
+      unlistenOrchestratorStateChange.then((f) => f());
+      unlistenOrchestratorDecision.then((f) => f());
     };
   });
 </script>
@@ -426,27 +551,20 @@
 <div class="app">
   <AgentList
     onNewAgent={() => (showNewAgentDialog = true)}
-    onTogglePoolDashboard={() => (showPoolDashboard = !showPoolDashboard)}
-    onToggleCostTracker={() => (showCostTracker = !showCostTracker)}
     onToggleDatabaseStats={() => (showDatabaseStats = !showDatabaseStats)}
   />
   <div class="main-content">
-    {#if showPoolDashboard}
-      <div class="pool-dashboard-container">
-        <PoolDashboard />
-      </div>
-    {/if}
-    {#if showCostTracker}
-      <div class="cost-tracker-container">
-        <CostTracker />
-      </div>
-    {/if}
     {#if showDatabaseStats}
       <div class="database-stats-container">
         <DatabaseStats />
       </div>
     {/if}
-    {#if $selectedPipelineId}
+    {#if $selectedAutoPipelineId}
+      <!-- Show auto-pipeline view with orchestrator activity -->
+      <div class="pipeline-view-container">
+        <AutoPipelineView pipelineId={$selectedAutoPipelineId} />
+      </div>
+    {:else if $selectedPipelineId}
       <!-- Show pipeline view when a pipeline is selected -->
       <div class="pipeline-view-container">
         <PhaseProgress pipelineId={$selectedPipelineId} />
@@ -485,18 +603,6 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
-
-  .pool-dashboard-container {
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .cost-tracker-container {
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border);
-    max-height: 600px;
     overflow: hidden;
   }
 

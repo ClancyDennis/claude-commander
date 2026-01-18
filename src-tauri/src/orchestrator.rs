@@ -130,9 +130,10 @@ impl TaskOrchestrator {
         let workflows = self.workflows.clone();
         let pool = self.agent_pool.clone();
         let workflow_id = workflow_id.to_string();
+        let max_completed = self.max_completed_workflows;
 
         tokio::spawn(async move {
-            Self::workflow_executor(workflow_id, workflows, pool).await
+            Self::workflow_executor(workflow_id, workflows, pool, max_completed).await
         });
 
         Ok(())
@@ -142,8 +143,12 @@ impl TaskOrchestrator {
         workflow_id: String,
         workflows: Arc<Mutex<HashMap<String, Workflow>>>,
         pool: Option<Arc<Mutex<AgentPool>>>,
+        max_completed_workflows: usize,
     ) {
         loop {
+            // Cleanup old workflows
+            Self::cleanup_old_workflows(&workflows, max_completed_workflows).await;
+
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
             let mut workflows_lock = workflows.lock().await;
@@ -300,8 +305,11 @@ impl TaskOrchestrator {
         self.workflows.lock().await.values().cloned().collect()
     }
 
-    async fn cleanup_old_workflows(&self) {
-        let mut workflows = self.workflows.lock().await;
+    async fn cleanup_old_workflows(
+        workflows: &Arc<Mutex<HashMap<String, Workflow>>>,
+        max_completed_workflows: usize,
+    ) {
+        let mut workflows = workflows.lock().await;
 
         // Get completed workflows sorted by completion time
         let mut completed: Vec<(String, SystemTime)> = workflows
@@ -313,7 +321,7 @@ impl TaskOrchestrator {
         completed.sort_by(|a, b| a.1.cmp(&b.1));
 
         // Remove oldest if over limit
-        while completed.len() > self.max_completed_workflows {
+        while completed.len() > max_completed_workflows {
             if let Some((old_id, _)) = completed.first() {
                 workflows.remove(old_id);
                 completed.remove(0);

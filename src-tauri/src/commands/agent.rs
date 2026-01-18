@@ -13,46 +13,108 @@ pub async fn create_agent(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    // Generate skills from instruction files BEFORE creating the agent
-    if let Some(ref instruction_files) = selected_instruction_files {
+    use tauri::Emitter;
+
+    // Create the agent first - don't block on skill generation
+    let agent_id = {
+        let manager = state.agent_manager.lock().await;
+        manager.create_agent(
+            working_dir.clone(),
+            github_url,
+            selected_instruction_files.clone(),
+            AgentSource::UI,
+            Arc::new(app_handle.clone()),
+        ).await?
+    };
+
+    // Spawn skill generation in the background if there are instruction files
+    if let Some(instruction_files) = selected_instruction_files {
         if !instruction_files.is_empty() {
-            eprintln!("Generating {} skills from instruction files...", instruction_files.len());
+            let meta_agent = state.meta_agent.clone();
+            let working_dir = working_dir.clone();
+            let app_handle = app_handle.clone();
+            let agent_id_for_events = agent_id.clone();
 
-            let meta_agent = state.meta_agent.lock().await;
-            let ai_client = meta_agent.get_ai_client();
+            tokio::spawn(async move {
+                eprintln!("Generating {} skills from instruction files in background...", instruction_files.len());
 
-            for instruction_file in instruction_files {
-                let instruction_path = std::path::Path::new(&working_dir)
-                    .join(".grove-instructions")
-                    .join(instruction_file);
+                // Emit start event
+                let _ = app_handle.emit("skill_generation:started", serde_json::json!({
+                    "agent_id": agent_id_for_events,
+                    "total": instruction_files.len(),
+                }));
 
-                if instruction_path.exists() {
-                    eprintln!("Generating skill from: {}", instruction_path.display());
+                let meta = meta_agent.lock().await;
+                let ai_client = meta.get_ai_client();
 
-                    match skill_generator::generate_skill_from_instruction(
-                        instruction_path.to_str().unwrap(),
-                        &working_dir,
-                        ai_client,
-                    ).await {
-                        Ok(skill) => {
-                            eprintln!("✓ Generated skill: {} at {}", skill.skill_name, skill.skill_path);
+                let mut completed = 0;
+                let mut failed = 0;
+
+                for instruction_file in &instruction_files {
+                    let instruction_path = std::path::Path::new(&working_dir)
+                        .join(".grove-instructions")
+                        .join(instruction_file);
+
+                    if instruction_path.exists() {
+                        eprintln!("Generating skill from: {}", instruction_path.display());
+
+                        // Emit progress event
+                        let _ = app_handle.emit("skill_generation:progress", serde_json::json!({
+                            "agent_id": agent_id_for_events,
+                            "file": instruction_file,
+                            "completed": completed,
+                            "total": instruction_files.len(),
+                        }));
+
+                        match skill_generator::generate_skill_from_instruction(
+                            instruction_path.to_str().unwrap(),
+                            &working_dir,
+                            ai_client,
+                        ).await {
+                            Ok(skill) => {
+                                eprintln!("✓ Generated skill: {} at {}", skill.skill_name, skill.skill_path);
+                                completed += 1;
+
+                                // Emit skill completed event
+                                let _ = app_handle.emit("skill_generation:skill_completed", serde_json::json!({
+                                    "agent_id": agent_id_for_events,
+                                    "file": instruction_file,
+                                    "skill_name": skill.skill_name,
+                                    "skill_path": skill.skill_path,
+                                }));
+                            }
+                            Err(e) => {
+                                eprintln!("✗ Failed to generate skill from {}: {}", instruction_file, e);
+                                failed += 1;
+
+                                // Emit skill failed event
+                                let _ = app_handle.emit("skill_generation:skill_failed", serde_json::json!({
+                                    "agent_id": agent_id_for_events,
+                                    "file": instruction_file,
+                                    "error": e.to_string(),
+                                }));
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("✗ Failed to generate skill from {}: {}", instruction_file, e);
-                            // Continue with other files even if one fails
-                        }
+                    } else {
+                        eprintln!("Warning: Instruction file not found: {}", instruction_path.display());
+                        failed += 1;
                     }
-                } else {
-                    eprintln!("Warning: Instruction file not found: {}", instruction_path.display());
                 }
-            }
 
-            drop(meta_agent); // Release the lock before creating agent
+                // Emit completion event
+                let _ = app_handle.emit("skill_generation:completed", serde_json::json!({
+                    "agent_id": agent_id_for_events,
+                    "completed": completed,
+                    "failed": failed,
+                    "total": instruction_files.len(),
+                }));
+
+                eprintln!("Skill generation completed: {} successful, {} failed", completed, failed);
+            });
         }
     }
 
-    let manager = state.agent_manager.lock().await;
-    manager.create_agent(working_dir, github_url, selected_instruction_files, AgentSource::UI, Arc::new(app_handle)).await
+    Ok(agent_id)
 }
 
 #[tauri::command]

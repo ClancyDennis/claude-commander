@@ -14,7 +14,7 @@
 /// Placeholders: {user_request}, {working_dir}
 pub const PLANNING_PROMPT_TEMPLATE: &str = r#"You are coordinating a 3-step automated development pipeline.
 
-IMPORTANT: Use the Plan agent (Task tool with subagent_type="Plan") to create the implementation plan.
+IMPORTANT: Use the Plan agent (Task tool with subagent_type="Plan") to determine how to accomplish this task.
 
 USER REQUEST:
 {user_request}
@@ -23,15 +23,15 @@ WORKING DIRECTORY:
 {working_dir}
 
 Your responsibilities:
-1. Launch a Plan agent to analyze the request and create a detailed implementation plan
-2. The Plan agent will break down the request into concrete steps
+1. Launch a Plan agent to analyze the request and determine what needs to be done
+2. The Plan agent will break down the task into concrete action steps
 3. The Plan agent will generate clarifying questions
 4. Once the Plan agent completes, extract its output and format as JSON
 
 Use the Task tool like this:
 - subagent_type: "Plan"
-- prompt: "Create a detailed implementation plan for: {user_request}. The implementation MUST be contained within {working_dir}. Break it into concrete steps and generate clarifying questions about requirements, approach, and constraints."
-- description: "Creating implementation plan"
+- prompt: "Determine how to accomplish this task: {user_request}. All work MUST be contained within {working_dir}. Break it into concrete action steps and generate clarifying questions about requirements, approach, and constraints."
+- description: "Planning task approach"
 
 After the Plan agent completes, format its output as JSON:
 {{
@@ -42,9 +42,9 @@ After the Plan agent completes, format its output as JSON:
 
 /// Builder step prompt template
 /// Placeholders: {user_request}, {plan}, {qna}, {working_dir}
-pub const BUILDER_PROMPT_TEMPLATE: &str = r#"You are an expert implementation agent in a 3-step automated development pipeline.
+pub const BUILDER_PROMPT_TEMPLATE: &str = r#"You are an expert builder agent in a 3-step automated development pipeline.
 
-Your role is to implement the planned solution based on the plan and clarifying question answers.
+Your role is to complete the task based on the plan and clarifying question answers.
 
 ORIGINAL USER REQUEST:
 {user_request}
@@ -52,43 +52,43 @@ ORIGINAL USER REQUEST:
 WORKING DIRECTORY:
 {working_dir}
 
-IMPLEMENTATION PLAN (from Planning Agent):
+ACTION PLAN (from Planning Agent):
 {plan}
 
 CLARIFYING QUESTIONS & ANSWERS:
 {qna}
 
 Your responsibilities:
-1. Implement ALL steps from the plan in the correct order
+1. Execute ALL steps from the plan in the correct order
 2. Follow the guidance from the Q&A answers
 3. Write production-quality code with proper error handling
 4. Ensure code is well-structured and follows project conventions
 5. Create or modify files as specified in the plan
 6. Add comments only where logic is non-obvious
 
-Implementation Guidelines:
-- Execute all file operations within {working_dir}
+Execution Guidelines:
+- All file operations must be within {working_dir}
 - Read existing files first to understand patterns and conventions
 - Follow the plan sequentially - complete each step before moving to the next
 - Use the Q&A answers to guide technical decisions
 - Write clean, maintainable code without over-engineering
 - Don't add features beyond what was requested
-- Test your implementation as you go (read outputs, check syntax)
-- If you encounter issues, adapt the plan intelligently
+- Test as you go (read outputs, check syntax)
+- If you encounter issues, adapt intelligently
 
 Output Format:
-After completing the implementation, provide a brief summary in this format:
+After completing the task, provide a brief summary:
 
 ```
-IMPLEMENTATION COMPLETE
+TASK COMPLETE
 
 Files Modified:
 - [list each file you created or modified]
 
-Implementation Summary:
-[2-3 sentence summary of what was built]
+Summary:
+[2-3 sentence summary of what was accomplished]
 
-Key Technical Decisions:
+Key Decisions:
 - [Decision 1 and rationale]
 - [Decision 2 and rationale]
 
@@ -97,41 +97,41 @@ Verification Notes:
 ```
 
 Important:
-- Focus on implementation, not planning
+- Focus on completing the task, not perfecting the code
 - The plan is your guide - follow it closely
 - Use the Q&A to resolve any ambiguities
 - Write code that works, not code that's perfect
-- If something in the plan doesn't make sense given the codebase, use your judgment"#;
+- If something in the plan doesn't fit the codebase, use your judgment"#;
 
 /// Verifier step prompt template
 /// Placeholders: {user_request}, {plan}, {qna}, {implementation}
 pub const VERIFIER_PROMPT_TEMPLATE: &str = r#"You are an expert verification agent in a 3-step automated development pipeline.
 
-Your role is to review the implementation and generate a comprehensive verification report.
+Your role is to verify that the task was completed successfully and generate a verification report.
 
 ORIGINAL USER REQUEST:
 {user_request}
 
-IMPLEMENTATION PLAN (from Planning Agent):
+ACTION PLAN (from Planning Agent):
 {plan}
 
 CLARIFYING Q&A:
 {qna}
 
-IMPLEMENTATION SUMMARY (from Builder Agent):
+BUILD SUMMARY (from Builder Agent):
 {implementation}
 
 Your responsibilities:
 1. Review all files that were created or modified
-2. Verify the implementation matches the plan
+2. Verify the work matches what the plan specified
 3. Check for code quality issues
 4. Identify any gaps or missing functionality
-5. Test the implementation if possible
+5. Test if possible
 6. Provide actionable recommendations
 
 Verification Process:
-1. Read all modified files to understand what was implemented
-2. Cross-reference implementation against the plan (check each step)
+1. Read all modified files to understand what was built
+2. Cross-reference against the plan (check each step was completed)
 3. Review code quality: error handling, edge cases, maintainability
 4. Check if Q&A answers were properly incorporated
 5. Look for potential bugs or issues
@@ -164,7 +164,7 @@ Output Format (MUST be valid JSON):
     "suggestions": ["How to test this feature"]
   }},
   "qna_incorporation": {{
-    "q1": "Answer was properly implemented by...",
+    "q1": "Answer was addressed by...",
     "q2": "Answer was addressed through..."
   }},
   "recommendations": [
@@ -175,7 +175,7 @@ Output Format (MUST be valid JSON):
     }}
   ],
   "files_reviewed": ["file1.rs", "file2.ts"],
-  "summary": "2-3 sentence overall assessment of the implementation quality and completeness"
+  "summary": "2-3 sentence overall assessment of whether the task was completed successfully"
 }}
 
 Guidelines:
@@ -184,7 +184,7 @@ Guidelines:
 - Provide specific, actionable recommendations
 - Include file paths and line numbers where relevant
 - Test compilation if possible (use cargo check, npm build, etc.)
-- Consider both what was implemented and what might be missing
+- Consider both what was done and what might be missing
 - Acknowledge good work, but don't hesitate to flag real issues"#;
 
 /// Replan step prompt template - used when verification decides to go back to planning
@@ -255,11 +255,17 @@ After the Plan agent completes, format its output as JSON:
 /// Edit this to customize pipeline behavior (e.g., skip linting, always test API, etc.)
 pub const DEFAULT_CUSTOM_INSTRUCTIONS: &str = r#"
 CUSTOM INSTRUCTIONS:
-- Always try to see the goal of the request
-- Don't add extra work via fromeworks or testing scripts unless needed to ensure a complete result
-- Skip linting unless explicitly requested
-- Prefer simple implementations over complex ones
-- If unsure, try and implement the most inline with the original request while ensuring you maintain usefulness
+- PRIORITY: Working, functional code > everything else
+- DO NOT create: README files, documentation, example files, test scripts, requirements.txt, setup guides, or usage instructions
+- DO NOT add scaffolding, boilerplate projects, or "getting started" templates
+- JUST ACCOMPLISH THE ACTUAL THING that was requested in order to succedd
+- Implement features completely to accomplish the task. Take care of errors as they occur.
+- When a request implies multiple components, implement ALL the steps ito achieve the goal
+- "Comprehensive" means the task was accomplished to the best of your ability, not that it has docs and examples
+- Skip linting, formatting passes, and documentation unless explicitly requested
+- If the request is ambiguous, accomplish what you can, do not provide more documentation
+- prefer using venv and local build tools over system ones
+- Verify the implementation performed the task (doesn't matter about how or build errors or reuseability) - the deliverable is a completed task
 "#;
 
 /// Task refinement prompt - makes vague user requests more specific and actionable

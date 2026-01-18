@@ -163,6 +163,75 @@ impl ToolRegistry {
             }),
         });
 
+        // Data Shipping Tools - Chain agent work together
+        tools.push(Tool {
+            name: "ShipDataToAgent".to_string(),
+            description: "Send data from one agent's output to another agent as context. Use this to chain agent work together - e.g., Agent A analyzes code, then you ship that analysis to Agent B to write tests based on it. The source agent's output becomes context for the target agent's next task.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source_agent_id": {
+                        "type": "string",
+                        "description": "The agent ID to get data from (the agent whose output you want to share)"
+                    },
+                    "target_agent_id": {
+                        "type": "string",
+                        "description": "The agent ID to send data to (the agent that will receive the context)"
+                    },
+                    "prompt_with_context": {
+                        "type": "string",
+                        "description": "The new task/prompt to send to the target agent. The source agent's output will be prepended as context."
+                    },
+                    "data_selector": {
+                        "type": "string",
+                        "enum": ["last_output", "all_outputs", "final_result"],
+                        "description": "What data to ship from source agent. 'last_output' = most recent text output, 'all_outputs' = all text outputs, 'final_result' = the final result summary. Default: last_output"
+                    }
+                },
+                "required": ["source_agent_id", "target_agent_id", "prompt_with_context"]
+            }),
+        });
+
+        tools.push(Tool {
+            name: "CreateChainedAgent".to_string(),
+            description: "Create a new agent that automatically receives context from an existing agent's output. This is a convenience tool that combines creating an agent and shipping data in one step. The new agent starts working immediately with the previous agent's results as context.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source_agent_id": {
+                        "type": "string",
+                        "description": "The agent ID to get context from (the agent whose output the new agent should know about)"
+                    },
+                    "working_dir": {
+                        "type": "string",
+                        "description": "The working directory for the new agent"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "The task for the new agent. The source agent's output will be automatically included as context."
+                    }
+                },
+                "required": ["source_agent_id", "working_dir", "prompt"]
+            }),
+        });
+
+        // Quick Actions - Common operations
+        tools.push(Tool {
+            name: "QuickAction".to_string(),
+            description: "Execute common quick actions. Available actions: 'status' (list all agents and their status), 'stop_all' (stop all running agents), 'queue' (show the result queue status), 'clear_completed' (clear completed agents from display).".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["status", "stop_all", "queue", "clear_completed"],
+                        "description": "The quick action to execute"
+                    }
+                },
+                "required": ["action"]
+            }),
+        });
+
         Self { tools }
     }
 

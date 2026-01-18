@@ -16,7 +16,7 @@
     });
   }
 
-  const isUser = message.role === "user";
+  const isUser = $derived(message.role === "user");
 </script>
 
 <div class="message-wrapper" class:user={isUser} class:assistant={!isUser}>

@@ -52,6 +52,9 @@
     }
   });
 
+  // Track the current agent ID to detect agent switches
+  let previousAgentId = $state<string | undefined>(undefined);
+
   // Mark agent as viewed when it's displayed
   $effect(() => {
     if (effectiveAgentId) {
@@ -59,15 +62,34 @@
     }
   });
 
-  // Smart auto-scroll
+  // Reset scroll position when switching agents
+  $effect(() => {
+    if (effectiveAgentId !== previousAgentId) {
+      previousAgentId = effectiveAgentId;
+      if (outputContainer) {
+        // Scroll to bottom immediately when switching agents
+        requestAnimationFrame(() => {
+          if (outputContainer) {
+            outputContainer.scrollTop = outputContainer.scrollHeight;
+          }
+        });
+      }
+    }
+  });
+
+  // Smart auto-scroll for new content
   $effect(() => {
     if (outputContainer && outputs.length > 0) {
       const { scrollTop, scrollHeight, clientHeight } = outputContainer;
       const distanceToBottom = scrollHeight - scrollTop - clientHeight;
-      
+
       // Auto-scroll if we are within 500px of the bottom (or if it's the first load)
       if (distanceToBottom < 500 || scrollTop === 0) {
-        outputContainer.scrollTop = scrollHeight;
+        requestAnimationFrame(() => {
+          if (outputContainer) {
+            outputContainer.scrollTop = outputContainer.scrollHeight;
+          }
+        });
       }
     }
   });

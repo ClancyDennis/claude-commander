@@ -280,11 +280,13 @@
   });
 </script>
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="overlay" onclick={onClose}></div>
 <div class="dialog">
   <header>
     <h2>Export Output</h2>
-    <button class="close-btn" onclick={onClose}>
+    <button class="close-btn" onclick={onClose} aria-label="Close dialog">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"/>
         <line x1="6" y1="6" x2="18" y2="18"/>

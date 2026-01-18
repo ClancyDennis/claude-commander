@@ -2,12 +2,12 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde_json::Value;
-use claude_agent_manager_lib::events::AppEventEmitter;
-use claude_agent_manager_lib::agent_manager::AgentManager;
-use claude_agent_manager_lib::auto_pipeline::AutoPipelineManager;
-use claude_agent_manager_lib::logger::Logger;
-use claude_agent_manager_lib::agent_runs_db::AgentRunsDB;
-use claude_agent_manager_lib::hook_server;
+use claude_commander_lib::events::AppEventEmitter;
+use claude_commander_lib::agent_manager::AgentManager;
+use claude_commander_lib::auto_pipeline::AutoPipelineManager;
+use claude_commander_lib::logger::Logger;
+use claude_commander_lib::agent_runs_db::AgentRunsDB;
+use claude_commander_lib::hook_server;
 
 struct CliEventEmitter;
 
@@ -100,13 +100,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Pipeline Manager
     let pipeline_manager = AutoPipelineManager::new().map_err(|e| format!("Failed to init manager: {}", e))?;
-    
+
     println!("Creating pipeline for request: {}", user_request);
     let pipeline_id = pipeline_manager.create_pipeline(user_request.to_string(), working_dir).await?;
     println!("Pipeline created: {}", pipeline_id);
 
     println!("Executing pipeline...");
-    pipeline_manager.execute_pipeline(pipeline_id, agent_manager, event_emitter).await?;
+    // Get the execution context and run the pipeline
+    let ctx = pipeline_manager.get_ctx();
+    ctx.execute_pipeline(pipeline_id, agent_manager, event_emitter).await?;
 
     println!("Done.");
     Ok(())

@@ -51,7 +51,7 @@
 <div class="database-stats">
   <header class="stats-header">
     <h2>Database Statistics</h2>
-    <button class="refresh-btn" onclick={fetchDatabaseStats} disabled={loading}>
+    <button class="refresh-btn" onclick={fetchDatabaseStats} disabled={loading} aria-label="Refresh statistics">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M1 4v6h6M23 20v-6h-6"/>
         <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 014.51 15"/>
@@ -104,19 +104,6 @@
         <div class="stat-content">
           <div class="stat-value">{formatNumber(stats.total_prompts)}</div>
           <div class="stat-label">Total Prompts</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon" style="background: var(--warning);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-          </svg>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{formatCost(stats.total_cost_usd)}</div>
-          <div class="stat-label">Total Cost</div>
         </div>
       </div>
     </div>

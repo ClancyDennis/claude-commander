@@ -6,6 +6,7 @@
   let filterType = $state<"all" | "success" | "failed" | "pending">("all");
   let selectedTool = $state<string | "all">("all");
   let searchQuery = $state("");
+  let eventsContainer: HTMLDivElement | null = $state(null);
 
   // Calculate statistics from tool events
   const toolStats = $derived.by(() => {
@@ -93,6 +94,23 @@
     if (ms < 1000) return `${ms.toFixed(0)}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
   }
+
+  // Auto-scroll to latest tool events when they arrive
+  $effect(() => {
+    if (eventsContainer && $selectedAgentTools.length > 0 && filterType === "all" && selectedTool === "all" && !searchQuery.trim()) {
+      const { scrollTop, scrollHeight, clientHeight } = eventsContainer;
+      const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+
+      // Auto-scroll if we are within 500px of the bottom (or at the top)
+      if (distanceToBottom < 500 || scrollTop === 0) {
+        requestAnimationFrame(() => {
+          if (eventsContainer) {
+            eventsContainer.scrollTop = eventsContainer.scrollHeight;
+          }
+        });
+      }
+    }
+  });
 </script>
 
 <aside class="tool-activity">
@@ -152,7 +170,7 @@
     />
   </div>
 
-  <div class="events">
+  <div class="events" bind:this={eventsContainer}>
     {#each filteredTools as event, i (event.toolCallId + i)}
       <div class="event {event.hookEventName.toLowerCase()} animate-slide-up">
         <div class="event-header">

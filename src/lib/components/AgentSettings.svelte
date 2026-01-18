@@ -36,6 +36,7 @@
           requireFinalReview: true,
           autoValidationCommand: "cargo check",
           autoApproveOnVerification: false,
+          instructionFiles: [],
         };
       }
     });
@@ -58,197 +59,24 @@
 
 <div class="agent-settings">
   <header class="settings-header">
-    <h2>Pipeline Settings for Agent</h2>
+    <h2>Agent Settings</h2>
     <span class="agent-id">{agentId.substring(0, 8)}</span>
   </header>
 
   {#if settings}
     <div class="settings-content">
-      <!-- Master Toggle -->
       <section class="settings-section">
         <div class="section-header">
-          <h3>Pipeline System</h3>
-          <label class="toggle-large">
-            <input type="checkbox" bind:checked={settings.enablePipeline} />
-            <span class="slider-large"></span>
-          </label>
+          <h3>Display Settings</h3>
         </div>
         <p class="section-description">
-          Enable the complete pipeline workflow with phases and checkpoints
+          Configure how the agent output is displayed
         </p>
-        {#if settings.enablePipeline}
-          <div class="warning-banner">
-            ⚠️ Pipeline system is experimental. Use with caution.
-          </div>
-        {/if}
+        <div class="setting-item">
+          <!-- Placeholder for future display settings -->
+          <p style="color: var(--text-muted); font-style: italic;">No display settings available yet.</p>
+        </div>
       </section>
-
-      {#if settings.enablePipeline}
-        <!-- Phase A: Agent Pool -->
-        <section class="settings-section">
-          <div class="section-header">
-            <h3>P-Thread: Agent Pool</h3>
-            <label class="toggle">
-              <input type="checkbox" bind:checked={settings.useAgentPool} />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <p class="section-description">Use shared agent pool for task execution</p>
-
-          {#if settings.useAgentPool}
-            <div class="setting-item">
-              <label>
-                Pool Priority
-                <select bind:value={settings.poolPriority}>
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
-            </div>
-          {/if}
-        </section>
-
-        <!-- Phase B: Orchestration -->
-        <section class="settings-section">
-          <div class="section-header">
-            <h3>B-Thread: Task Orchestration</h3>
-            <label class="toggle">
-              <input type="checkbox" bind:checked={settings.enableOrchestration} />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <p class="section-description">
-            Automatically decompose complex tasks into workflows
-          </p>
-
-          {#if settings.enableOrchestration}
-            <div class="setting-item">
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={settings.autoDecompose} />
-                Auto-decompose tasks
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label>
-                Max Parallel Tasks
-                <input
-                  type="number"
-                  bind:value={settings.maxParallelTasks}
-                  min="1"
-                  max="20"
-                />
-              </label>
-            </div>
-          {/if}
-        </section>
-
-        <!-- Phase C: Verification -->
-        <section class="settings-section">
-          <div class="section-header">
-            <h3>F-Thread: Verification</h3>
-            <label class="toggle">
-              <input type="checkbox" bind:checked={settings.enableVerification} />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <p class="section-description">
-            Best-of-N verification for high-confidence results
-          </p>
-
-          {#if settings.enableVerification}
-            <div class="setting-item">
-              <label>
-                Verification Strategy
-                <select bind:value={settings.verificationStrategy}>
-                  <option value="majority">Majority Vote</option>
-                  <option value="weighted">Weighted Consensus</option>
-                  <option value="meta">Meta-Agent Review</option>
-                  <option value="first">First Correct</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label>
-                Number of Agents (N)
-                <input
-                  type="number"
-                  bind:value={settings.verificationN}
-                  min="2"
-                  max="10"
-                />
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label>
-                Confidence Threshold
-                <input
-                  type="range"
-                  bind:value={settings.confidenceThreshold}
-                  min="0.5"
-                  max="1.0"
-                  step="0.05"
-                />
-                <span class="range-value"
-                  >{(settings.confidenceThreshold * 100).toFixed(0)}%</span
-                >
-              </label>
-            </div>
-          {/if}
-        </section>
-
-        <!-- Phase D: Checkpoints -->
-        <section class="settings-section">
-          <div class="section-header">
-            <h3>C-Thread: Checkpoints</h3>
-            <label class="toggle">
-              <input type="checkbox" bind:checked={settings.enableCheckpoints} />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <p class="section-description">Phase gates with approval and validation</p>
-
-          {#if settings.enableCheckpoints}
-            <div class="setting-item">
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={settings.requirePlanReview} />
-                Require plan review
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={settings.requireFinalReview} />
-                Require final review
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label>
-                Auto-validation Command
-                <input
-                  type="text"
-                  bind:value={settings.autoValidationCommand}
-                  placeholder="e.g., cargo check"
-                />
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <label class="checkbox-label">
-                <input
-                  type="checkbox"
-                  bind:checked={settings.autoApproveOnVerification}
-                />
-                Auto-approve if verification passes
-              </label>
-            </div>
-          {/if}
-        </section>
-      {/if}
     </div>
 
     <footer class="settings-footer">

@@ -383,11 +383,7 @@ impl AgentManager {
         }
 
         // Increment prompt counter
-        {
-            let mut stats = agent.stats.lock().await;
-            stats.total_prompts += 1;
-            stats.last_activity = chrono::Utc::now().to_rfc3339();
-        }
+        statistics::increment_prompts(&agent.stats).await;
 
         // Record prompt in database
         if let Some(ref runs_db) = self.runs_db {

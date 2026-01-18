@@ -78,11 +78,14 @@
     {/if}
   </div>
 
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="divider {direction}"
     onmousedown={handleMouseDown}
     role="separator"
     tabindex="0"
+    aria-label="Draggable splitter"
   >
     <div class="divider-handle">
       {#if direction === "horizontal"}

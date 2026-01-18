@@ -1,12 +1,13 @@
 [package]
-name = "claude-agent-manager"
+name = "claude-commander"
 version = "0.1.0"
-description = "A Tauri app to manage multiple Claude Code instances"
+description = "Claude Commander - Mission control for Claude Code agents"
 authors = ["you"]
 edition = "2021"
+default-run = "claude-commander"
 
 [lib]
-name = "claude_agent_manager_lib"
+name = "claude_commander_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
@@ -30,6 +31,11 @@ regex = "1"
 dotenvy = "0.15"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "5"
+async-trait = "0.1"
+
+[[bin]]
+name = "orchestrator_integrated_test"
+path = "src/bin/orchestrator_integrated_test.rs"
 
 [profile.release]
 strip = true

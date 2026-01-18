@@ -1,8 +1,6 @@
 # Claude Commander
 
-*Formerly "Claude Agent Manager"*
-
-A desktop application for AI-native agent orchestration with pipelines, cost tracking, and multi-agent workflows.
+Mission control for Claude Code agents. A desktop application for AI-native agent orchestration with pipelines, cost tracking, and multi-agent workflows.
 
 ## Overview
 
@@ -396,24 +394,46 @@ claude-commander/
 - **HTTP Server**: Tokio + Axum for hook server
 - **Persistence**: JSON files for cost history
 
+## Additional Tools
+
+### OneDrive PDF Connector
+
+A Python library for listing and downloading PDF files from Microsoft OneDrive, located in the `one_drive_connector/` directory.
+
+**Features:**
+- OAuth 2.0 device code flow authentication
+- Persistent token caching
+- Recursive PDF search
+- Batch downloads with progress tracking
+- Comprehensive error handling
+
+**Quick Start:**
+```bash
+cd one_drive_connector
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env and add your Azure AD client ID
+python example.py list-pdfs
+```
+
+See [one_drive_connector/README.md](one_drive_connector/README.md) for complete documentation.
+
 ## Project History
 
-This project was originally called "Claude Agent Manager" and focused on managing individual Claude Code agents. It has evolved into "Claude Commander" - a comprehensive AI-native orchestration platform with:
+Claude Commander is a comprehensive AI-native orchestration platform featuring:
 
 - Multi-phase pipeline workflows
 - Advanced agent patterns (P/B/F/C threads)
 - Cost tracking and analytics
-- Meta-agent coordination
-
-The name change reflects the expanded scope beyond simple agent management to full orchestration capabilities.
+- Meta-agent coordination via System Commander
 
 ## License
 
-[Your License Here]
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-[Your Contributing Guidelines Here]
+Contributions welcome! Please open an issue first to discuss what you'd like to change.
 
 ---
 

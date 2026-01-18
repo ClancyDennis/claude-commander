@@ -84,6 +84,7 @@ pub async fn extract_agent_output(
         return Ok(StepOutput {
             raw_text: last_text,
             structured_data,
+            agent_outputs: outputs.clone(),
         });
     }
 
@@ -101,5 +102,6 @@ pub async fn extract_agent_output(
     Ok(StepOutput {
         raw_text: last_text,
         structured_data,
+        agent_outputs: outputs.clone(),
     })
 }

@@ -289,3 +289,108 @@ pub struct InstructionFileInfo {
     pub size: u64,
     pub modified: String,
 }
+
+// ============================================================================
+// System Commander UX Types
+// ============================================================================
+
+/// Action log entry for the commander action sidebar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommanderAction {
+    pub action_type: String,
+    pub description: String,
+    pub timestamp: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    pub success: bool,
+}
+
+/// Status of a queued agent result
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentResultStatus {
+    Pending,      // Waiting in queue
+    Processing,   // Currently being analyzed
+    Processed,    // Done
+}
+
+/// A queued agent result waiting to be processed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedAgentResult {
+    pub agent_id: String,
+    pub working_dir: String,
+    pub output: String,
+    pub timestamp: i64,
+    pub status: AgentResultStatus,
+}
+
+impl QueuedAgentResult {
+    /// Create a summary for queue display
+    pub fn summary(&self) -> QueueItemSummary {
+        QueueItemSummary {
+            agent_id: self.agent_id.clone(),
+            working_dir: self.working_dir.clone(),
+            timestamp: self.timestamp,
+        }
+    }
+}
+
+/// Summary of a queue item for display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueItemSummary {
+    pub agent_id: String,
+    pub working_dir: String,
+    pub timestamp: i64,
+}
+
+/// Overall queue status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueStatus {
+    pub pending: usize,
+    pub items: Vec<QueueItemSummary>,
+}
+
+/// Event emitted when queue is updated
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultQueueUpdatedEvent {
+    pub queue_status: QueueStatus,
+}
+
+/// Enhanced agent activity event with current task info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActivityDetailEvent {
+    pub agent_id: String,
+    pub activity: String,           // Human-readable activity: "Reading src/main.rs..."
+    pub tool_name: String,          // The tool being used
+    pub timestamp: i64,
+}
+
+/// Progress information for an agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProgress {
+    pub stage: String,              // "planning", "executing", "verifying"
+    pub message: String,            // Human-readable status
+}
+
+/// Enhanced status update with activity details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentStatusUpdateEvent {
+    pub agent_id: String,
+    pub status: AgentStatus,
+    pub working_dir: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_activity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<AgentProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_tool: Option<String>,
+    pub tool_count: u32,
+}

@@ -58,7 +58,11 @@
 
   function scrollToBottom() {
     if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      requestAnimationFrame(() => {
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      });
     }
   }
 
@@ -96,7 +100,7 @@
   $effect(() => {
     // Auto-scroll when new messages arrive
     if ($metaAgentChat.length > 0) {
-      setTimeout(scrollToBottom, 100);
+      scrollToBottom();
     }
   });
 </script>
@@ -104,8 +108,8 @@
 <div class="chat-view">
   <div class="chat-header">
     <div class="header-left">
-      <span class="header-icon">💬</span>
-      <span class="header-title">Chat Assistant</span>
+      <span class="header-icon">🎛️</span>
+      <span class="header-title">System Commander</span>
       {#if $metaAgentThinking}
         <span class="thinking-indicator">Thinking...</span>
       {/if}
@@ -120,10 +124,10 @@
   <div class="messages-container" bind:this={messagesContainer}>
     {#if $metaAgentChat.length === 0}
       <div class="empty-state">
-        <div class="empty-icon">🤖</div>
-        <div class="empty-title">AI-Native Control</div>
+        <div class="empty-icon">🚀</div>
+        <div class="empty-title">Mission Control</div>
         <div class="empty-description">
-          Ask me to manage agents, send prompts, or control the application.
+          Command your agents, deploy prompts, take control.
         </div>
         <div class="example-prompts">
           <div class="example-title">Try asking:</div>

@@ -156,12 +156,19 @@ fn parse_skill_response(ai_response: &str, fallback_name: &str) -> Result<SkillC
     let json_str = if ai_response.trim().starts_with('{') {
         ai_response.trim()
     } else {
-        // Try to extract from markdown code block
-        if let Some(start) = ai_response.find("```json") {
-            if let Some(end) = ai_response[start..].find("```") {
-                let json_start = start + 7; // length of "```json\n"
-                let json_end = start + end;
-                &ai_response[json_start..json_end].trim()
+        // Try to extract from markdown code block - safe character-boundary-aware method
+        if let Some(start_idx) = ai_response.find("```json") {
+            // Find the newline after ```json
+            let content_start = if let Some(newline_idx) = ai_response[start_idx..].find('\n') {
+                start_idx + newline_idx + 1
+            } else {
+                start_idx + "```json".len()
+            };
+
+            // Find the closing ```
+            if let Some(end_idx) = ai_response[content_start..].find("```") {
+                let json_end = content_start + end_idx;
+                ai_response[content_start..json_end].trim()
             } else {
                 return Err("Could not find closing ``` for JSON block".to_string());
             }

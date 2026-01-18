@@ -1,5 +1,6 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type { Agent, AgentOutput, ToolEvent, ChatMessage, MetaAgentToolCallEvent, AgentStatistics, AgentRun } from "../types";
+import { selectedAutoPipelineId } from "./autoPipelines";
 
 export const agents = writable<Map<string, Agent>>(new Map());
 export const selectedAgentId = writable<string | null>(null);
@@ -131,18 +132,17 @@ export function appendOutput(agentId: string, output: AgentOutput) {
   });
 
   // Update unread count if agent not currently viewed
-  viewedAgents.subscribe((viewed) => {
-    if (!viewed.has(agentId)) {
-      agents.update((map) => {
-        const agent = map.get(agentId);
-        if (agent) {
-          const unreadCount = (agent.unreadOutputs ?? 0) + 1;
-          map.set(agentId, { ...agent, unreadOutputs: unreadCount });
-        }
-        return new Map(map);
-      });
-    }
-  })();
+  const currentViewed = get(viewedAgents);
+  if (!currentViewed.has(agentId)) {
+    agents.update((map) => {
+      const agent = map.get(agentId);
+      if (agent) {
+        const unreadCount = (agent.unreadOutputs ?? 0) + 1;
+        map.set(agentId, { ...agent, unreadOutputs: unreadCount });
+      }
+      return new Map(map);
+    });
+  }
 
   // Update last activity
   updateAgentActivity(agentId, {
@@ -223,6 +223,7 @@ export function openChat() {
 export function openAgent(agentId: string) {
   viewMode.set('agent');
   selectedAgentId.set(agentId);
+  selectedAutoPipelineId.set(null);
   markAgentViewed(agentId);
 }
 
@@ -260,4 +261,48 @@ export function setHistoricalRuns(runs: AgentRun[]) {
 
 export function selectHistoricalRun(run: AgentRun | null) {
   selectedHistoricalRun.set(run);
+}
+
+// Orchestrator activity stores
+import type { OrchestratorToolCall, OrchestratorStateChange, OrchestratorDecision } from "../types";
+
+export const orchestratorToolCalls = writable<OrchestratorToolCall[]>([]);
+export const orchestratorStateChanges = writable<OrchestratorStateChange[]>([]);
+export const orchestratorDecisions = writable<OrchestratorDecision[]>([]);
+export const orchestratorCurrentState = writable<string>("Idle");
+
+export function addOrchestratorToolCall(toolCall: OrchestratorToolCall) {
+  orchestratorToolCalls.update((calls) => [...calls, toolCall]);
+}
+
+export function addOrchestratorStateChange(stateChange: OrchestratorStateChange) {
+  orchestratorStateChanges.update((changes) => [...changes, stateChange]);
+  orchestratorCurrentState.set(stateChange.new_state);
+}
+
+export function addOrchestratorDecision(decision: OrchestratorDecision) {
+  orchestratorDecisions.update((decisions) => [...decisions, decision]);
+}
+
+export function clearOrchestratorActivity() {
+  orchestratorToolCalls.set([]);
+  orchestratorStateChanges.set([]);
+  orchestratorDecisions.set([]);
+  orchestratorCurrentState.set("Idle");
+  stepToolCounts.set(new Map());
+}
+
+// Real-time step tool counts (1=Planning, 2=Building, 3=Verifying)
+export const stepToolCounts = writable<Map<number, number>>(new Map());
+
+export function incrementStepToolCount(stepNumber: number) {
+  stepToolCounts.update(m => {
+    const current = m.get(stepNumber) || 0;
+    m.set(stepNumber, current + 1);
+    return new Map(m);
+  });
+}
+
+export function clearStepToolCounts() {
+  stepToolCounts.set(new Map());
 }

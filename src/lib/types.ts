@@ -80,6 +80,19 @@ export interface AgentInfo {
   };
 }
 
+export interface AgentOutputEvent {
+  agent_id: string;
+  output_type: string;
+  content: string;
+  parsed_json?: Record<string, unknown>;
+  metadata?: OutputMetadata;
+  // Enhanced fields matching Rust struct
+  session_id?: string;
+  uuid?: string;
+  parent_tool_use_id?: string;
+  subtype?: string;
+}
+
 export interface AgentStatusEvent {
   agent_id: string;
   status: AgentStatus;
@@ -303,7 +316,38 @@ export interface AutoPipelineStep {
   output?: {
     raw_text: string;
     structured_data?: any;
+    agent_outputs?: AgentOutputEvent[];
   };
   started_at?: string;
   completed_at?: string;
+}
+
+// Orchestrator activity types
+export interface OrchestratorToolCall {
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+  is_error?: boolean;
+  summary?: string;
+  current_state: string;
+  iteration: number;
+  timestamp: number;
+}
+
+export interface OrchestratorStateChange {
+  old_state: string;
+  new_state: string;
+  iteration: number;
+  generated_skills: number;
+  generated_subagents: number;
+  claudemd_generated: boolean;
+  timestamp: number;
+}
+
+export interface OrchestratorDecision {
+  pipeline_id: string;
+  decision: 'Complete' | 'Iterate' | 'Replan' | 'GiveUp';
+  reasoning: string;
+  issues: string[];
+  suggestions: string[];
+  timestamp: number;
 }

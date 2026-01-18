@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    claude_agent_manager_lib::run()
+    claude_commander_lib::run()
 }

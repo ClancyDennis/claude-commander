@@ -14,6 +14,8 @@ pub mod pipeline_manager;
 pub mod verification;
 pub mod instruction_manager;
 pub mod skill_generator;
+pub mod subagent_generator;
+pub mod claudemd_generator;
 pub mod agent_runs_db;
 pub mod auto_pipeline;
 pub mod utils;

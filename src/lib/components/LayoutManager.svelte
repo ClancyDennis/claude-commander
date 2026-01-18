@@ -1,5 +1,8 @@
 <script lang="ts">
   import { layoutMode, gridSize } from "../stores/agents";
+  import HelpDialog from "./HelpDialog.svelte";
+
+  let showHelp = $state(false);
 
   function cycleLayout() {
     layoutMode.update((current) => {
@@ -58,7 +61,7 @@
 
   {#if $layoutMode === 'grid'}
     <div class="grid-size-controls">
-      <label>Grid:</label>
+      <span>Grid:</span>
       <button
         class="size-btn"
         class:active={$gridSize === 2}
@@ -75,7 +78,23 @@
       </button>
     </div>
   {/if}
+
+  <button
+    class="help-btn"
+    onclick={() => showHelp = true}
+    title="Help & Shortcuts"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  </button>
 </div>
+
+{#if showHelp}
+  <HelpDialog onClose={() => showHelp = false} />
+{/if}
 
 <style>
   .layout-manager {
@@ -85,6 +104,7 @@
     padding: var(--space-sm) var(--space-md);
     background-color: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
+    position: relative;
   }
 
   .layout-controls {
@@ -131,7 +151,7 @@
     border-left: 1px solid var(--border);
   }
 
-  .grid-size-controls label {
+  .grid-size-controls span {
     font-size: 13px;
     color: var(--text-muted);
     font-weight: 600;
@@ -159,4 +179,32 @@
     border-color: var(--accent);
     color: var(--accent);
   }
+
+  .help-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    margin-left: auto;
+  }
+
+  .help-btn:hover {
+    background-color: var(--bg-elevated);
+    border-color: var(--border-light);
+    color: var(--accent);
+    transform: scale(1.05);
+  }
+
+  .help-btn svg {
+    width: 20px;
+    height: 20px;
+  }
 </style>
+

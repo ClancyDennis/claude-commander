@@ -20,16 +20,36 @@ pub async fn start_auto_pipeline(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let manager = state.auto_pipeline_manager.clone();
+    use tauri::Emitter;
+
     let agent_manager = state.agent_manager.clone();
 
     // Clone for spawned task
     let pipeline_id_clone = pipeline_id.clone();
 
-    // Spawn async execution
+    // Get the execution context and emit started event, then release the lock
+    // This allows multiple pipelines to run concurrently
+    let ctx = {
+        let mgr = state.auto_pipeline_manager.lock().await;
+
+        // Emit pipeline started event so the UI can switch to view it
+        if let Some(pipeline) = mgr.get_pipeline(&pipeline_id).await {
+            let _ = app_handle.emit("auto_pipeline:started", pipeline);
+        } else {
+            // Fallback if somehow pipeline is missing (shouldn't happen)
+            let _ = app_handle.emit("auto_pipeline:started", serde_json::json!({
+                "pipeline_id": pipeline_id,
+            }));
+        }
+
+        // Get the shared context - this is Arc-wrapped so we can use it after dropping the lock
+        mgr.get_ctx()
+    };
+    // Lock is now released - other pipelines can start
+
+    // Spawn async execution using the context directly
     tokio::spawn(async move {
-        let mgr = manager.lock().await;
-        let _ = mgr.execute_pipeline(pipeline_id_clone, agent_manager, Arc::new(app_handle)).await;
+        let _ = ctx.execute_pipeline(pipeline_id_clone, agent_manager, Arc::new(app_handle)).await;
     });
 
     Ok(())
