@@ -10,7 +10,7 @@
 mod agent_utils;
 mod orchestrator;
 mod prompts;
-mod steps;
+pub mod steps;
 mod types;
 
 // Skill synthesis and enhanced pipeline modules
