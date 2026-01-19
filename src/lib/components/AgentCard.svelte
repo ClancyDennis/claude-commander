@@ -3,31 +3,13 @@
   import { selectedAgentOutputs, agentOutputs } from "../stores/agents";
   import StatusBadge from "./StatusBadge.svelte";
   import TypingIndicator from "./TypingIndicator.svelte";
+  import { formatPath, formatTimeAgo } from '$lib/utils/formatting';
 
   let { agent }: { agent: Agent } = $props();
 
   const outputs = $derived($agentOutputs.get(agent.id) ?? []);
   const recentOutputs = $derived(outputs.slice(-3));
   const hasOutputs = $derived(outputs.length > 0);
-
-  function formatPath(path: string): string {
-    const parts = path.split("/");
-    return parts[parts.length - 1] || path;
-  }
-
-  function formatTime(date?: Date): string {
-    if (!date) return "Never";
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-
-    if (seconds < 60) return `${seconds}s ago`;
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return date.toLocaleDateString();
-  }
 </script>
 
 <div class="agent-card">
@@ -88,7 +70,7 @@
         <circle cx="12" cy="12" r="10"/>
         <polyline points="12 6 12 12 16 14"/>
       </svg>
-      <span>{formatTime(agent.lastActivity)}</span>
+      <span>{formatTimeAgo(agent.lastActivity)}</span>
     </div>
   </div>
 </div>

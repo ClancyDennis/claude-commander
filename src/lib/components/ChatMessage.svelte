@@ -1,20 +1,13 @@
 <script lang="ts">
   import type { ChatMessage } from "../types";
   import ToolCallDisplay from "./ToolCallDisplay.svelte";
+  import { formatTimeOfDay } from '$lib/utils/formatting';
 
   interface Props {
     message: ChatMessage;
   }
 
   let { message }: Props = $props();
-
-  function formatTime(timestamp: number): string {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
 
   const isUser = $derived(message.role === "user");
 </script>
@@ -24,7 +17,7 @@
     <div class="message-header">
       <span class="role-icon">{isUser ? "👤" : "🤖"}</span>
       <span class="role-name">{isUser ? "You" : "Assistant"}</span>
-      <span class="timestamp">{formatTime(message.timestamp)}</span>
+      <span class="timestamp">{formatTimeOfDay(message.timestamp)}</span>
     </div>
 
     <div class="message-content">

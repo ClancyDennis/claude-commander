@@ -9,7 +9,7 @@
 
 mod agent_utils;
 mod orchestrator;
-mod prompts;
+pub mod prompts;
 pub mod steps;
 mod types;
 

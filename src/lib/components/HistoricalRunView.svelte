@@ -3,6 +3,8 @@
   import { selectedHistoricalRun } from "../stores/agents";
   import type { AgentRun } from "../types";
   import { onMount } from "svelte";
+  import { formatTimeAbsolute, formatDurationVerbose, formatBytes, formatCost } from '$lib/utils/formatting';
+  import { getStatusColorHex } from '$lib/utils/status';
 
   let prompts = $state<Array<{ prompt: string; timestamp: number }>>([]);
   let loading = $state(true);
@@ -29,67 +31,6 @@
     }
   }
 
-  function formatTimestamp(timestamp: number): string {
-    const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  }
-
-  function formatDuration(startTime: number, endTime?: number): string {
-    const end = endTime || Date.now();
-    const duration = end - startTime;
-    const minutes = Math.floor(duration / 60000);
-
-    if (minutes < 1) return "< 1 minute";
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
-    const hours = Math.floor(minutes / 60);
-    const remainingMins = minutes % 60;
-    if (hours < 24) {
-      return remainingMins > 0
-        ? `${hours} hour${hours !== 1 ? 's' : ''}, ${remainingMins} min`
-        : `${hours} hour${hours !== 1 ? 's' : ''}`;
-    }
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return remainingHours > 0
-      ? `${days} day${days !== 1 ? 's' : ''}, ${remainingHours} hour${remainingHours !== 1 ? 's' : ''}`
-      : `${days} day${days !== 1 ? 's' : ''}`;
-  }
-
-  function getStatusColor(status: string): string {
-    switch (status) {
-      case "running":
-        return "#10b981"; // green
-      case "completed":
-        return "#10b981"; // green
-      case "stopped":
-        return "#6b7280"; // gray
-      case "crashed":
-        return "#ef4444"; // red
-      case "waiting_input":
-        return "#f59e0b"; // amber
-      default:
-        return "#6b7280";
-    }
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  function formatCost(cost?: number): string {
-    if (!cost) return '$0.00';
-    return `$${cost.toFixed(4)}`;
-  }
 </script>
 
 {#if $selectedHistoricalRun}
@@ -109,7 +50,7 @@
             <span class="full-path">{$selectedHistoricalRun.working_dir}</span>
             <span
               class="status-badge"
-              style="background-color: {getStatusColor($selectedHistoricalRun.status)}"
+              style="background-color: {getStatusColorHex($selectedHistoricalRun.status)}"
             >
               {$selectedHistoricalRun.status.toUpperCase()}
             </span>
@@ -121,12 +62,12 @@
     <div class="stats-summary">
       <div class="stat-card">
         <div class="stat-label">Started</div>
-        <div class="stat-value">{formatTimestamp($selectedHistoricalRun.started_at)}</div>
+        <div class="stat-value">{formatTimeAbsolute($selectedHistoricalRun.started_at)}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Duration</div>
         <div class="stat-value">
-          {formatDuration($selectedHistoricalRun.started_at, $selectedHistoricalRun.ended_at)}
+          {formatDurationVerbose($selectedHistoricalRun.started_at, $selectedHistoricalRun.ended_at)}
         </div>
       </div>
       <div class="stat-card">
@@ -197,7 +138,7 @@
             <div class="prompt-item">
               <div class="prompt-header">
                 <span class="prompt-number">Prompt #{i + 1}</span>
-                <span class="prompt-timestamp">{formatTimestamp(timestamp)}</span>
+                <span class="prompt-timestamp">{formatTimeAbsolute(timestamp)}</span>
               </div>
               <div class="prompt-text">{prompt}</div>
             </div>

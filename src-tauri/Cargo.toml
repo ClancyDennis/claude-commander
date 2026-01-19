@@ -37,6 +37,9 @@ async-trait = "0.1"
 name = "orchestrator_integrated_test"
 path = "src/bin/orchestrator_integrated_test.rs"
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 strip = true
 lto = true

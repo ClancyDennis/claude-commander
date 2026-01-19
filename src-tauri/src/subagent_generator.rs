@@ -8,6 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::ai_client::AIClient;
+use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks, sanitize_name};
 
 /// Metadata about a generated subagent
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,12 +140,7 @@ pub async fn generate_subagent_from_instruction(
         .map_err(|e| format!("AI generation failed: {}", e))?;
 
     // Extract text content from response
-    let mut ai_response = String::new();
-    for block in response.content {
-        if let crate::ai_client::ContentBlock::Text { text } = block {
-            ai_response.push_str(&text);
-        }
-    }
+    let ai_response = extract_text_from_content_blocks(&response.content);
 
     // 4. Parse AI response into SubagentContent
     let subagent_content = parse_subagent_response(&ai_response, file_name)?;
@@ -162,43 +158,17 @@ pub async fn generate_subagent_from_instruction(
 }
 
 fn parse_subagent_response(ai_response: &str, fallback_name: &str) -> Result<SubagentContent, String> {
-    // Try to extract JSON from response (AI might wrap it in markdown)
-    let json_str = if ai_response.trim().starts_with('{') {
-        ai_response.trim()
-    } else {
-        // Try to extract from markdown code block - safe character-boundary-aware method
-        if let Some(start_idx) = ai_response.find("```json") {
-            let content_start = if let Some(newline_idx) = ai_response[start_idx..].find('\n') {
-                start_idx + newline_idx + 1
-            } else {
-                start_idx + "```json".len()
-            };
-
-            if let Some(end_idx) = ai_response[content_start..].find("```") {
-                let json_end = content_start + end_idx;
-                ai_response[content_start..json_end].trim()
-            } else {
-                return Err("Could not find closing ``` for JSON block".to_string());
-            }
-        } else if let Some(start) = ai_response.find('{') {
-            if let Some(end) = ai_response.rfind('}') {
-                &ai_response[start..=end]
-            } else {
-                return Err("Could not find valid JSON in AI response".to_string());
-            }
-        } else {
-            return Err("No JSON found in AI response".to_string());
-        }
-    };
+    // Extract JSON from response (AI might wrap it in markdown)
+    let json_str = extract_json_from_response(ai_response)?;
 
     let mut subagent_content: SubagentContent = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI response as JSON: {}", e))?;
 
     // Validate and sanitize name
     if subagent_content.name.is_empty() {
-        subagent_content.name = sanitize_agent_name(fallback_name);
+        subagent_content.name = sanitize_name(fallback_name);
     } else {
-        subagent_content.name = sanitize_agent_name(&subagent_content.name);
+        subagent_content.name = sanitize_name(&subagent_content.name);
     }
 
     // Validate required fields
@@ -211,25 +181,6 @@ fn parse_subagent_response(ai_response: &str, fallback_name: &str) -> Result<Sub
     }
 
     Ok(subagent_content)
-}
-
-fn sanitize_agent_name(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c
-            } else if c.is_whitespace() || c == '_' || c == '-' {
-                '-'
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 fn create_subagent_file(working_dir: &str, subagent_content: &SubagentContent) -> Result<String, String> {
@@ -474,15 +425,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sanitize_agent_name() {
-        assert_eq!(sanitize_agent_name("Code Reviewer"), "code-reviewer");
-        assert_eq!(sanitize_agent_name("my_cool_agent"), "my-cool-agent");
+    fn test_sanitize_name() {
+        assert_eq!(sanitize_name("Code Reviewer"), "code-reviewer");
+        assert_eq!(sanitize_name("my_cool_agent"), "my-cool-agent");
         assert_eq!(
-            sanitize_agent_name("test--multiple---dashes"),
+            sanitize_name("test--multiple---dashes"),
             "test-multiple-dashes"
         );
         assert_eq!(
-            sanitize_agent_name("Special!@#Characters"),
+            sanitize_name("Special!@#Characters"),
             "special-characters"
         );
     }

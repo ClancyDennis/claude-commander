@@ -2,6 +2,7 @@
   import { derived } from "svelte/store";
   import { selectedAgentTools } from "../stores/agents";
   import type { ToolEvent, ToolCallStatistics } from "../types";
+  import { formatTimeDuration } from '$lib/utils/formatting';
 
   let filterType = $state<"all" | "success" | "failed" | "pending">("all");
   let selectedTool = $state<string | "all">("all");
@@ -90,11 +91,6 @@
     return JSON.stringify(input, null, 2);
   }
 
-  function formatTime(ms: number): string {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
-  }
-
   // Auto-scroll to latest tool events when they arrive
   $effect(() => {
     if (eventsContainer && $selectedAgentTools.length > 0 && filterType === "all" && selectedTool === "all" && !searchQuery.trim()) {
@@ -135,7 +131,7 @@
       </div>
       <div class="stat">
         <div class="stat-label">Avg Time</div>
-        <div class="stat-value">{formatTime(toolStats.averageExecutionTimeMs)}</div>
+        <div class="stat-value">{formatTimeDuration(toolStats.averageExecutionTimeMs)}</div>
       </div>
       <div class="stat">
         <div class="stat-label">Failed</div>
@@ -214,7 +210,7 @@
             <div class="tool-details">
               <span class="tool-name">{event.toolName}</span>
               {#if event.executionTimeMs !== undefined}
-                <span class="execution-time">{formatTime(event.executionTimeMs)}</span>
+                <span class="execution-time">{formatTimeDuration(event.executionTimeMs)}</span>
               {/if}
             </div>
           </div>

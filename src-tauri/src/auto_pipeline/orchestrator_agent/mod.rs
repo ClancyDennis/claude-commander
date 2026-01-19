@@ -8,7 +8,6 @@
 // - Make final decisions (complete, iterate, replan, give_up)
 
 mod context_builders;
-mod prompts;
 mod tool_loop;
 mod tools;
 mod types;
@@ -24,9 +23,9 @@ use crate::events::AppEventEmitter;
 use crate::instruction_manager::{list_instruction_files, InstructionFileInfo};
 
 use super::orchestrator_tools::get_tools_for_state;
+use super::prompts::build_initial_prompt;
 use super::state_machine::PipelineState;
 
-use prompts::build_initial_prompt;
 use types::{ConversationContent, ConversationMessage};
 
 /// The persistent orchestrator agent

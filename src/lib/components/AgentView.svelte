@@ -17,6 +17,8 @@
   import OutputControls from "./OutputControls.svelte";
   import ExportDialog from "./ExportDialog.svelte";
   import AgentSettings from "./AgentSettings.svelte";
+  import WorkingFiles from "./WorkingFiles.svelte";
+  import TaskProgress from "./TaskProgress.svelte";
   import type { AgentOutput } from "../types";
 
   let { agentId, showHeader = true, compact = false }: { agentId?: string; showHeader?: boolean; compact?: boolean } = $props();
@@ -38,7 +40,7 @@
   let outputContainer: HTMLDivElement | null = $state(null);
   
   // Side panel state
-  let activeSidePanel = $state<"none" | "tools" | "stats" | "settings">("none");
+  let activeSidePanel = $state<"none" | "tools" | "stats" | "settings" | "files" | "progress">("none");
   let showExportDialog = $state(false);
 
   // Filtered outputs managed by OutputControls
@@ -94,7 +96,7 @@
     }
   });
 
-  function toggleSidePanel(panel: "tools" | "stats" | "settings") {
+  function toggleSidePanel(panel: "tools" | "stats" | "settings" | "files" | "progress") {
     if (activeSidePanel === panel) {
       activeSidePanel = "none";
     } else {
@@ -199,6 +201,28 @@
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
           </svg>
           Tools
+        </button>
+        <button
+          class="secondary"
+          class:active={activeSidePanel === 'files'}
+          onclick={() => toggleSidePanel('files')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+            <polyline points="13 2 13 9 20 9"/>
+          </svg>
+          Files
+        </button>
+        <button
+          class="secondary"
+          class:active={activeSidePanel === 'progress'}
+          onclick={() => toggleSidePanel('progress')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          Progress
         </button>
         <button
           class="secondary"
@@ -314,6 +338,10 @@
             <AgentStats agentId={effectiveAgentId} />
           {:else if activeSidePanel === 'tools'}
             <ToolActivity />
+          {:else if activeSidePanel === 'files'}
+            <WorkingFiles />
+          {:else if activeSidePanel === 'progress'}
+            <TaskProgress />
           {:else if activeSidePanel === 'settings' && effectiveAgentId}
             <AgentSettings agentId={effectiveAgentId} onClose={() => activeSidePanel = "none"} />
           {/if}

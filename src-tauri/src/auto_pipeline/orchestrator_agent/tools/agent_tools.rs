@@ -12,8 +12,8 @@ use crate::auto_pipeline::state_machine::PipelineState;
 use crate::types::AgentSource;
 
 use super::super::context_builders::{build_full_skills_section, build_full_subagents_section};
-use super::super::prompts::{build_builder_prompt, build_planning_prompt, build_verification_prompt};
 use super::super::OrchestratorAgent;
+use crate::auto_pipeline::prompts::{build_builder_prompt, build_planning_prompt, build_verification_prompt};
 
 impl OrchestratorAgent {
     /// Start planning tool - spawns a Claude Code planning agent

@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { selectedAgentId, selectedAgentStats, updateAgentStats } from "../stores/agents";
   import type { AgentStatistics } from "../types";
+  import { formatBytes, formatCost, formatNumber, formatDuration, formatTimeLocale } from '$lib/utils/formatting';
 
   let { agentId }: { agentId?: string } = $props();
 
@@ -53,50 +54,6 @@
       error = e as string;
     } finally {
       loading = false;
-    }
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
-  }
-
-  function formatCost(cost?: number): string {
-    if (cost === undefined || cost === null) return "N/A";
-    return `$${cost.toFixed(4)}`;
-  }
-
-  function formatNumber(num?: number): string {
-    if (num === undefined || num === null) return "N/A";
-    return num.toLocaleString();
-  }
-
-  function formatDuration(start: string): string {
-    try {
-      const startTime = new Date(start);
-      const now = new Date();
-      const diffMs = now.getTime() - startTime.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMins / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffDays > 0) return `${diffDays}d ${diffHours % 24}h`;
-      if (diffHours > 0) return `${diffHours}h ${diffMins % 60}m`;
-      return `${diffMins}m`;
-    } catch {
-      return "N/A";
-    }
-  }
-
-  function formatTime(dateStr: string): string {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleTimeString();
-    } catch {
-      return "N/A";
     }
   }
 
@@ -204,11 +161,11 @@
     <div class="stats-footer">
       <div class="footer-item">
         <span class="footer-label">Started:</span>
-        <span class="footer-value">{formatTime(displayStats.sessionStart)}</span>
+        <span class="footer-value">{formatTimeLocale(displayStats.sessionStart)}</span>
       </div>
       <div class="footer-item">
         <span class="footer-label">Last Activity:</span>
-        <span class="footer-value">{formatTime(displayStats.lastActivity)}</span>
+        <span class="footer-value">{formatTimeLocale(displayStats.lastActivity)}</span>
       </div>
     </div>
   </div>

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::fs;
 use crate::ai_client::AIClient;
+use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks, sanitize_name};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedSkill {
@@ -129,12 +130,7 @@ pub async fn generate_skill_from_instruction(
         .map_err(|e| format!("AI generation failed: {}", e))?;
 
     // Extract text content from response
-    let mut ai_response = String::new();
-    for block in response.content {
-        if let crate::ai_client::ContentBlock::Text { text } = block {
-            ai_response.push_str(&text);
-        }
-    }
+    let ai_response = extract_text_from_content_blocks(&response.content);
 
     // 4. Parse AI response into SkillContent
     let skill_content: SkillContent = parse_skill_response(&ai_response, file_name)?;
@@ -152,45 +148,17 @@ pub async fn generate_skill_from_instruction(
 }
 
 fn parse_skill_response(ai_response: &str, fallback_name: &str) -> Result<SkillContent, String> {
-    // Try to extract JSON from response (AI might wrap it in markdown)
-    let json_str = if ai_response.trim().starts_with('{') {
-        ai_response.trim()
-    } else {
-        // Try to extract from markdown code block - safe character-boundary-aware method
-        if let Some(start_idx) = ai_response.find("```json") {
-            // Find the newline after ```json
-            let content_start = if let Some(newline_idx) = ai_response[start_idx..].find('\n') {
-                start_idx + newline_idx + 1
-            } else {
-                start_idx + "```json".len()
-            };
-
-            // Find the closing ```
-            if let Some(end_idx) = ai_response[content_start..].find("```") {
-                let json_end = content_start + end_idx;
-                ai_response[content_start..json_end].trim()
-            } else {
-                return Err("Could not find closing ``` for JSON block".to_string());
-            }
-        } else if let Some(start) = ai_response.find('{') {
-            if let Some(end) = ai_response.rfind('}') {
-                &ai_response[start..=end]
-            } else {
-                return Err("Could not find valid JSON in AI response".to_string());
-            }
-        } else {
-            return Err("No JSON found in AI response".to_string());
-        }
-    };
+    // Extract JSON from response (AI might wrap it in markdown)
+    let json_str = extract_json_from_response(ai_response)?;
 
     let mut skill_content: SkillContent = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI response as JSON: {}", e))?;
 
     // Validate and sanitize skill_name
     if skill_content.skill_name.is_empty() {
-        skill_content.skill_name = sanitize_skill_name(fallback_name);
+        skill_content.skill_name = sanitize_name(fallback_name);
     } else {
-        skill_content.skill_name = sanitize_skill_name(&skill_content.skill_name);
+        skill_content.skill_name = sanitize_name(&skill_content.skill_name);
     }
 
     // Validate required fields
@@ -199,25 +167,6 @@ fn parse_skill_response(ai_response: &str, fallback_name: &str) -> Result<SkillC
     }
 
     Ok(skill_content)
-}
-
-fn sanitize_skill_name(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c
-            } else if c.is_whitespace() || c == '_' || c == '-' {
-                '-'
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 fn create_skill_directory(working_dir: &str, skill_content: &SkillContent) -> Result<String, String> {
@@ -405,11 +354,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sanitize_skill_name() {
-        assert_eq!(sanitize_skill_name("API Guidelines"), "api-guidelines");
-        assert_eq!(sanitize_skill_name("my_cool_skill"), "my-cool-skill");
-        assert_eq!(sanitize_skill_name("test--multiple---dashes"), "test-multiple-dashes");
-        assert_eq!(sanitize_skill_name("Special!@#Characters"), "special-characters");
+    fn test_sanitize_name() {
+        assert_eq!(sanitize_name("API Guidelines"), "api-guidelines");
+        assert_eq!(sanitize_name("my_cool_skill"), "my-cool-skill");
+        assert_eq!(sanitize_name("test--multiple---dashes"), "test-multiple-dashes");
+        assert_eq!(sanitize_name("Special!@#Characters"), "special-characters");
     }
 
     #[test]

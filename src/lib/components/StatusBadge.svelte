@@ -1,45 +1,8 @@
 <script lang="ts">
   import type { AgentStatus } from "../types";
+  import { getAgentStatusColor, getAgentStatusLabel } from '$lib/utils/status';
 
   let { status, size = "medium", showLabel = true }: { status: AgentStatus; size?: "small" | "medium" | "large"; showLabel?: boolean } = $props();
-
-  function getStatusColor(status: AgentStatus): string {
-    switch (status) {
-      case "running":
-        return "var(--success)";
-      case "waitingforinput":
-        return "var(--warning)";
-      case "idle":
-        return "var(--text-secondary)";
-      case "processing":
-        return "var(--accent)";
-      case "stopped":
-        return "var(--text-muted)";
-      case "error":
-        return "var(--error)";
-      default:
-        return "var(--text-muted)";
-    }
-  }
-
-  function getStatusLabel(status: AgentStatus): string {
-    switch (status) {
-      case "running":
-        return "Running";
-      case "waitingforinput":
-        return "Needs Input";
-      case "idle":
-        return "Idle";
-      case "processing":
-        return "Processing";
-      case "stopped":
-        return "Stopped";
-      case "error":
-        return "Error";
-      default:
-        return "Unknown";
-    }
-  }
 
   function getIconSize(): string {
     switch (size) {
@@ -54,7 +17,7 @@
 </script>
 
 <div class="status-badge {size} {status}">
-  <div class="status-indicator" style="background-color: {getStatusColor(status)}">
+  <div class="status-indicator" style="background-color: {getAgentStatusColor(status)}">
     {#if status === "running" || status === "waitingforinput"}
       <span class="pulse"></span>
     {/if}
@@ -73,7 +36,7 @@
     {/if}
   </div>
   {#if showLabel}
-    <span class="label">{getStatusLabel(status)}</span>
+    <span class="label">{getAgentStatusLabel(status)}</span>
   {/if}
 </div>
 

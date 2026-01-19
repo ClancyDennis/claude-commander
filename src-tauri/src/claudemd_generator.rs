@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::fs;
 use crate::ai_client::AIClient;
+use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedClaudeMd {
@@ -157,12 +158,7 @@ pub async fn generate_claudemd_from_instructions(
         .map_err(|e| format!("AI generation failed: {}", e))?;
 
     // Extract text content from response
-    let mut ai_response = String::new();
-    for block in response.content {
-        if let crate::ai_client::ContentBlock::Text { text } = block {
-            ai_response.push_str(&text);
-        }
-    }
+    let ai_response = extract_text_from_content_blocks(&response.content);
 
     // 4. Parse AI response into ClaudeMdContent
     let claudemd_content = parse_claudemd_response(&ai_response)?;
@@ -179,34 +175,8 @@ pub async fn generate_claudemd_from_instructions(
 }
 
 fn parse_claudemd_response(ai_response: &str) -> Result<ClaudeMdContent, String> {
-    // Try to extract JSON from response (AI might wrap it in markdown)
-    let json_str = if ai_response.trim().starts_with('{') {
-        ai_response.trim()
-    } else {
-        // Try to extract from markdown code block
-        if let Some(start_idx) = ai_response.find("```json") {
-            let content_start = if let Some(newline_idx) = ai_response[start_idx..].find('\n') {
-                start_idx + newline_idx + 1
-            } else {
-                start_idx + "```json".len()
-            };
-
-            if let Some(end_idx) = ai_response[content_start..].find("```") {
-                let json_end = content_start + end_idx;
-                ai_response[content_start..json_end].trim()
-            } else {
-                return Err("Could not find closing ``` for JSON block".to_string());
-            }
-        } else if let Some(start) = ai_response.find('{') {
-            if let Some(end) = ai_response.rfind('}') {
-                &ai_response[start..=end]
-            } else {
-                return Err("Could not find valid JSON in AI response".to_string());
-            }
-        } else {
-            return Err("No JSON found in AI response".to_string());
-        }
-    };
+    // Extract JSON from response (AI might wrap it in markdown)
+    let json_str = extract_json_from_response(ai_response)?;
 
     let claudemd_content: ClaudeMdContent = serde_json::from_str(json_str)
         .map_err(|e| format!("Failed to parse AI response as JSON: {}", e))?;
