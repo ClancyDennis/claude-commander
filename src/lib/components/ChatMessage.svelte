@@ -2,12 +2,13 @@
   import type { ChatMessage } from "../types";
   import ToolCallDisplay from "./ToolCallDisplay.svelte";
   import { formatTimeOfDay } from '$lib/utils/formatting';
+  import MarkdownRenderer from "./MarkdownRenderer.svelte";
 
   interface Props {
-    message: ChatMessage;
+    data: ChatMessage; // VirtualScroll passes 'data'
   }
 
-  let { message }: Props = $props();
+  let { data: message }: Props = $props();
 
   const isUser = $derived(message.role === "user");
 </script>
@@ -21,7 +22,7 @@
     </div>
 
     <div class="message-content">
-      {message.content}
+      <MarkdownRenderer content={message.content} />
     </div>
 
     {#if message.toolCalls && message.toolCalls.length > 0}
@@ -62,7 +63,7 @@
   }
 
   .message {
-    max-width: 70%;
+    max-width: 85%;
     min-width: 200px;
     border-radius: 12px;
     padding: 12px 16px;
@@ -106,8 +107,7 @@
   .message-content {
     line-height: 1.6;
     font-size: 14px;
-    white-space: pre-wrap;
-    word-break: break-word;
+    /* MarkdownRenderer handles wrapping */
   }
 
   .tool-calls {

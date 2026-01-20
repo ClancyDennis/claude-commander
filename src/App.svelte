@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import "./app.css";
+  import { initResizeTracking } from "./lib/stores/resize";
   import AgentList from "./lib/components/AgentList.svelte";
   import AgentView from "./lib/components/AgentView.svelte";
   import ChatView from "./lib/components/ChatView.svelte";
@@ -35,6 +36,7 @@
     clearOrchestratorActivity,
     incrementStepToolCount,
     selectedAgentId,
+    setCurrentPipelineId,
   } from "./lib/stores/agents";
   import {
     selectedPipelineId,
@@ -89,6 +91,9 @@
   }
 
   onMount(() => {
+    // Initialize resize tracking to prevent layout thrashing during resize
+    const cleanupResize = initResizeTracking();
+
     // Setup keyboard shortcuts
     const cleanupKeyboard = setupKeyboardShortcuts(
       {
@@ -181,6 +186,8 @@
       onAutoPipelineStarted: (pipeline) => {
         // Clear previous orchestrator activity when a NEW pipeline starts
         clearOrchestratorActivity();
+        // Set the pipeline ID for persistence
+        setCurrentPipelineId(pipeline.id);
         autoPipelines.update(m => {
           m.set(pipeline.id, pipeline);
           return new Map(m);
@@ -321,6 +328,7 @@
     });
 
     return () => {
+      cleanupResize();
       cleanupKeyboard();
       cleanupEventsPromise.then((cleanup) => cleanup());
     };

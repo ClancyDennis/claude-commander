@@ -39,16 +39,18 @@
     isDragging = false;
   }
 
+  // Always add/remove listeners based on isDragging state
+  // This ensures proper cleanup regardless of when the effect re-runs
   $effect(() => {
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
+    if (!isDragging) return;
 
-      return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
   });
 
   function swapPanels() {

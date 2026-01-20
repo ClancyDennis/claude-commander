@@ -67,13 +67,13 @@ impl OrchestratorAgent {
     pub(crate) async fn tool_replan(&mut self) -> ToolResult {
         // Only allow replan from Verifying state or Planning states
         // Not allowed from terminal states or during execution
-        let allowed = matches!(
+        let is_planning_phase = matches!(
             self.current_state,
-            PipelineState::Verifying
-                | PipelineState::Planning
+            PipelineState::Planning
                 | PipelineState::PlanReady
                 | PipelineState::PlanRevisionRequired
         );
+        let allowed = is_planning_phase || self.current_state == PipelineState::Verifying;
 
         if !allowed {
             return ToolResult::error(
@@ -83,6 +83,11 @@ impl OrchestratorAgent {
                     self.current_state
                 ),
             );
+        }
+
+        // Track replan usage during planning phase
+        if is_planning_phase {
+            self.planning_replan_count += 1;
         }
 
         // Clear current plan and implementation, but keep skills
@@ -95,7 +100,7 @@ impl OrchestratorAgent {
 
         ToolResult::success(
             "".to_string(),
-            "Replanning. Create a new plan with approve_plan when ready, or use replan to try again.".to_string(),
+            "Replanning. Create a new plan with start_planning, then approve_plan when ready.".to_string(),
         )
     }
 }

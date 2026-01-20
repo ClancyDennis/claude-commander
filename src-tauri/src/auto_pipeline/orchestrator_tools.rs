@@ -84,10 +84,12 @@ pub fn get_tools_for_state(state: &PipelineState) -> Vec<ToolDefinition> {
             ]
         }
 
-        // Phase B: Planning - after plan is generated, must approve or replan
+        // Phase B: Planning - after plan is generated, can approve, replan, or re-run planning
         // approve_plan transitions to ReadyForExecution
+        // start_planning allows spawning a new planning agent after replan
         PipelineState::Planning | PipelineState::PlanReady | PipelineState::PlanRevisionRequired => {
             vec![
+                tool_start_planning(),
                 tool_approve_plan(),
                 tool_replan(),
             ]

@@ -5,6 +5,9 @@
   import { onMount } from "svelte";
   import { formatTimeAbsolute, formatDurationVerbose, formatBytes, formatCost } from '$lib/utils/formatting';
   import { getStatusColorHex } from '$lib/utils/status';
+  import MarkdownRenderer from './MarkdownRenderer.svelte';
+  import { VirtualScroll } from "svelte-virtual-scroll-list";
+  import HistoricalPromptItem from './HistoricalPromptItem.svelte';
 
   let prompts = $state<Array<{ prompt: string; timestamp: number }>>([]);
   let loading = $state(true);
@@ -90,74 +93,75 @@
       {/if}
     </div>
 
-    {#if $selectedHistoricalRun.initial_prompt}
-      <div class="initial-prompt-section">
-        <h3>Initial Prompt</h3>
-        <div class="prompt-content">
-          {$selectedHistoricalRun.initial_prompt}
+    <div class="scrollable-content">
+      {#if $selectedHistoricalRun.initial_prompt}
+        <div class="initial-prompt-section">
+          <h3>Initial Prompt</h3>
+          <div class="prompt-content">
+            <MarkdownRenderer content={$selectedHistoricalRun.initial_prompt} />
+          </div>
         </div>
+      {/if}
+
+      {#if $selectedHistoricalRun.error_message}
+        <div class="error-section">
+          <h3>Error</h3>
+          <div class="error-content">
+            <MarkdownRenderer content={$selectedHistoricalRun.error_message} />
+          </div>
+        </div>
+      {/if}
+
+      <div class="conversation-section">
+        <h3>Conversation History ({prompts.length} messages)</h3>
+
+        {#if loading}
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading conversation history...</p>
+          </div>
+        {:else if error}
+          <div class="error-message">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p>{error}</p>
+          </div>
+        {:else if prompts.length === 0}
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <p>No conversation history available</p>
+          </div>
+        {:else}
+          <div class="prompts-list-wrapper">
+             <VirtualScroll
+              data={prompts}
+              key="timestamp"
+              let:data
+              let:index
+             >
+              <HistoricalPromptItem {data} {index} />
+             </VirtualScroll>
+          </div>
+        {/if}
       </div>
-    {/if}
 
-    {#if $selectedHistoricalRun.error_message}
-      <div class="error-section">
-        <h3>Error</h3>
-        <div class="error-content">
-          {$selectedHistoricalRun.error_message}
-        </div>
-      </div>
-    {/if}
-
-    <div class="conversation-section">
-      <h3>Conversation History ({prompts.length} messages)</h3>
-
-      {#if loading}
-        <div class="loading">
-          <div class="spinner"></div>
-          <p>Loading conversation history...</p>
-        </div>
-      {:else if error}
-        <div class="error-message">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <p>{error}</p>
-        </div>
-      {:else if prompts.length === 0}
-        <div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <p>No conversation history available</p>
-        </div>
-      {:else}
-        <div class="prompts-list">
-          {#each prompts as { prompt, timestamp }, i}
-            <div class="prompt-item">
-              <div class="prompt-header">
-                <span class="prompt-number">Prompt #{i + 1}</span>
-                <span class="prompt-timestamp">{formatTimeAbsolute(timestamp)}</span>
-              </div>
-              <div class="prompt-text">{prompt}</div>
-            </div>
-          {/each}
+      {#if $selectedHistoricalRun.can_resume}
+        <div class="resume-section">
+          <button class="primary resume-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Resume This Run
+          </button>
+          <p class="resume-hint">This run can be resumed from where it left off</p>
         </div>
       {/if}
     </div>
-
-    {#if $selectedHistoricalRun.can_resume}
-      <div class="resume-section">
-        <button class="primary resume-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          Resume This Run
-        </button>
-        <p class="resume-hint">This run can be resumed from where it left off</p>
-      </div>
-    {/if}
   </main>
 {:else}
   <div class="empty-view">
@@ -176,13 +180,21 @@
     display: flex;
     flex-direction: column;
     background-color: var(--bg-primary);
-    overflow-y: auto;
+    overflow: hidden; /* Changed from auto to hidden to let inner parts scroll */
   }
 
   header {
     padding: var(--space-lg);
     border-bottom: 1px solid var(--border);
     background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    flex-shrink: 0;
+  }
+
+  .scrollable-content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .run-info {
@@ -247,6 +259,7 @@
     gap: var(--space-md);
     padding: var(--space-lg);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
 
   .stat-card {
@@ -272,10 +285,19 @@
   }
 
   .initial-prompt-section,
-  .error-section,
+  .error-section {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  
   .conversation-section {
     padding: var(--space-lg);
     border-bottom: 1px solid var(--border);
+    flex: 1; /* Let this grow */
+    display: flex;
+    flex-direction: column;
+    min-height: 400px; /* Ensure some height for virtual scroll */
   }
 
   h3 {
@@ -292,16 +314,11 @@
     border-radius: 8px;
     padding: var(--space-md);
     color: var(--text-primary);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-size: 14px;
-    line-height: 1.6;
   }
 
   .error-content {
     border-color: var(--error);
     background-color: rgba(239, 68, 68, 0.1);
-    color: var(--error);
   }
 
   .loading,
@@ -314,6 +331,7 @@
     padding: var(--space-xl);
     gap: var(--space-md);
     color: var(--text-muted);
+    flex: 1;
   }
 
   .error-message svg,
@@ -335,48 +353,19 @@
     to { transform: rotate(360deg); }
   }
 
-  .prompts-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .prompt-item {
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  .prompt-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-sm) var(--space-md);
-    background-color: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .prompt-number {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .prompt-timestamp {
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .prompt-text {
-    padding: var(--space-md);
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-size: 14px;
-    line-height: 1.6;
+  .prompts-list-wrapper {
+    flex: 1;
+    overflow-y: hidden; /* VirtualScroll handles scroll internally, but we need to give it height */
+    /* Wait, VirtualScroll usually takes height of container. 
+       If we want the whole page to scroll, we put it in window mode. 
+       But here we have a split layout. 
+       Ideally we want the conversation section to take remaining space and scroll internally 
+       OR we let the whole scrollable-content scroll. 
+       VirtualScroll works best with a fixed height container OR page scroll.
+       Given the structure, I'll set a min-height and let it fill.
+    */
+    height: 100%;
+    min-height: 200px;
   }
 
   .resume-section {
@@ -385,6 +374,7 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-sm);
+    flex-shrink: 0;
   }
 
   .resume-btn {

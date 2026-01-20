@@ -4,17 +4,28 @@
   import ChatMessage from "./ChatMessage.svelte";
   import type { ChatResponse } from "../types";
   import HelpTip from "./new-agent/HelpTip.svelte";
+  import { VirtualScroll } from "svelte-virtual-scroll-list";
+  import { isResizing } from "$lib/stores/resize";
 
   let input = $state("");
-  let messagesContainer: HTMLDivElement | undefined = $state();
+  let textarea: HTMLTextAreaElement | null = $state(null);
+  let virtualScroll: VirtualScroll | null = $state(null);
   let error = $state<string | null>(null);
   let processingAgentId = $state<string | null>(null);
+
+  function adjustInputHeight() {
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + "px";
+    }
+  }
 
   async function sendMessage() {
     if (!input.trim() || $metaAgentThinking) return;
 
     const userMessage = input.trim();
     input = "";
+    if (textarea) textarea.style.height = "auto"; // Reset height
     error = null;
 
     // Add user message to chat
@@ -24,9 +35,6 @@
       timestamp: Date.now(),
     });
 
-    // Scroll to bottom
-    setTimeout(scrollToBottom, 100);
-
     try {
       const response = await invoke<ChatResponse>("send_chat_message", {
         message: userMessage,
@@ -35,8 +43,6 @@
       // Add assistant response
       addChatMessage(response.message);
 
-      // Scroll to bottom after response
-      setTimeout(scrollToBottom, 100);
     } catch (e) {
       console.error("Chat error:", e);
       error = e instanceof Error ? e.message : String(e);
@@ -54,16 +60,6 @@
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       sendMessage();
-    }
-  }
-
-  function scrollToBottom() {
-    if (messagesContainer) {
-      requestAnimationFrame(() => {
-        if (messagesContainer) {
-          messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-      });
     }
   }
 
@@ -88,8 +84,6 @@
       // Add the response to chat
       addChatMessage(response.message);
 
-      // Scroll to bottom
-      setTimeout(scrollToBottom, 100);
     } catch (e) {
       console.error("Error processing agent results:", e);
       error = e instanceof Error ? e.message : String(e);
@@ -98,11 +92,39 @@
     }
   }
 
+  // Track previous message count to only scroll on new messages
+  // Using a closure to avoid reactive tracking issues in Svelte 5
+  const scrollState = { prevLength: 0, timeoutId: null as ReturnType<typeof setTimeout> | null };
+
   $effect(() => {
-    // Auto-scroll when new messages arrive
-    if ($metaAgentChat.length > 0) {
-      scrollToBottom();
+    const currentLength = $metaAgentChat.length;
+    const vs = virtualScroll; // capture current value
+    // Skip scroll operations during resize to prevent layout thrashing
+    if ($isResizing) return;
+
+    // Only auto-scroll when new messages arrive (not on every re-render)
+    if (currentLength > scrollState.prevLength && vs) {
+      scrollState.prevLength = currentLength;
+
+      // Clear any pending scroll
+      if (scrollState.timeoutId) clearTimeout(scrollState.timeoutId);
+
+      // Wait slightly for render
+      scrollState.timeoutId = setTimeout(() => {
+        requestAnimationFrame(() => {
+          vs?.scrollToIndex(currentLength - 1);
+        });
+      }, 50);
+    } else if (currentLength < scrollState.prevLength) {
+      // Reset if chat was cleared
+      scrollState.prevLength = currentLength;
     }
+  });
+
+  $effect(() => {
+    // Skip during resize to prevent layout thrashing
+    if ($isResizing) return;
+    if (input !== undefined) adjustInputHeight();
   });
 </script>
 
@@ -122,7 +144,7 @@
     </div>
   </div>
 
-  <div class="messages-container" bind:this={messagesContainer}>
+  <div class="messages-wrapper">
     {#if $metaAgentChat.length === 0}
       <div class="empty-state">
         <div class="empty-icon">🚀</div>
@@ -138,18 +160,27 @@
         </div>
       </div>
     {:else}
-      {#each $metaAgentChat as message (message.timestamp)}
-        <ChatMessage {message} />
-      {/each}
-    {/if}
-
-    {#if $metaAgentThinking}
-      <div class="thinking-message">
-        <div class="thinking-dots">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
+      <div class="virtual-scroll-container">
+        <VirtualScroll
+          bind:this={virtualScroll}
+          data={$metaAgentChat}
+          key="timestamp"
+          estimateSize={80}
+          style="height: 100%; overflow-y: auto;"
+          let:data
+        >
+          <ChatMessage {data} />
+        </VirtualScroll>
+        
+        {#if $metaAgentThinking}
+          <div class="thinking-message">
+            <div class="thinking-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -181,11 +212,13 @@
     {/if}
     <div class="input-wrapper">
       <textarea
+        bind:this={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
+        oninput={adjustInputHeight}
         placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
         disabled={$metaAgentThinking}
-        rows="3"
+        rows="1"
       ></textarea>
       <button
         onclick={sendMessage}
@@ -273,31 +306,25 @@
     border-color: rgba(124, 58, 237, 0.5);
   }
 
-  .messages-container {
+  .messages-wrapper {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .virtual-scroll-container {
+    flex: 1;
+    min-height: 0; /* Critical for flex children to shrink properly during resize */
+    overflow: hidden;
     padding: 20px;
     display: flex;
     flex-direction: column;
   }
 
-  .messages-container::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .messages-container::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-  }
-
-  .messages-container::-webkit-scrollbar-thumb {
-    background: rgba(124, 58, 237, 0.4);
-    border-radius: 4px;
-  }
-
-  .messages-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(124, 58, 237, 0.6);
-  }
-
+  /* Custom scrollbar for virtual container if needed, but VirtualScroll handles its own usually */
+  
   .empty-state {
     flex: 1;
     display: flex;
@@ -360,9 +387,8 @@
   }
 
   .thinking-message {
-    display: flex;
-    justify-content: flex-start;
-    margin-bottom: 16px;
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 
   .thinking-dots {
@@ -372,6 +398,7 @@
     padding: 12px 20px;
     display: flex;
     gap: 6px;
+    width: fit-content;
   }
 
   .thinking-dots span {
@@ -434,6 +461,9 @@
     font-family: inherit;
     resize: none;
     transition: border-color 0.2s ease;
+    min-height: 44px;
+    max-height: 200px;
+    line-height: 1.5;
   }
 
   textarea:focus {
@@ -461,6 +491,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
     min-width: 80px;
+    height: 44px; /* Align with single line input */
   }
 
   .send-btn:hover:not(:disabled) {

@@ -10,6 +10,40 @@
   let activeTab = $state<"tools" | "states" | "decisions">("tools");
   let expanded = $state(true);
 
+  // Virtualization settings
+  const VISIBLE_ITEMS = 20; // Max items to render at once
+  const ITEM_HEIGHT = 80; // Approximate height per item in pixels
+
+  // Track scroll position for virtualization
+  let scrollContainer: HTMLDivElement | null = $state(null);
+  let scrollTop = $state(0);
+
+  // Calculate visible window for virtualization
+  function getVisibleItems<T>(items: T[]): { visible: T[]; startIndex: number; totalHeight: number } {
+    if (items.length <= VISIBLE_ITEMS) {
+      return { visible: items, startIndex: 0, totalHeight: items.length * ITEM_HEIGHT };
+    }
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 5);
+    const endIndex = Math.min(items.length, startIndex + VISIBLE_ITEMS + 10);
+
+    return {
+      visible: items.slice(startIndex, endIndex),
+      startIndex,
+      totalHeight: items.length * ITEM_HEIGHT
+    };
+  }
+
+  // Derived visible items for each tab
+  let visibleToolCalls = $derived(getVisibleItems($orchestratorToolCalls));
+  let visibleStateChanges = $derived(getVisibleItems($orchestratorStateChanges));
+  let visibleDecisions = $derived(getVisibleItems($orchestratorDecisions));
+
+  function handleScroll(event: Event) {
+    const target = event.target as HTMLDivElement;
+    scrollTop = target.scrollTop;
+  }
+
   // State badge colors
   function getStateBadgeClass(state: string): string {
     if (state.includes("Completed")) return "badge-success";
@@ -89,105 +123,111 @@
       </button>
     </div>
 
-    <div class="activity-content">
+    <div class="activity-content" bind:this={scrollContainer} onscroll={handleScroll}>
       {#if activeTab === "tools"}
-        <div class="tool-list">
+        <div class="tool-list" style="height: {visibleToolCalls.totalHeight}px; position: relative;">
           {#if $orchestratorToolCalls.length === 0}
             <div class="empty-state">No tool calls yet</div>
           {:else}
-            {#each $orchestratorToolCalls as call, i}
-              <div class="tool-item" class:error={call.is_error}>
-                <div class="tool-header">
-                  <span class="tool-icon">{getToolIcon(call.tool_name)}</span>
-                  <span class="tool-name">{call.tool_name}</span>
-                  <span class="tool-time">{formatTimeLocale(call.timestamp)}</span>
+            <div style="position: absolute; top: {visibleToolCalls.startIndex * ITEM_HEIGHT}px; width: 100%;">
+              {#each visibleToolCalls.visible as call, i (visibleToolCalls.startIndex + i)}
+                <div class="tool-item" class:error={call.is_error}>
+                  <div class="tool-header">
+                    <span class="tool-icon">{getToolIcon(call.tool_name)}</span>
+                    <span class="tool-name">{call.tool_name}</span>
+                    <span class="tool-time">{formatTimeLocale(call.timestamp)}</span>
+                  </div>
+                  {#if call.summary}
+                    <div class="tool-summary">{call.summary}</div>
+                  {/if}
+                  {#if call.tool_input && Object.keys(call.tool_input).length > 0}
+                    <details class="tool-details">
+                      <summary>Input</summary>
+                      <pre>{JSON.stringify(call.tool_input, null, 2)}</pre>
+                    </details>
+                  {/if}
                 </div>
-                {#if call.summary}
-                  <div class="tool-summary">{call.summary}</div>
-                {/if}
-                {#if call.tool_input && Object.keys(call.tool_input).length > 0}
-                  <details class="tool-details">
-                    <summary>Input</summary>
-                    <pre>{JSON.stringify(call.tool_input, null, 2)}</pre>
-                  </details>
-                {/if}
-              </div>
-            {/each}
+              {/each}
+            </div>
           {/if}
         </div>
       {:else if activeTab === "states"}
-        <div class="state-list">
+        <div class="state-list" style="height: {visibleStateChanges.totalHeight}px; position: relative;">
           {#if $orchestratorStateChanges.length === 0}
             <div class="empty-state">No state changes yet</div>
           {:else}
-            {#each $orchestratorStateChanges as change, i}
-              <div class="state-item">
-                <div class="state-transition">
-                  <span class="state-badge {getStateBadgeClass(change.old_state)}">
-                    {change.old_state}
-                  </span>
-                  <span class="arrow">→</span>
-                  <span class="state-badge {getStateBadgeClass(change.new_state)}">
-                    {change.new_state}
-                  </span>
-                </div>
-                <div class="state-meta">
-                  <span class="iteration">Iteration {change.iteration}</span>
-                  <span class="time">{formatTimeLocale(change.timestamp)}</span>
-                </div>
-                {#if change.generated_skills > 0 || change.generated_subagents > 0 || change.claudemd_generated}
-                  <div class="state-resources">
-                    {#if change.generated_skills > 0}
-                      <span class="resource">🎯 {change.generated_skills} skills</span>
-                    {/if}
-                    {#if change.generated_subagents > 0}
-                      <span class="resource">🤖 {change.generated_subagents} subagents</span>
-                    {/if}
-                    {#if change.claudemd_generated}
-                      <span class="resource">📝 CLAUDE.md</span>
-                    {/if}
+            <div style="position: absolute; top: {visibleStateChanges.startIndex * ITEM_HEIGHT}px; width: 100%;">
+              {#each visibleStateChanges.visible as change, i (visibleStateChanges.startIndex + i)}
+                <div class="state-item">
+                  <div class="state-transition">
+                    <span class="state-badge {getStateBadgeClass(change.old_state)}">
+                      {change.old_state}
+                    </span>
+                    <span class="arrow">→</span>
+                    <span class="state-badge {getStateBadgeClass(change.new_state)}">
+                      {change.new_state}
+                    </span>
                   </div>
-                {/if}
-              </div>
-            {/each}
+                  <div class="state-meta">
+                    <span class="iteration">Iteration {change.iteration}</span>
+                    <span class="time">{formatTimeLocale(change.timestamp)}</span>
+                  </div>
+                  {#if change.generated_skills > 0 || change.generated_subagents > 0 || change.claudemd_generated}
+                    <div class="state-resources">
+                      {#if change.generated_skills > 0}
+                        <span class="resource">🎯 {change.generated_skills} skills</span>
+                      {/if}
+                      {#if change.generated_subagents > 0}
+                        <span class="resource">🤖 {change.generated_subagents} subagents</span>
+                      {/if}
+                      {#if change.claudemd_generated}
+                        <span class="resource">📝 CLAUDE.md</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           {/if}
         </div>
       {:else if activeTab === "decisions"}
-        <div class="decision-list">
+        <div class="decision-list" style="height: {visibleDecisions.totalHeight}px; position: relative;">
           {#if $orchestratorDecisions.length === 0}
             <div class="empty-state">No decisions yet</div>
           {:else}
-            {#each $orchestratorDecisions as decision, i}
-              <div class="decision-item">
-                <div class="decision-header">
-                  <span class="decision-badge {getDecisionBadgeClass(decision.decision)}">
-                    {decision.decision}
-                  </span>
-                  <span class="decision-time">{formatTimeLocale(decision.timestamp)}</span>
+            <div style="position: absolute; top: {visibleDecisions.startIndex * ITEM_HEIGHT}px; width: 100%;">
+              {#each visibleDecisions.visible as decision, i (visibleDecisions.startIndex + i)}
+                <div class="decision-item">
+                  <div class="decision-header">
+                    <span class="decision-badge {getDecisionBadgeClass(decision.decision)}">
+                      {decision.decision}
+                    </span>
+                    <span class="decision-time">{formatTimeLocale(decision.timestamp)}</span>
+                  </div>
+                  <div class="decision-reasoning">{decision.reasoning}</div>
+                  {#if decision.issues.length > 0}
+                    <div class="decision-issues">
+                      <strong>Issues:</strong>
+                      <ul>
+                        {#each decision.issues as issue}
+                          <li>{issue}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                  {#if decision.suggestions.length > 0}
+                    <div class="decision-suggestions">
+                      <strong>Suggestions:</strong>
+                      <ul>
+                        {#each decision.suggestions as suggestion}
+                          <li>{suggestion}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
                 </div>
-                <div class="decision-reasoning">{decision.reasoning}</div>
-                {#if decision.issues.length > 0}
-                  <div class="decision-issues">
-                    <strong>Issues:</strong>
-                    <ul>
-                      {#each decision.issues as issue}
-                        <li>{issue}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-                {#if decision.suggestions.length > 0}
-                  <div class="decision-suggestions">
-                    <strong>Suggestions:</strong>
-                    <ul>
-                      {#each decision.suggestions as suggestion}
-                        <li>{suggestion}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-              </div>
-            {/each}
+              {/each}
+            </div>
           {/if}
         </div>
       {/if}

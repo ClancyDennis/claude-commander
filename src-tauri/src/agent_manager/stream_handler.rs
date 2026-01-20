@@ -112,22 +112,38 @@ async fn handle_stdout_stream(stdout: ChildStdout, ctx: StreamContext) {
 async fn handle_system_message<F>(
     ctx: &StreamContext,
     json: &serde_json::Value,
-    line: &str,
+    _line: &str,
     _store_in_buffer: &F,
 ) where
     F: Fn(AgentOutputEvent, Arc<Mutex<Vec<AgentOutputEvent>>>),
 {
     let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(json);
-    let content = serde_json::to_string_pretty(json).unwrap_or_else(|_| line.to_string());
-    let byte_size = content.len();
 
+    // Extract meaningful content from system message instead of full JSON
+    let content = if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
+        message.to_string()
+    } else if let Some(init) = json.get("init") {
+        // Handle init messages - extract model/tools info
+        let model = init.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let tools_count = init
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.len())
+            .unwrap_or(0);
+        format!("Session initialized with {} ({} tools available)", model, tools_count)
+    } else if let Some(subtype_str) = &subtype {
+        format!("System: {}", subtype_str)
+    } else {
+        "System event".to_string()
+    };
+
+    let byte_size = content.len();
     update_output_bytes(&ctx.stats, byte_size).await;
 
     let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
         .output_type("system")
         .content(content)
         .parsed_json(Some(json.clone()))
-        .language(Some("json".to_string()))
         .session_context(session_id, uuid, parent_tool_use_id, subtype)
         .with_size_from_content()
         .build();
@@ -312,17 +328,53 @@ async fn handle_user_message<F>(
 async fn handle_result_message<F>(
     ctx: &StreamContext,
     json: &serde_json::Value,
-    line: &str,
+    _line: &str,
     store_in_buffer: &F,
 ) where
     F: Fn(AgentOutputEvent, Arc<Mutex<Vec<AgentOutputEvent>>>),
 {
     let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(json);
-    let content = serde_json::to_string_pretty(json).unwrap_or_else(|_| line.to_string());
-    let byte_size = content.len();
 
     // Check if this is a successful completion
     let is_success = subtype.as_deref() == Some("success");
+
+    // Extract meaningful content from result message instead of full JSON
+    let content = if let Some(result) = json.get("result") {
+        if let Some(result_str) = result.as_str() {
+            // Result is a string
+            result_str.to_string()
+        } else if let Some(summary) = result.get("summary").and_then(|v| v.as_str()) {
+            // Result has a summary field
+            summary.to_string()
+        } else if let Some(message) = result.get("message").and_then(|v| v.as_str()) {
+            // Result has a message field
+            message.to_string()
+        } else {
+            // Result is an object without clear text - format key info
+            let cost = json
+                .get("cost_usd")
+                .and_then(|v| v.as_f64())
+                .map(|c| format!(" (${:.4})", c))
+                .unwrap_or_default();
+            let duration = json
+                .get("duration_ms")
+                .and_then(|v| v.as_u64())
+                .map(|d| format!(" in {:.1}s", d as f64 / 1000.0))
+                .unwrap_or_default();
+            format!("Task completed{}{}", duration, cost)
+        }
+    } else if let Some(error) = json.get("error").and_then(|v| v.as_str()) {
+        format!("Error: {}", error)
+    } else {
+        // Fallback based on subtype
+        match subtype.as_deref() {
+            Some("success") => "Task completed successfully".to_string(),
+            Some("error") => "Task failed".to_string(),
+            _ => "Result".to_string()
+        }
+    };
+
+    let byte_size = content.len();
 
     // Update statistics from result message
     update_from_result(&ctx.stats, json, byte_size).await;
@@ -341,7 +393,6 @@ async fn handle_result_message<F>(
         .output_type("result")
         .content(content)
         .parsed_json(Some(json.clone()))
-        .language(Some("json".to_string()))
         .session_context(session_id, uuid, parent_tool_use_id, subtype)
         .with_size_from_content()
         .build();
@@ -374,15 +425,31 @@ async fn handle_result_message<F>(
     }
 }
 
-async fn handle_stream_event(ctx: &StreamContext, json: &serde_json::Value, line: &str) {
+async fn handle_stream_event(ctx: &StreamContext, json: &serde_json::Value, _line: &str) {
     let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(json);
-    let content = serde_json::to_string_pretty(json).unwrap_or_else(|_| line.to_string());
+
+    // Extract meaningful content from stream event instead of full JSON
+    let event_type = json.get("event").and_then(|v| v.as_str()).unwrap_or("stream");
+    let content = if let Some(data) = json.get("data") {
+        if let Some(text) = data.as_str() {
+            text.to_string()
+        } else if let Some(msg) = data.get("message").and_then(|v| v.as_str()) {
+            msg.to_string()
+        } else if let Some(status) = data.get("status").and_then(|v| v.as_str()) {
+            format!("{}: {}", event_type, status)
+        } else {
+            format!("Stream: {}", event_type)
+        }
+    } else if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
+        message.to_string()
+    } else {
+        format!("Stream: {}", event_type)
+    };
 
     let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
         .output_type("stream_event")
         .content(content)
         .parsed_json(Some(json.clone()))
-        .language(Some("json".to_string()))
         .session_context(session_id, uuid, parent_tool_use_id, subtype)
         .with_size_from_content()
         .build();

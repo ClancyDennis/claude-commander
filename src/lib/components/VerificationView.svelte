@@ -18,15 +18,24 @@
   }
 
   let { result }: { result: VerificationResult } = $props();
+
+  // Track selected index with state, track result changes to reset it
   let selectedIndex = $state(0);
   let showAllResults = $state(false);
 
+  // Use plain object to track previous result to avoid reactive loops in Svelte 5
+  const viewState = { lastResultId: null as string | null };
+
+  // Update selected index when result changes (use plain object tracking)
   $effect(() => {
-    if (result) {
+    const currentResultId = result?.selected_result?.agent_id ?? null;
+    if (result && currentResultId !== viewState.lastResultId) {
+      viewState.lastResultId = currentResultId;
       // Find index of selected result
-      selectedIndex = result.all_results.findIndex(
+      const newIndex = result.all_results.findIndex(
         r => r.agent_id === result.selected_result.agent_id
       );
+      selectedIndex = newIndex >= 0 ? newIndex : 0;
     }
   });
 

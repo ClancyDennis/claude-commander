@@ -107,8 +107,9 @@ impl OrchestratorAgent {
             }
         };
 
-        // Store the plan
+        // Store the plan and agent outputs
         self.current_plan = output.raw_text.clone();
+        self.planning_agent_outputs = output.agent_outputs.clone();
 
         ToolResult::success(
             "".to_string(),
@@ -220,8 +221,9 @@ impl OrchestratorAgent {
             }
         };
 
-        // Store the implementation
+        // Store the implementation and agent outputs
         self.current_implementation = output.raw_text.clone();
+        self.building_agent_outputs = output.agent_outputs.clone();
 
         ToolResult::success(
             "".to_string(),
@@ -345,6 +347,9 @@ impl OrchestratorAgent {
                 )
             }
         };
+
+        // Store agent outputs
+        self.verification_agent_outputs = output.agent_outputs.clone();
 
         ToolResult::success(
             "".to_string(),

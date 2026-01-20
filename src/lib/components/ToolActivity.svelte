@@ -3,6 +3,7 @@
   import { selectedAgentTools } from "../stores/agents";
   import type { ToolEvent, ToolCallStatistics } from "../types";
   import { formatTimeDuration } from '$lib/utils/formatting';
+  import { isResizing } from "$lib/stores/resize";
 
   let filterType = $state<"all" | "success" | "failed" | "pending">("all");
   let selectedTool = $state<string | "all">("all");
@@ -91,20 +92,35 @@
     return JSON.stringify(input, null, 2);
   }
 
-  // Auto-scroll to latest tool events when they arrive
+  // Track previous tools length to only scroll on actual new events
+  // Using a plain object to avoid reactive tracking issues in Svelte 5
+  const scrollState = { prevLength: 0 };
+
+  // Auto-scroll to latest tool events when new events arrive (not on every re-render)
   $effect(() => {
-    if (eventsContainer && $selectedAgentTools.length > 0 && filterType === "all" && selectedTool === "all" && !searchQuery.trim()) {
-      const { scrollTop, scrollHeight, clientHeight } = eventsContainer;
+    const currentLength = $selectedAgentTools.length;
+    const container = eventsContainer; // capture current value
+    // Skip scroll operations during resize to prevent layout thrashing
+    if ($isResizing) return;
+
+    // Only scroll if we have new events
+    if (container && currentLength > scrollState.prevLength && currentLength > 0 && filterType === "all" && selectedTool === "all" && !searchQuery.trim()) {
+      scrollState.prevLength = currentLength;
+
+      const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceToBottom = scrollHeight - scrollTop - clientHeight;
 
       // Auto-scroll if we are within 500px of the bottom (or at the top)
       if (distanceToBottom < 500 || scrollTop === 0) {
         requestAnimationFrame(() => {
-          if (eventsContainer) {
-            eventsContainer.scrollTop = eventsContainer.scrollHeight;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
           }
         });
       }
+    } else if (currentLength < scrollState.prevLength) {
+      // Reset if tools were cleared
+      scrollState.prevLength = currentLength;
     }
   });
 </script>

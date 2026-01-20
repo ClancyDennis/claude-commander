@@ -32,6 +32,15 @@
     if (storedPipeline) {
       pipeline = storedPipeline;
       loading = false;
+      console.log('[AutoPipelineView] Store update received:', {
+        steps: storedPipeline.steps.map((s, i) => ({
+          step: i,
+          role: s.role,
+          status: s.status,
+          hasOutput: !!s.output,
+          agentOutputsCount: s.output?.agent_outputs?.length ?? 0,
+        }))
+      });
     }
   });
 
@@ -86,6 +95,15 @@
   async function refreshPipeline() {
     try {
       pipeline = await invoke<AutoPipeline>('get_auto_pipeline', { pipelineId });
+      console.log('[AutoPipelineView] Refreshed pipeline:', {
+        steps: pipeline.steps.map((s, i) => ({
+          step: i,
+          role: s.role,
+          status: s.status,
+          hasOutput: !!s.output,
+          agentOutputsCount: s.output?.agent_outputs?.length ?? 0,
+        }))
+      });
     } catch (e) {
       console.error('Failed to refresh pipeline:', e);
     }
@@ -109,20 +127,53 @@
     }
   }
 
-  type TimelineEvent = 
+  type TimelineEvent =
     | (OrchestratorStateChange & { type: 'state' })
     | (OrchestratorDecision & { type: 'decision' })
     | (OrchestratorToolCall & { type: 'tool' });
 
-  // Combine events for timeline
-  // We want to interleave State Changes, Decisions, and Tool Calls
-  function getTimelineEvents(): TimelineEvent[] {
+  // Memoization cache for timeline events
+  let cachedTimelineEvents: TimelineEvent[] = [];
+  let lastStateCount = 0;
+  let lastDecisionCount = 0;
+  let lastToolCount = 0;
+
+  // Combine events for timeline with memoization to avoid expensive recalculations
+  let timelineEvents = $derived.by(() => {
+    const stateCount = $orchestratorStateChanges.length;
+    const decisionCount = $orchestratorDecisions.length;
+    const toolCount = $orchestratorToolCalls.length;
+
+    // Return cached result if nothing changed
+    if (
+      stateCount === lastStateCount &&
+      decisionCount === lastDecisionCount &&
+      toolCount === lastToolCount
+    ) {
+      return cachedTimelineEvents;
+    }
+
+    // Update counts
+    lastStateCount = stateCount;
+    lastDecisionCount = decisionCount;
+    lastToolCount = toolCount;
+
+    // Rebuild the timeline
     const changes = $orchestratorStateChanges.map(e => ({ ...e, type: 'state' as const }));
     const decisions = $orchestratorDecisions.map(e => ({ ...e, type: 'decision' as const }));
     const tools = $orchestratorToolCalls.map(e => ({ ...e, type: 'tool' as const }));
-    
-    return [...changes, ...decisions, ...tools].sort((a, b) => a.timestamp - b.timestamp);
-  }
+
+    cachedTimelineEvents = [...changes, ...decisions, ...tools].sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log('[AutoPipelineView] timelineEvents updated:', {
+      stateChanges: changes.length,
+      decisions: decisions.length,
+      tools: tools.length,
+      total: cachedTimelineEvents.length
+    });
+
+    return cachedTimelineEvents;
+  });
 
   function formatTime(timestamp: number): string {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -172,11 +223,11 @@
         <section class="timeline-section">
           <h3 class="section-heading">Execution Timeline</h3>
           <div class="timeline">
-            {#if getTimelineEvents().length === 0}
+            {#if timelineEvents.length === 0}
               <div class="empty-timeline">Pipeline initializing...</div>
             {/if}
-            
-            {#each getTimelineEvents() as event}
+
+            {#each timelineEvents as event}
               {#if event.type === 'state'}
                 <div class="timeline-item state-change">
                   <div class="timeline-marker"></div>

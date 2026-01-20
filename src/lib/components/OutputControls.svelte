@@ -42,9 +42,24 @@
     return filtered;
   });
 
-  // Notify parent whenever filtered results change
+  // Track previous filter result to avoid unnecessary updates
+  // Using a plain object to avoid reactive tracking issues in Svelte 5
+  const filterState = {
+    prevLength: -1,
+    prevFirst: undefined as AgentOutput | undefined
+  };
+
+  // Notify parent whenever filtered results actually change (not just on re-render)
   $effect(() => {
-    onFilter(filteredOutputs);
+    const newFirst = filteredOutputs[0];
+    const newLength = filteredOutputs.length;
+
+    // Only call onFilter if the results actually changed
+    if (newLength !== filterState.prevLength || newFirst !== filterState.prevFirst) {
+      filterState.prevLength = newLength;
+      filterState.prevFirst = newFirst;
+      onFilter(filteredOutputs);
+    }
   });
 
   // Statistics

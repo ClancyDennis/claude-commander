@@ -130,10 +130,11 @@ pub async fn execute_planning_step(
     let plan = orchestrator_agent.current_plan.clone();
     let generated_skills = orchestrator_agent.generated_skills().to_vec();
     let generated_subagents = orchestrator_agent.generated_subagents().to_vec();
+    let planning_outputs = orchestrator_agent.planning_agent_outputs.clone();
 
     eprintln!(
-        "[auto_pipeline] Planning complete. Skills: {:?}, Subagents: {:?}",
-        generated_skills, generated_subagents
+        "[auto_pipeline] Planning complete. Skills: {:?}, Subagents: {:?}, Outputs: {}",
+        generated_skills, generated_subagents, planning_outputs.len()
     );
 
     // Store the orchestrator agent for use in subsequent steps
@@ -145,7 +146,7 @@ pub async fn execute_planning_step(
         pipeline.steps[0].output = Some(StepOutput {
             raw_text: plan,
             structured_data: None,
-            agent_outputs: vec![],
+            agent_outputs: planning_outputs,
         });
         pipeline.steps[0].status = StepStatus::Completed;
         pipeline.steps[0].completed_at = Some(chrono::Utc::now().to_rfc3339());

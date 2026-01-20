@@ -375,7 +375,18 @@ pub fn run() {
             commands::approve_security_action,
             commands::reject_security_action,
             commands::clear_security_reviews,
-            commands::scan_agent_activity
+            commands::scan_agent_activity,
+            // Event persistence commands
+            commands::persist_tool_call,
+            commands::persist_state_change,
+            commands::persist_decision,
+            commands::persist_agent_output,
+            commands::get_orchestrator_tool_calls,
+            commands::get_orchestrator_state_changes,
+            commands::get_orchestrator_decisions,
+            commands::get_agent_output_history,
+            commands::get_pipeline_history,
+            commands::clear_pipeline_events
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -66,6 +66,16 @@ pub struct OrchestratorAgent {
     pub(crate) current_qna: String,
     /// Current implementation output (stored for verification phase)
     pub(crate) current_implementation: String,
+    /// Agent outputs from the planning phase
+    pub(crate) planning_agent_outputs: Vec<crate::types::AgentOutputEvent>,
+    /// Agent outputs from the building phase
+    pub(crate) building_agent_outputs: Vec<crate::types::AgentOutputEvent>,
+    /// Agent outputs from the verification phase
+    pub(crate) verification_agent_outputs: Vec<crate::types::AgentOutputEvent>,
+    /// Number of times replan has been used during the planning phase
+    pub(crate) planning_replan_count: u8,
+    /// Maximum allowed replans during planning phase (0 = unlimited)
+    pub(crate) max_planning_replans: u8,
 }
 
 impl OrchestratorAgent {
@@ -182,6 +192,11 @@ impl OrchestratorAgent {
             current_plan: String::new(),
             current_qna: String::new(),
             current_implementation: String::new(),
+            planning_agent_outputs: Vec::new(),
+            building_agent_outputs: Vec::new(),
+            verification_agent_outputs: Vec::new(),
+            planning_replan_count: 0,
+            max_planning_replans: 1, // Default: allow 1 replan during planning
         })
     }
 
@@ -266,6 +281,20 @@ impl OrchestratorAgent {
     /// Refresh the available tools based on current state
     pub(crate) fn refresh_tools(&mut self) {
         let tool_defs = get_tools_for_state(&self.current_state);
+
+        // Filter out replan if max replans reached during planning phase
+        let is_planning_phase = matches!(
+            self.current_state,
+            PipelineState::Planning | PipelineState::PlanReady | PipelineState::PlanRevisionRequired
+        );
+        let replan_limit_reached = self.max_planning_replans > 0
+            && self.planning_replan_count >= self.max_planning_replans;
+        let tool_defs: Vec<_> = if is_planning_phase && replan_limit_reached {
+            tool_defs.into_iter().filter(|t| t.name != "replan").collect()
+        } else {
+            tool_defs
+        };
+
         let tool_names: Vec<&str> = tool_defs.iter().map(|t| t.name.as_str()).collect();
         eprintln!(
             "[ORCHESTRATOR] State: {:?} -> Available tools: {:?}",

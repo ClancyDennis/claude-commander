@@ -110,8 +110,14 @@ pub async fn execute_building_step(
         }
     }
 
-    // Extract build output
+    // Extract build output and agent outputs
     let implementation = orchestrator_agent.current_implementation.clone();
+    let building_outputs = orchestrator_agent.building_agent_outputs.clone();
+
+    eprintln!(
+        "[auto_pipeline] Building complete. Outputs: {}",
+        building_outputs.len()
+    );
 
     // Store agent back for verification step
     store_orchestrator_agent(&orchestrator_agents, pipeline_id, orchestrator_agent).await;
@@ -121,7 +127,7 @@ pub async fn execute_building_step(
         pipeline.steps[1].output = Some(StepOutput {
             raw_text: implementation,
             structured_data: None,
-            agent_outputs: vec![],
+            agent_outputs: building_outputs,
         });
         pipeline.steps[1].status = StepStatus::Completed;
         pipeline.steps[1].completed_at = Some(chrono::Utc::now().to_rfc3339());

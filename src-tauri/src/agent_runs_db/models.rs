@@ -176,3 +176,80 @@ pub fn format_bytes(bytes: u64) -> String {
 
     format!("{:.2} {}", size, UNITS[exp])
 }
+
+// ============================================================================
+// Orchestrator Event Records (for hybrid persistence)
+// ============================================================================
+
+/// Record of an orchestrator tool call - persisted to SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorToolCallRecord {
+    pub id: Option<i64>,
+    pub pipeline_id: String,
+    pub agent_id: Option<String>,
+    pub tool_name: String,
+    pub tool_input: Option<String>,  // JSON serialized
+    pub is_error: bool,
+    pub summary: Option<String>,
+    pub current_state: String,
+    pub iteration: u32,
+    pub step_number: Option<u32>,    // 1=Planning, 2=Building, 3=Verifying
+    pub timestamp: i64,              // Unix timestamp in milliseconds
+}
+
+/// Record of an orchestrator state change - persisted to SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorStateChangeRecord {
+    pub id: Option<i64>,
+    pub pipeline_id: String,
+    pub old_state: String,
+    pub new_state: String,
+    pub iteration: u32,
+    pub generated_skills: u32,
+    pub generated_subagents: u32,
+    pub claudemd_generated: bool,
+    pub timestamp: i64,
+}
+
+/// Record of an orchestrator decision - persisted to SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorDecisionRecord {
+    pub id: Option<i64>,
+    pub pipeline_id: String,
+    pub decision: String,           // 'Complete', 'Iterate', 'Replan', 'GiveUp'
+    pub reasoning: Option<String>,
+    pub issues: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub timestamp: i64,
+}
+
+/// Record of an agent output - persisted to SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentOutputRecord {
+    pub id: Option<i64>,
+    pub agent_id: String,
+    pub pipeline_id: Option<String>,
+    pub output_type: String,        // 'text', 'tool_use', 'tool_result', 'error', 'system', 'result'
+    pub content: String,
+    pub metadata: Option<String>,   // JSON serialized
+    pub timestamp: i64,
+}
+
+/// Query filters for orchestrator events
+#[derive(Debug, Clone, Default)]
+pub struct EventQueryFilters {
+    pub pipeline_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub since_timestamp: Option<i64>,
+    pub until_timestamp: Option<i64>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// Bundle of all pipeline history for restoring UI state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipelineHistoryBundle {
+    pub tool_calls: Vec<OrchestratorToolCallRecord>,
+    pub state_changes: Vec<OrchestratorStateChangeRecord>,
+    pub decisions: Vec<OrchestratorDecisionRecord>,
+}

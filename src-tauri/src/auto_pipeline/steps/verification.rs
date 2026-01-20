@@ -73,6 +73,14 @@ pub async fn execute_verification_step(
         }
     };
 
+    // Extract verification outputs before storing agent
+    let verification_outputs = orchestrator_agent.verification_agent_outputs.clone();
+
+    eprintln!(
+        "[auto_pipeline] Verification complete. Outputs: {}",
+        verification_outputs.len()
+    );
+
     // Store agent back for potential replan/iterate iterations
     store_orchestrator_agent(&orchestrator_agents, pipeline_id, orchestrator_agent).await;
 
@@ -81,7 +89,7 @@ pub async fn execute_verification_step(
         pipeline.steps[2].output = Some(StepOutput {
             raw_text: "Verification completed by OrchestratorAgent".to_string(),
             structured_data: None,
-            agent_outputs: vec![],
+            agent_outputs: verification_outputs,
         });
         pipeline.steps[2].status = StepStatus::Completed;
         pipeline.steps[2].completed_at = Some(chrono::Utc::now().to_rfc3339());

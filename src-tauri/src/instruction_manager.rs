@@ -17,19 +17,10 @@ pub struct InstructionFileInfo {
 }
 
 /// Scan .instructions/ directory for .txt and .md files
-/// Also checks for bundled resources in release builds
 pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileInfo>, String> {
     let instructions_dir = Path::new(working_dir).join(".instructions");
 
-    // If directory doesn't exist, try to initialize from bundled resources
-    if !instructions_dir.exists() {
-        // Try to find bundled resources and copy them
-        if let Err(e) = initialize_instruction_files(working_dir) {
-            eprintln!("Warning: Could not initialize instruction files from bundle: {}", e);
-        }
-    }
-
-    // Try again after initialization
+    // If directory doesn't exist, return empty list
     if !instructions_dir.exists() {
         return Ok(Vec::new());
     }
@@ -43,92 +34,6 @@ pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileIn
     files.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(files)
-}
-
-/// Initialize .instructions directory with bundled default files
-/// In development, this copies from the project's .instructions
-/// In release, this uses bundled resources
-fn initialize_instruction_files(working_dir: &str) -> Result<(), String> {
-    let dest_dir = Path::new(working_dir).join(".instructions");
-
-    // Create directory
-    fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create .instructions directory: {}", e))?;
-
-    // Try to find source files
-    // In development: use relative path from executable
-    // In release: use bundled resources path
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))?;
-
-    let exe_dir = exe_path.parent()
-        .ok_or("Failed to get executable directory")?;
-
-    // Try multiple possible locations for bundled resources
-    let possible_sources = vec![
-        exe_dir.join(".instructions"),                    // Adjacent to exe (some bundles)
-        exe_dir.join("../Resources/.instructions"),       // macOS app bundle
-        exe_dir.join("resources/.instructions"),          // Windows/Linux bundle
-        exe_dir.join("../../.instructions"),              // Development (target/debug or target/release)
-        exe_dir.join("../../../.instructions"),           // Development alternate structure
-    ];
-
-    for source_dir in possible_sources {
-        if source_dir.exists() && source_dir.is_dir() {
-            // Copy all instruction files
-            copy_directory_contents(&source_dir, &dest_dir)?;
-            return Ok(());
-        }
-    }
-
-    // If no bundled resources found, create empty directory (not an error)
-    Ok(())
-}
-
-/// Copy contents of one directory to another (recursively, only .md and .txt files)
-fn copy_directory_contents(src: &Path, dest: &Path) -> Result<(), String> {
-    let entries = fs::read_dir(src)
-        .map_err(|e| format!("Failed to read source directory: {}", e))?;
-
-    let mut copied_count = 0;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            // Recursively copy subdirectories
-            let dir_name = path.file_name()
-                .ok_or("Invalid directory name")?;
-            let dest_subdir = dest.join(dir_name);
-
-            fs::create_dir_all(&dest_subdir)
-                .map_err(|e| format!("Failed to create subdirectory: {}", e))?;
-
-            copy_directory_contents(&path, &dest_subdir)?;
-        } else if path.is_file() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext == "txt" || ext == "md" {
-                    let filename = path.file_name()
-                        .ok_or("Invalid filename")?;
-                    let dest_path = dest.join(filename);
-
-                    // Only copy if destination doesn't exist (don't overwrite user files)
-                    if !dest_path.exists() {
-                        fs::copy(&path, &dest_path)
-                            .map_err(|e| format!("Failed to copy file: {}", e))?;
-                        copied_count += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    if copied_count > 0 {
-        eprintln!("Initialized .instructions with {} bundled files", copied_count);
-    }
-
-    Ok(())
 }
 
 fn scan_directory(

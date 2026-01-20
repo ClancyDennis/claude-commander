@@ -120,12 +120,20 @@ export function getCostByWorkingDirArray(summary: CostSummary | null): Array<{ d
 }
 
 // Auto-refresh cost data periodically
-let refreshInterval: NodeJS.Timeout | null = null;
+let refreshInterval: ReturnType<typeof setInterval> | null = null;
+let isAutoRefreshStarted = false;
 
 export function startAutoRefresh(intervalMs: number = 30000) {
+  // Prevent duplicate intervals from hot reloads
+  if (isAutoRefreshStarted && refreshInterval) {
+    return;
+  }
+
   if (refreshInterval) {
     clearInterval(refreshInterval);
   }
+
+  isAutoRefreshStarted = true;
 
   // Initial refresh
   refreshCostSummary();
@@ -141,10 +149,11 @@ export function stopAutoRefresh() {
     clearInterval(refreshInterval);
     refreshInterval = null;
   }
+  isAutoRefreshStarted = false;
 }
 
-// Initialize on module load
-if (typeof window !== 'undefined') {
+// Initialize on module load - only once
+if (typeof window !== 'undefined' && !isAutoRefreshStarted) {
   // Start auto-refresh when in browser environment
   startAutoRefresh();
 }
