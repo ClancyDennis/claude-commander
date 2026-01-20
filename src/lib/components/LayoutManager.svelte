@@ -1,6 +1,7 @@
 <script lang="ts">
   import { layoutMode, gridSize } from "../stores/agents";
   import HelpDialog from "./HelpDialog.svelte";
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   let showHelp = $state(false);
 
@@ -23,6 +24,7 @@
 
 <div class="layout-manager">
   <div class="layout-controls">
+    <HelpTip text="Switch between single, split, and grid layouts to view multiple agents at once." placement="bottom" />
     <button
       class="layout-btn"
       class:active={$layoutMode === 'single'}
@@ -89,6 +91,7 @@
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
       <line x1="12" y1="17" x2="12.01" y2="17"/>
     </svg>
+    <span>Help</span>
   </button>
 </div>
 
@@ -181,30 +184,33 @@
   }
 
   .help-btn {
-    width: 40px;
     height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
+    padding: 0 16px;
     background-color: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 50%;
+    border: 1px solid var(--accent);
+    border-radius: 20px;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
     transition: all 0.2s ease;
     margin-left: auto;
   }
 
   .help-btn:hover {
-    background-color: var(--bg-elevated);
-    border-color: var(--border-light);
-    color: var(--accent);
-    transform: scale(1.05);
+    background-color: var(--accent-glow);
+    border-color: var(--accent-hover);
+    color: var(--accent-hover);
+    transform: scale(1.02);
   }
 
   .help-btn svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
 </style>
 

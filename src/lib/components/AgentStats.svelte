@@ -3,6 +3,7 @@
   import { selectedAgentId, selectedAgentStats, updateAgentStats } from "../stores/agents";
   import type { AgentStatistics } from "../types";
   import { formatBytes, formatCost, formatNumber, formatDuration, formatTimeLocale } from '$lib/utils/formatting';
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   let { agentId }: { agentId?: string } = $props();
 
@@ -102,7 +103,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{displayStats.totalToolCalls}</div>
-          <div class="stat-label">Tool Calls</div>
+          <div class="stat-label">Tool Calls <HelpTip text="Number of tool invocations (file reads, writes, searches) made by the agent." placement="top" /></div>
         </div>
       </div>
 
@@ -114,7 +115,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{formatNumber(displayStats.totalTokensUsed)}</div>
-          <div class="stat-label">Tokens Used</div>
+          <div class="stat-label">Tokens Used <HelpTip text="Total tokens sent to the AI model. Higher counts mean more context and cost." placement="top" /></div>
         </div>
       </div>
 
@@ -127,7 +128,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{formatCost(displayStats.totalCostUsd)}</div>
-          <div class="stat-label">Estimated Cost</div>
+          <div class="stat-label">Estimated Cost <HelpTip text="Approximate API cost based on token usage. Actual billing may vary." placement="top" /></div>
         </div>
       </div>
 
@@ -327,6 +328,9 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .stats-footer {

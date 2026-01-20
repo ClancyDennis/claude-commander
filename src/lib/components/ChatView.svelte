@@ -3,6 +3,7 @@
   import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
   import ChatMessage from "./ChatMessage.svelte";
   import type { ChatResponse } from "../types";
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   let input = $state("");
   let messagesContainer: HTMLDivElement | undefined = $state();
@@ -109,7 +110,7 @@
   <div class="chat-header">
     <div class="header-left">
       <span class="header-icon">🎛️</span>
-      <span class="header-title">System Commander</span>
+      <span class="header-title">System Commander <HelpTip text="Natural language control center. Create agents, send prompts, and manage your fleet." placement="bottom" /></span>
       {#if $metaAgentThinking}
         <span class="thinking-indicator">Thinking...</span>
       {/if}
@@ -155,7 +156,7 @@
 
   {#if $agentsWithOutputs.length > 0}
     <div class="agent-results-section">
-      <div class="section-title">Agents with results:</div>
+      <div class="section-title">Agents with results: <HelpTip text="Click to have the System Commander analyze and summarize agent outputs." placement="right" /></div>
       <div class="agent-results-buttons">
         {#each $agentsWithOutputs as agent (agent.id)}
           <button
@@ -229,6 +230,9 @@
     font-size: 18px;
     font-weight: 600;
     color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .thinking-indicator {
@@ -487,6 +491,9 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .agent-results-buttons {

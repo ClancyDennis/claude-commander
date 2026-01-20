@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   interface ThreadConfig {
     p_thread_enabled: boolean;
@@ -121,7 +122,7 @@
   <div class="thread-status">
     <div class="thread-card" class:enabled={config.p_thread_enabled}>
       <div class="thread-header">
-        <span class="thread-name">P-Thread (Pool)</span>
+        <span class="thread-name">P-Thread (Pool) <HelpTip text="Manages agent lifecycle and resource allocation. Disable to run agents without pooling." placement="right" /></span>
         <label class="toggle">
           <input
             type="checkbox"
@@ -145,7 +146,7 @@
 
     <div class="thread-card" class:enabled={config.b_thread_enabled}>
       <div class="thread-header">
-        <span class="thread-name">B-Thread (Orchestrator)</span>
+        <span class="thread-name">B-Thread (Orchestrator) <HelpTip text="Decomposes complex tasks into subtasks and coordinates multiple agents in parallel." placement="right" /></span>
         <label class="toggle">
           <input
             type="checkbox"
@@ -169,7 +170,7 @@
 
     <div class="thread-card" class:enabled={config.f_thread_enabled}>
       <div class="thread-header">
-        <span class="thread-name">F-Thread (Verification)</span>
+        <span class="thread-name">F-Thread (Verification) <HelpTip text="Runs multiple agents in parallel and uses voting to select the best result." placement="right" /></span>
         <label class="toggle">
           <input
             type="checkbox"
@@ -193,7 +194,7 @@
 
     <div class="thread-card" class:enabled={config.c_thread_enabled}>
       <div class="thread-header">
-        <span class="thread-name">C-Thread (Checkpoints)</span>
+        <span class="thread-name">C-Thread (Checkpoints) <HelpTip text="Manages human-in-the-loop review points and automatic validation gates." placement="right" /></span>
         <label class="toggle">
           <input
             type="checkbox"
@@ -247,7 +248,7 @@
 
       <div class="setting-group">
         <label>
-          Backpressure Threshold
+          Backpressure Threshold <HelpTip text="When system load exceeds this threshold, new tasks are queued. Lower values = more headroom." placement="top" />
           <input
             type="range"
             bind:value={config.backpressure_threshold}
@@ -264,6 +265,9 @@
 
   <!-- Emergency Controls -->
   <div class="emergency-zone">
+    <div class="emergency-header">
+      <HelpTip text="Immediately stops all threads and running agents. Use for runaway processes." placement="top" />
+    </div>
     <button class="emergency-btn" onclick={emergencyShutdown}>
       🚨 Emergency Shutdown
     </button>
@@ -332,6 +336,9 @@
     font-size: 15px;
     font-weight: 600;
     color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   /* Toggle Switch */
@@ -480,5 +487,11 @@
   .emergency-btn:hover {
     background: #dc2626;
     transform: scale(1.02);
+  }
+
+  .emergency-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--space-sm);
   }
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Agent } from "../types";
   import { selectedAgentOutputs, agentOutputs } from "../stores/agents";
+  import { agentsWithAlerts } from "../stores/security";
   import StatusBadge from "./StatusBadge.svelte";
   import TypingIndicator from "./TypingIndicator.svelte";
   import { formatPath, formatTimeAgo } from '$lib/utils/formatting';
@@ -10,6 +11,7 @@
   const outputs = $derived($agentOutputs.get(agent.id) ?? []);
   const recentOutputs = $derived(outputs.slice(-3));
   const hasOutputs = $derived(outputs.length > 0);
+  const hasSecurityAlert = $derived($agentsWithAlerts.has(agent.id));
 </script>
 
 <div class="agent-card">
@@ -26,7 +28,12 @@
         <span class="agent-path">{agent.workingDir}</span>
       </div>
     </div>
-    <StatusBadge status={agent.status} size="small" showLabel={false} />
+    <div class="header-badges">
+      {#if hasSecurityAlert}
+        <span class="security-badge">Alert</span>
+      {/if}
+      <StatusBadge status={agent.status} size="small" showLabel={false} />
+    </div>
   </div>
 
   <div class="card-content">
@@ -141,6 +148,31 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .header-badges {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+  }
+
+  .security-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--error);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    animation: security-badge-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes security-badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
 
   .card-content {

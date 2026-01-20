@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AgentOutput } from "../types";
   import { invoke } from "@tauri-apps/api/core";
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   let {
     outputs,
@@ -338,15 +339,15 @@
       <div class="options-grid">
         <label class="checkbox-label">
           <input type="checkbox" bind:checked={includeTimestamps} />
-          <span>Include timestamps</span>
+          <span>Include timestamps <HelpTip text="Add ISO-8601 timestamps to each output entry for tracking chronology." placement="right" /></span>
         </label>
         <label class="checkbox-label">
           <input type="checkbox" bind:checked={includeToolCalls} />
-          <span>Include tool calls</span>
+          <span>Include tool calls <HelpTip text="Include tool_use and tool_result entries showing agent actions." placement="right" /></span>
         </label>
         <label class="checkbox-label">
           <input type="checkbox" bind:checked={includeMetadata} />
-          <span>Include metadata</span>
+          <span>Include metadata <HelpTip text="Add language detection, line counts, and truncation info to each output." placement="right" /></span>
         </label>
       </div>
     </div>
@@ -574,6 +575,9 @@
   .checkbox-label span {
     font-size: 14px;
     color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .filter-select {

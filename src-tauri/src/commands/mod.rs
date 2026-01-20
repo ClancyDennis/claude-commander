@@ -9,9 +9,11 @@ pub mod pipeline;
 pub mod cost;
 pub mod logging;
 pub mod instruction;
+pub mod instruction_analysis;
 pub mod skill;
 pub mod database;
 pub mod auto_pipeline;
+pub mod security;
 
 // Re-export all command functions for registration in lib.rs
 pub use agent::*;
@@ -22,6 +24,8 @@ pub use pipeline::*;
 pub use cost::*;
 pub use logging::*;
 pub use instruction::*;
+pub use instruction_analysis::*;
 pub use skill::*;
 pub use database::*;
 pub use auto_pipeline::*;
+pub use security::*;

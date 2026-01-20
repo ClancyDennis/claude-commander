@@ -5,6 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import RunningAgentsList from './agent-list/RunningAgentsList.svelte';
   import HistoricalRunsList from './agent-list/HistoricalRunsList.svelte';
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   let { onNewAgent, onToggleDatabaseStats }: {
     onNewAgent: () => void;
@@ -97,6 +98,7 @@
       </svg>
       History
     </button>
+    <HelpTip text="Running shows active agents. History shows completed sessions from the database." placement="right" />
   </div>
 
   <div class="list-container">
@@ -122,7 +124,7 @@
   {#if onToggleDatabaseStats}
     <footer class="agent-list-footer">
       <button class="footer-btn" onclick={onToggleDatabaseStats} title="Toggle Database Stats (Ctrl+Shift+D)">
-        DB Stats
+        DB Stats <HelpTip text="View database size, total runs, and usage statistics." placement="top" />
       </button>
     </footer>
   {/if}
@@ -174,6 +176,7 @@
 
   .sidebar-toggle {
     display: flex;
+    align-items: center;
     gap: 8px;
     padding: var(--space-md) var(--space-lg);
     border-bottom: 1px solid var(--border);
@@ -237,7 +240,7 @@
     padding: 0.75rem;
     border: 1px solid var(--border);
     background: var(--bg-secondary);
-    color: var(--text);
+    color: var(--text-primary);
     border-radius: 6px;
     font-size: 0.875rem;
     cursor: pointer;
@@ -245,7 +248,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
+    gap: 6px;
   }
 
   .footer-btn:hover {

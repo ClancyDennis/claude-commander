@@ -52,7 +52,7 @@ pub async fn create_agent(
 
                 for instruction_file in &instruction_files {
                     let instruction_path = std::path::Path::new(&working_dir)
-                        .join(".grove-instructions")
+                        .join(".instructions")
                         .join(instruction_file);
 
                     if instruction_path.exists() {
@@ -125,7 +125,12 @@ pub async fn send_prompt(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let manager = state.agent_manager.lock().await;
-    manager.send_prompt(&agent_id, &prompt, Some(Arc::new(app_handle))).await
+    manager.send_prompt(
+        &agent_id,
+        &prompt,
+        Some(Arc::new(app_handle)),
+        state.security_monitor.clone(),
+    ).await
 }
 
 #[tauri::command]
@@ -221,8 +226,10 @@ pub async fn resume_crashed_run(
     ).await?;
 
     // If there was an initial prompt, resend it
+    // Note: For resumed runs, we don't pass security_monitor to avoid re-analyzing
+    // the prompt that was already analyzed in the original run
     if let Some(initial_prompt) = run.initial_prompt {
-        manager.send_prompt(&new_agent_id, &initial_prompt, None).await?;
+        manager.send_prompt(&new_agent_id, &initial_prompt, None, None).await?;
     }
 
     Ok(new_agent_id)

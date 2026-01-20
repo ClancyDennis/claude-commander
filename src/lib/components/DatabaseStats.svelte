@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
+  import HelpTip from "./new-agent/HelpTip.svelte";
 
   interface DatabaseStats {
     db_size_bytes: number;
@@ -76,7 +77,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{stats.db_size_formatted}</div>
-          <div class="stat-label">Database Size</div>
+          <div class="stat-label">Database Size <HelpTip text="Total size of the SQLite database storing agent runs and outputs." placement="right" /></div>
           <div class="stat-meta">{formatNumber(stats.db_size_bytes)} bytes</div>
         </div>
       </div>
@@ -91,7 +92,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{formatNumber(stats.total_runs)}</div>
-          <div class="stat-label">Total Runs</div>
+          <div class="stat-label">Total Runs <HelpTip text="Number of agent sessions stored, including completed and failed runs." placement="right" /></div>
         </div>
       </div>
 
@@ -266,6 +267,9 @@
     font-size: 13px;
     color: var(--text-muted);
     margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .stat-meta {

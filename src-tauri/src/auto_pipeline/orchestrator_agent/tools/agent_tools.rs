@@ -77,10 +77,11 @@ impl OrchestratorAgent {
         };
 
         // Send the prompt
+        // Note: No security_monitor for pipeline automated prompts
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &planning_prompt, Some(event_emitter.clone()))
+                .send_prompt(&agent_id, &planning_prompt, Some(event_emitter.clone()), None)
                 .await
             {
                 return ToolResult::error(
@@ -189,10 +190,11 @@ impl OrchestratorAgent {
         };
 
         // Send the prompt
+        // Note: No security_monitor for pipeline automated prompts
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &builder_prompt, Some(event_emitter.clone()))
+                .send_prompt(&agent_id, &builder_prompt, Some(event_emitter.clone()), None)
                 .await
             {
                 return ToolResult::error(
@@ -311,10 +313,11 @@ impl OrchestratorAgent {
         };
 
         // Send the prompt
+        // Note: No security_monitor for pipeline automated prompts
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &verification_prompt, Some(event_emitter.clone()))
+                .send_prompt(&agent_id, &verification_prompt, Some(event_emitter.clone()), None)
                 .await
             {
                 return ToolResult::error(

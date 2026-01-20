@@ -18,6 +18,7 @@ use tokio::time::Instant;
 use crate::agent_runs_db::{AgentRun, AgentRunsDB, RunStatus};
 use crate::github;
 use crate::logger::Logger;
+use crate::security_monitor::SecurityMonitor;
 use crate::types::{
     AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus,
     AgentStatusEvent,
@@ -345,6 +346,7 @@ impl AgentManager {
         agent_id: &str,
         prompt: &str,
         app_handle: Option<Arc<dyn crate::events::AppEventEmitter>>,
+        security_monitor: Option<Arc<SecurityMonitor>>,
     ) -> Result<(), String> {
         // Log prompt sending
         if let Some(ref logger) = self.logger {
@@ -356,6 +358,17 @@ impl AgentManager {
                     None,
                 )
                 .await;
+        }
+
+        // Seed security expectations from the prompt (if security monitor is available)
+        // This should be done BEFORE processing so the first tool call can be checked
+        if let Some(ref monitor) = security_monitor {
+            let agents = self.agents.lock().await;
+            if let Some(agent) = agents.get(agent_id) {
+                let working_dir = agent.info.working_dir.clone();
+                drop(agents); // Release lock before async call
+                monitor.on_user_prompt(agent_id, &working_dir, prompt).await;
+            }
         }
 
         let agents = self.agents.lock().await;
@@ -522,6 +535,12 @@ impl AgentManager {
     pub async fn get_agent_by_session(&self, session_id: &str) -> Option<String> {
         let map = self.session_to_agent.lock().await;
         map.get(session_id).cloned()
+    }
+
+    /// Get info for a specific agent
+    pub async fn get_agent_info(&self, agent_id: &str) -> Option<AgentInfo> {
+        let agents = self.agents.lock().await;
+        agents.get(agent_id).map(|a| a.info.clone())
     }
 
     pub async fn get_agent_statistics(&self, agent_id: &str) -> Result<AgentStatistics, String> {

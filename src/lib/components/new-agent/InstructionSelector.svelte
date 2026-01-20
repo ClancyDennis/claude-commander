@@ -1,0 +1,548 @@
+<script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
+  import type { GeneratedSkill, SkillContent, InstructionFileInfo } from "../../types";
+  import HelpTip from "./HelpTip.svelte";
+  import InstructionEditorModal from "../InstructionEditorModal.svelte";
+
+  let {
+    workingDir,
+    selectedInstructions = $bindable(new Set()),
+    isCreating
+  }: {
+    workingDir: string,
+    selectedInstructions: Set<string>,
+    isCreating: boolean
+  } = $props();
+
+  let instructionFiles = $state<Array<InstructionFileInfo>>([]);
+  let isLoadingInstructions = $state(false);
+  let showInstructionSelector = $state(false);
+
+  // Editor Modal State
+  let showEditorModal = $state(false);
+  let editingFile = $state<InstructionFileInfo | null>(null);
+  let error = $state("");
+
+  // Skill Generation State
+  let generatingSkillForFile = $state<string | null>(null);
+  let generatedSkills = $state<Map<string, GeneratedSkill>>(new Map());
+  let skillGenerationError = $state<string | null>(null);
+
+  // Load instruction files when working directory changes
+  $effect(() => {
+    if (workingDir && workingDir.trim()) {
+      loadInstructionFiles();
+    } else {
+        instructionFiles = [];
+    }
+  });
+
+  async function loadInstructionFiles() {
+    try {
+      isLoadingInstructions = true;
+      const files = await invoke<Array<any>>("list_instruction_files", {
+        workingDir: workingDir,
+      });
+      instructionFiles = files;
+
+      // Check for existing skills after loading files
+      await checkExistingSkills();
+    } catch (e) {
+      console.error("Failed to load instruction files:", e);
+      // Silent fail - instructions are optional
+      instructionFiles = [];
+    } finally {
+      isLoadingInstructions = false;
+    }
+  }
+
+  async function checkExistingSkills() {
+    try {
+      const skills = await invoke<GeneratedSkill[]>("list_generated_skills", {
+        workingDir,
+      });
+
+      // Match skills to instruction files by name heuristics
+      for (const skill of skills) {
+        for (const file of instructionFiles) {
+          // Simple matching: skill name derived from file name
+          const expectedSkillName = file.name
+            .replace(/\.(txt|md)$/, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-');
+
+          if (skill.skillName === expectedSkillName) {
+            file.hasSkill = true;
+            file.skillName = skill.skillName;
+            generatedSkills.set(file.id, skill);
+          }
+        }
+      }
+
+      instructionFiles = [...instructionFiles]; // Trigger reactivity
+    } catch (e) {
+      console.error("Failed to check existing skills:", e);
+    }
+  }
+
+  async function generateSkillForInstruction(file: InstructionFileInfo) {
+    generatingSkillForFile = file.id;
+    skillGenerationError = null;
+
+    try {
+      const result = await invoke<GeneratedSkill>("generate_skill_from_instruction", {
+        filePath: file.path,
+        workingDir: workingDir,
+      });
+
+      generatedSkills.set(file.id, result);
+      file.hasSkill = true;
+      file.skillName = result.skillName;
+
+      // Re-trigger reactivity
+      instructionFiles = [...instructionFiles];
+    } catch (error) {
+      skillGenerationError = `Failed to generate skill: ${error}`;
+      console.error("Skill generation error:", error);
+    } finally {
+      generatingSkillForFile = null;
+    }
+  }
+
+  async function viewSkillContent(skillName: string) {
+    try {
+      const content = await invoke<SkillContent>("get_skill_content", {
+        skillName,
+        workingDir: workingDir,
+      });
+
+      // For now, log to console - could create a modal later
+      console.log("Skill content:", content);
+      alert(`Skill: ${content.skillName}\n\n${content.skillMd.substring(0, 500)}...\n\nFull content logged to console.`);
+    } catch (error) {
+      console.error("Failed to load skill:", error);
+      alert(`Failed to load skill: ${error}`);
+    }
+  }
+
+  async function deleteSkill(file: InstructionFileInfo) {
+    if (!file.skillName) return;
+
+    if (!confirm(`Delete skill "${file.skillName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await invoke("delete_generated_skill", {
+        skillName: file.skillName,
+        workingDir: workingDir,
+      });
+
+      file.hasSkill = false;
+      file.skillName = undefined;
+      generatedSkills.delete(file.id);
+      instructionFiles = [...instructionFiles];
+    } catch (error) {
+      console.error("Failed to delete skill:", error);
+      alert(`Failed to delete skill: ${error}`);
+    }
+  }
+
+  function openCreateModal() {
+    editingFile = null;
+    showEditorModal = true;
+  }
+
+  function openEditModal(file: InstructionFileInfo) {
+    editingFile = file;
+    showEditorModal = true;
+  }
+
+  function handleModalSaved(filename: string) {
+    // Reload instructions and auto-select the saved file
+    loadInstructionFiles().then(() => {
+      const savedFile = instructionFiles.find(f => f.name === filename);
+      if (savedFile) {
+        selectedInstructions.add(savedFile.id);
+        selectedInstructions = new Set(selectedInstructions);
+      }
+      showInstructionSelector = true;
+    });
+  }
+
+  function toggleInstructionSelection(fileId: string) {
+    if (selectedInstructions.has(fileId)) {
+      selectedInstructions.delete(fileId);
+    } else {
+      selectedInstructions.add(fileId);
+    }
+    selectedInstructions = new Set(selectedInstructions); // Trigger reactivity
+  }
+</script>
+
+<!-- Instruction Editor Modal -->
+{#if showEditorModal}
+  <InstructionEditorModal
+    {workingDir}
+    existingFile={editingFile}
+    onClose={() => { showEditorModal = false; editingFile = null; }}
+    onSaved={handleModalSaved}
+  />
+{/if}
+
+<label>
+  <div class="label-row">
+    <span class="label-text" style="margin-bottom: 0;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      Instructions <span style="color: var(--text-muted); font-weight: 400;">(Opt)</span>
+      <HelpTip
+        text="Optional. Select one or more instruction files (prompts/specs) from your working directory. They'll be passed into the agent as extra guidance."
+      />
+    </span>
+    <button class="icon-btn small" onclick={openCreateModal} title="Create new with AI assistance">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New
+    </button>
+  </div>
+    
+    <div class="instructions-section">
+      <button
+        type="button"
+        class="instructions-toggle"
+        onclick={() => showInstructionSelector = !showInstructionSelector}
+        disabled={isCreating || isLoadingInstructions}
+      >
+        <span class="toggle-content">
+          {#if selectedInstructions.size > 0}
+            <span class="badge">{selectedInstructions.size}</span>
+          {/if}
+          {selectedInstructions.size > 0
+            ? `${selectedInstructions.size} selected`
+            : 'Select instructions'}
+        </span>
+        <svg class="chevron" class:rotated={showInstructionSelector} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {#if showInstructionSelector}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="instructions-dropdown animate-slide-up">
+          {#if isLoadingInstructions}
+            <div class="loading-state">
+              <span class="spinner"></span>
+              Loading...
+            </div>
+          {:else if instructionFiles.length === 0}
+            <div class="empty-state">
+              <p>No files found</p>
+            </div>
+          {:else}
+            <div class="instructions-list">
+              {#each instructionFiles as file}
+                <label class="instruction-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedInstructions.has(file.id)}
+                    onchange={() => toggleInstructionSelection(file.id)}
+                    disabled={isCreating}
+                  />
+                  <div class="instruction-info">
+                    <span class="instruction-name">{file.name}</span>
+                    {#if file.hasSkill}
+                      <span class="skill-badge success">✓ Skill</span>
+                    {/if}
+                  </div>
+                  <div class="instruction-actions">
+                    <!-- Edit button -->
+                    <button class="icon-btn tiny" onclick={(e) => { e.preventDefault(); openEditModal(file) }} title="Edit with AI">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    {#if generatingSkillForFile === file.id}
+                      <span class="spinner"></span>
+                    {:else if file.hasSkill}
+                      <button class="icon-btn tiny" onclick={(e) => { e.preventDefault(); viewSkillContent(file.skillName!) }} title="View Skill">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>
+                      </button>
+                      <button class="icon-btn tiny danger" onclick={(e) => { e.preventDefault(); deleteSkill(file) }} title="Delete Skill">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    {:else}
+                      <button class="icon-btn tiny primary" onclick={(e) => { e.preventDefault(); generateSkillForInstruction(file) }} title="Generate Skill">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
+                      </button>
+                    {/if}
+                  </div>
+                </label>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  </label>
+
+{#if error}
+  <div class="error animate-slide-up">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    {error}
+  </div>
+{/if}
+
+<style>
+  label {
+    display: block;
+  }
+
+  .label-text {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .label-text svg {
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+  }
+
+  .label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+  }
+
+  .icon-btn.small {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .icon-btn.small:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+  }
+
+  .instructions-section {
+    position: relative;
+  }
+
+  .instructions-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .instructions-toggle:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .toggle-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+
+  .instructions-toggle .chevron {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+  }
+
+  .instructions-toggle .chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .instructions-dropdown {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .loading-state,
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+    gap: var(--space-sm);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .instructions-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .instruction-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .instruction-item:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .instruction-item:has(input:checked) {
+    background: rgba(124, 58, 237, 0.1);
+    border-color: var(--accent);
+  }
+
+  .instruction-item input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+  }
+
+  .instruction-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .instruction-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .skill-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+  }
+
+  .instruction-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-btn.tiny {
+    padding: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  
+  .icon-btn.tiny:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .icon-btn.tiny.danger:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .icon-btn.tiny svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .error {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background-color: var(--error-glow);
+    border: 1px solid var(--error);
+    border-radius: 12px;
+    color: var(--error);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .error svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+</style>

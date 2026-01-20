@@ -147,13 +147,13 @@ pub fn get_tools_for_state(state: &PipelineState) -> Vec<ToolDefinition> {
 fn tool_read_instruction_file() -> ToolDefinition {
     ToolDefinition {
         name: "read_instruction_file".to_string(),
-        description: "Read the content of an instruction file from .grove-instructions/ to decide if it should be converted to a skill. Use this to inspect instruction files before deciding whether to create a skill from them.".to_string(),
+        description: "Read the content of an instruction file from .instructions/ to decide if it should be converted to a skill. Use this to inspect instruction files before deciding whether to create a skill from them.".to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "The relative path of the instruction file within .grove-instructions/"
+                    "description": "The relative path of the instruction file within .instructions/"
                 }
             },
             "required": ["file_path"]

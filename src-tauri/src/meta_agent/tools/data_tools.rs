@@ -54,8 +54,9 @@ pub async fn ship_data_to_agent(
     );
 
     // Send to target agent
+    // Note: No security_monitor for meta-agent automated prompts
     match manager
-        .send_prompt(target_id, &full_prompt, Some(Arc::new(app_handle)))
+        .send_prompt(target_id, &full_prompt, Some(Arc::new(app_handle)), None)
         .await
     {
         Ok(_) => json!({
@@ -122,8 +123,9 @@ pub async fn create_chained_agent(
             };
 
             // Send the prompt to the new agent
+            // Note: No security_monitor for meta-agent automated prompts
             if let Err(e) = manager
-                .send_prompt(&new_agent_id, &full_prompt, Some(Arc::new(app_handle)))
+                .send_prompt(&new_agent_id, &full_prompt, Some(Arc::new(app_handle)), None)
                 .await
             {
                 return json!({

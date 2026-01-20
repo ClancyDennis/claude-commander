@@ -9,11 +9,7 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
-  "bundle": {
-    "resources": [
-      "../.grove-instructions"
-    ]
-  },
+  "bundle": {},
   "app": {
     "windows": [
       {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import HelpTip from "./new-agent/HelpTip.svelte";
+
   interface AgentResult {
     agent_id: string;
     output: string;
@@ -38,7 +40,7 @@
     <header class="verification-header">
       <h2>Verification Results</h2>
       <div class="confidence-badge" class:high={result.confidence > 0.8}>
-        Confidence: {(result.confidence * 100).toFixed(0)}%
+        Confidence: {(result.confidence * 100).toFixed(0)}% <HelpTip text="Overall confidence based on agent agreement and validation outcomes." placement="left" />
       </div>
     </header>
 
@@ -144,6 +146,9 @@
     font-weight: 600;
     background: rgba(251, 191, 36, 0.2);
     color: #f59e0b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .confidence-badge.high {

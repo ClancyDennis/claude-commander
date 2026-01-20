@@ -181,8 +181,8 @@ Phase 4: Final Review
 - **Analytics Tab**: Daily cost charts and spending trends
 
 **Data Storage:**
-- Linux/macOS: `~/.grove_agent_manager/cost_history.json`
-- Windows: `%USERPROFILE%\.grove_agent_manager\cost_history.json`
+- Linux/macOS: `~/.local/share/claude-commander/cost_history.json`
+- Windows: `%LOCALAPPDATA%\claude-commander\cost_history.json`
 
 ### Creating a Single Agent
 

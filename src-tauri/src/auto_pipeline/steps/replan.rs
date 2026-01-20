@@ -104,10 +104,11 @@ pub async fn execute_replan_step(
     })
     .await?;
 
+    // Note: No security_monitor for pipeline automated prompts
     {
         let manager = agent_manager.lock().await;
         manager
-            .send_prompt(&agent_id, &replan_prompt, Some(app_handle.clone()))
+            .send_prompt(&agent_id, &replan_prompt, Some(app_handle.clone()), None)
             .await?;
     }
 

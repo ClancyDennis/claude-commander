@@ -10,16 +10,16 @@ pub struct InstructionFileInfo {
     pub id: String,              // relative path (used as unique ID)
     pub name: String,            // filename for display
     pub path: String,            // full absolute path
-    pub relative_path: String,   // path relative to .grove-instructions/
+    pub relative_path: String,   // path relative to .instructions/
     pub file_type: String,       // "txt" or "md"
     pub size: u64,               // bytes
     pub modified: String,        // ISO 8601 timestamp
 }
 
-/// Scan .grove-instructions/ directory for .txt and .md files
+/// Scan .instructions/ directory for .txt and .md files
 /// Also checks for bundled resources in release builds
 pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileInfo>, String> {
-    let instructions_dir = Path::new(working_dir).join(".grove-instructions");
+    let instructions_dir = Path::new(working_dir).join(".instructions");
 
     // If directory doesn't exist, try to initialize from bundled resources
     if !instructions_dir.exists() {
@@ -45,15 +45,15 @@ pub fn list_instruction_files(working_dir: &str) -> Result<Vec<InstructionFileIn
     Ok(files)
 }
 
-/// Initialize .grove-instructions directory with bundled default files
-/// In development, this copies from the project's .grove-instructions
+/// Initialize .instructions directory with bundled default files
+/// In development, this copies from the project's .instructions
 /// In release, this uses bundled resources
 fn initialize_instruction_files(working_dir: &str) -> Result<(), String> {
-    let dest_dir = Path::new(working_dir).join(".grove-instructions");
+    let dest_dir = Path::new(working_dir).join(".instructions");
 
     // Create directory
     fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create .grove-instructions directory: {}", e))?;
+        .map_err(|e| format!("Failed to create .instructions directory: {}", e))?;
 
     // Try to find source files
     // In development: use relative path from executable
@@ -66,11 +66,11 @@ fn initialize_instruction_files(working_dir: &str) -> Result<(), String> {
 
     // Try multiple possible locations for bundled resources
     let possible_sources = vec![
-        exe_dir.join(".grove-instructions"),                    // Adjacent to exe (some bundles)
-        exe_dir.join("../Resources/.grove-instructions"),       // macOS app bundle
-        exe_dir.join("resources/.grove-instructions"),          // Windows/Linux bundle
-        exe_dir.join("../../.grove-instructions"),              // Development (target/debug or target/release)
-        exe_dir.join("../../../.grove-instructions"),           // Development alternate structure
+        exe_dir.join(".instructions"),                    // Adjacent to exe (some bundles)
+        exe_dir.join("../Resources/.instructions"),       // macOS app bundle
+        exe_dir.join("resources/.instructions"),          // Windows/Linux bundle
+        exe_dir.join("../../.instructions"),              // Development (target/debug or target/release)
+        exe_dir.join("../../../.instructions"),           // Development alternate structure
     ];
 
     for source_dir in possible_sources {
@@ -125,7 +125,7 @@ fn copy_directory_contents(src: &Path, dest: &Path) -> Result<(), String> {
     }
 
     if copied_count > 0 {
-        eprintln!("Initialized .grove-instructions with {} bundled files", copied_count);
+        eprintln!("Initialized .instructions with {} bundled files", copied_count);
     }
 
     Ok(())
@@ -170,7 +170,7 @@ fn scan_directory(
                     datetime.to_rfc3339()
                 };
 
-                // Get relative path from .grove-instructions/
+                // Get relative path from .instructions/
                 let relative_path = path.strip_prefix(base_dir)
                     .map_err(|e| format!("Failed to get relative path: {}", e))?
                     .to_string_lossy()
@@ -199,7 +199,7 @@ fn scan_directory(
 
 /// Save instruction file content
 pub fn save_instruction_file(working_dir: &str, filename: &str, content: &str) -> Result<(), String> {
-    let instructions_dir = Path::new(working_dir).join(".grove-instructions");
+    let instructions_dir = Path::new(working_dir).join(".instructions");
 
     if !instructions_dir.exists() {
         fs::create_dir_all(&instructions_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -250,7 +250,7 @@ pub fn copy_instruction_files(
     working_dir: &str,
     selected_files: &[String]
 ) -> Result<Vec<String>, String> {
-    let instructions_dir = Path::new(working_dir).join(".grove-instructions");
+    let instructions_dir = Path::new(working_dir).join(".instructions");
     let claude_dir = Path::new(working_dir).join(".claude");
 
     // Ensure .claude directory exists
@@ -270,12 +270,12 @@ pub fn copy_instruction_files(
         }
 
         // Generate safe filename with prefix
-        // Example: my-instruction.md -> grove_instruction_my-instruction.md
+        // Example: my-instruction.md -> instruction_my-instruction.md
         let filename = source_path.file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| format!("Invalid filename: {}", relative_path))?;
 
-        let prefixed_name = format!("grove_instruction_{}", filename);
+        let prefixed_name = format!("instruction_{}", filename);
         let dest_path = claude_dir.join(&prefixed_name);
 
         // Copy file
@@ -296,9 +296,9 @@ pub fn cleanup_instruction_files(
     for file_path in copied_files {
         let path = Path::new(file_path);
 
-        // Safety check: only delete files with grove_instruction_ prefix
+        // Safety check: only delete files with instruction_ prefix
         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-            if filename.starts_with("grove_instruction_") {
+            if filename.starts_with("instruction_") {
                 if path.exists() {
                     fs::remove_file(path)
                         .map_err(|e| format!("Failed to delete {}: {}", file_path, e))?;
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_list_instruction_files_with_files() {
         let temp_dir = TempDir::new().unwrap();
-        let instructions_dir = temp_dir.path().join(".grove-instructions");
+        let instructions_dir = temp_dir.path().join(".instructions");
         fs::create_dir_all(&instructions_dir).unwrap();
 
         // Create test files
@@ -346,7 +346,7 @@ mod tests {
     fn test_copy_and_cleanup_instruction_files() {
         let temp_dir = TempDir::new().unwrap();
         let working_dir = temp_dir.path().to_str().unwrap();
-        let instructions_dir = temp_dir.path().join(".grove-instructions");
+        let instructions_dir = temp_dir.path().join(".instructions");
         let claude_dir = temp_dir.path().join(".claude");
 
         fs::create_dir_all(&instructions_dir).unwrap();
@@ -359,11 +359,11 @@ mod tests {
         ).unwrap();
 
         assert_eq!(copied.len(), 1);
-        assert!(claude_dir.join("grove_instruction_test.txt").exists());
+        assert!(claude_dir.join("instruction_test.txt").exists());
 
         // Cleanup
         cleanup_instruction_files(working_dir, &copied).unwrap();
-        assert!(!claude_dir.join("grove_instruction_test.txt").exists());
+        assert!(!claude_dir.join("instruction_test.txt").exists());
     }
 
     #[test]

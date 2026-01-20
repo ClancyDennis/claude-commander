@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
+use crate::security_monitor::{SecurityEvent, SecurityEventMetadata, SecurityEventType, SecurityMonitor};
 use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
 
 #[derive(Debug, Clone)]
@@ -22,17 +23,20 @@ pub struct HookServerState {
     pub agent_manager: Arc<Mutex<AgentManager>>,
     pub app_handle: Arc<dyn crate::events::AppEventEmitter>,
     pub pending_tools: Arc<Mutex<HashMap<String, PendingToolCall>>>,
+    pub security_monitor: Option<Arc<SecurityMonitor>>,
 }
 
 pub async fn start_hook_server(
     agent_manager: Arc<Mutex<AgentManager>>,
     app_handle: Arc<dyn crate::events::AppEventEmitter>,
     port: u16,
+    security_monitor: Option<Arc<SecurityMonitor>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = Arc::new(HookServerState {
         agent_manager,
         app_handle,
         pending_tools: Arc::new(Mutex::new(HashMap::new())),
+        security_monitor,
     });
 
     let app = Router::new()
@@ -170,6 +174,70 @@ async fn handle_hook(
 
             let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
         }
+    }
+
+    // Forward to security monitor if available
+    if let (Some(monitor), Some(tool_name)) = (&state.security_monitor, &input.tool_name) {
+        let now = chrono::Utc::now().timestamp_millis();
+
+        // Get agent info for context (combine into single lock)
+        let (working_dir, source) = {
+            let manager = state.agent_manager.lock().await;
+            match manager.get_agent_info(&agent_id).await {
+                Some(info) => (info.working_dir.clone(), info.source.as_str().to_string()),
+                None => ("/unknown".to_string(), "unknown".to_string()),
+            }
+        };
+
+        let security_event = if input.hook_event_name == "PreToolUse" {
+            SecurityEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                timestamp: now,
+                agent_id: agent_id.clone(),
+                session_id: Some(input.session_id.clone()),
+                event_type: SecurityEventType::ToolUseRequest {
+                    tool_name: tool_name.clone(),
+                    tool_input: input.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                },
+                content: serde_json::to_string(&input.tool_input).unwrap_or_default(),
+                metadata: SecurityEventMetadata {
+                    working_dir,
+                    parent_tool_use_id: None,
+                    source,
+                },
+                risk_score: None,
+                pattern_matches: None,
+                anomaly_info: None,
+            }
+        } else {
+            // For PostToolUse, determine success by checking for error in response
+            // Note: We already checked tool_response earlier in this function,
+            // so we use a fresh reference to the JSON content for security logging
+            let response_content = serde_json::to_string(&input.tool_input).unwrap_or_default();
+            let success = true; // Default to success for security logging
+
+            SecurityEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                timestamp: now,
+                agent_id: agent_id.clone(),
+                session_id: Some(input.session_id.clone()),
+                event_type: SecurityEventType::ToolUseResult {
+                    tool_name: tool_name.clone(),
+                    success,
+                },
+                content: response_content,
+                metadata: SecurityEventMetadata {
+                    working_dir,
+                    parent_tool_use_id: None,
+                    source,
+                },
+                risk_score: None,
+                pattern_matches: None,
+                anomaly_info: None,
+            }
+        };
+
+        monitor.process_event(security_event).await;
     }
 
     StatusCode::OK

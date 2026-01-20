@@ -45,10 +45,11 @@ pub async fn create_worker_agent(
             drop(manager);
 
             // Send initial prompt if provided
+            // Note: No security_monitor for meta-agent automated prompts
             if let Some(initial_prompt) = input["initial_prompt"].as_str() {
                 let manager = agent_manager.lock().await;
                 if let Err(e) = manager
-                    .send_prompt(&agent_id, initial_prompt, Some(Arc::new(app_handle.clone())))
+                    .send_prompt(&agent_id, initial_prompt, Some(Arc::new(app_handle.clone())), None)
                     .await
                 {
                     return json!({
@@ -91,8 +92,9 @@ pub async fn send_prompt_to_worker(
     }
 
     let manager = agent_manager.lock().await;
+    // Note: No security_monitor for meta-agent automated prompts
     match manager
-        .send_prompt(agent_id, prompt, Some(Arc::new(app_handle)))
+        .send_prompt(agent_id, prompt, Some(Arc::new(app_handle)), None)
         .await
     {
         Ok(_) => json!({

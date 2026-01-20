@@ -232,6 +232,42 @@ export interface InstructionFileInfo {
   skillName?: string;      // Name of the generated skill
 }
 
+// ============================================================================
+// Instruction Analysis Types (LLM-assisted editing)
+// ============================================================================
+
+export type IssueSeverity = "critical" | "warning" | "info";
+export type SuggestionCategory = "clarity" | "structure" | "completeness" | "specificity" | "formatting" | "other";
+export type SuggestionStatus = "pending" | "accepted" | "rejected";
+
+export interface InstructionIssue {
+  id: string;
+  severity: IssueSeverity;
+  title: string;
+  description: string;
+  lineStart?: number;
+  lineEnd?: number;
+}
+
+export interface InstructionSuggestion {
+  id: string;
+  category: SuggestionCategory;
+  title: string;
+  description: string;
+  originalText?: string;
+  suggestedText: string;
+  lineStart?: number;
+  lineEnd?: number;
+}
+
+export interface InstructionAnalysisResult {
+  qualityScore: number;         // 1-10
+  qualitySummary: string;
+  issues: InstructionIssue[];
+  suggestions: InstructionSuggestion[];
+  improvedContent?: string;
+}
+
 export interface GeneratedSkill {
   skillName: string;
   skillPath: string;
@@ -350,4 +386,69 @@ export interface OrchestratorDecision {
   issues: string[];
   suggestions: string[];
   timestamp: number;
+}
+
+// Security Types
+export type SecurityAlertSeverity = "low" | "medium" | "high" | "critical";
+
+export interface SecurityAlertPayload {
+  alert_id: string;
+  agent_id: string;
+  risk_level: SecurityAlertSeverity;
+  title: string;
+  description: string;
+  affected_agents: string[];
+  recommended_actions: string[];
+  timestamp: number;
+}
+
+export interface SecurityAlert {
+  agentId: string;
+  alertId: string;
+  severity: SecurityAlertSeverity;
+  title: string;
+  description: string;
+  timestamp: Date;
+}
+
+// Agent terminated by security system
+export interface SecurityAgentTerminatedPayload {
+  agent_id: string;
+  batch_id: string;
+  reason: string;
+}
+
+// Agent suspended by security system
+export interface SecurityAgentSuspendedPayload {
+  agent_id: string;
+  batch_id: string;
+  reason: string;
+}
+
+// Action requires human review
+export interface SecurityPendingReviewPayload {
+  id: string;
+  batch_id: string;
+  analysis_summary: string;
+  overall_risk_level: SecurityAlertSeverity;
+  recommended_action: string;
+  agent_id?: string;
+  created_at: number;
+}
+
+// Review completed
+export interface SecurityReviewCompletedPayload {
+  review_id: string;
+  approved: boolean;
+}
+
+// Pending review for UI tracking
+export interface PendingSecurityReview {
+  id: string;
+  batchId: string;
+  summary: string;
+  riskLevel: SecurityAlertSeverity;
+  recommendedAction: string;
+  agentId?: string;
+  createdAt: Date;
 }

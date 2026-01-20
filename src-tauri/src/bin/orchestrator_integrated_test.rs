@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ee_clone = event_emitter.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = hook_server::start_hook_server(am_clone, ee_clone, hook_port).await {
+        if let Err(e) = hook_server::start_hook_server(am_clone, ee_clone, hook_port, None).await {
             eprintln!("Hook server failed: {}", e);
         }
     });

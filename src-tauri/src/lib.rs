@@ -21,6 +21,7 @@ pub mod auto_pipeline;
 pub mod utils;
 pub mod commands;
 pub mod events;
+pub mod security_monitor;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -36,6 +37,7 @@ use pipeline_manager::PipelineManager;
 use verification::VerificationEngine;
 use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
+use security_monitor::{SecurityConfig, SecurityMonitor, ResponseConfig};
 
 // Make AppState public so commands module can access it
 pub struct AppState {
@@ -49,6 +51,7 @@ pub struct AppState {
     pub verification_engine: Arc<Mutex<VerificationEngine>>,
     pub agent_runs_db: Arc<AgentRunsDB>,
     pub auto_pipeline_manager: Arc<Mutex<AutoPipelineManager>>,
+    pub security_monitor: Option<Arc<SecurityMonitor>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -65,8 +68,8 @@ pub fn run() {
             // Initialize logger first so other components can use it
             let log_db_path = dirs::data_local_dir()
                 .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
-                .map(|d| d.join("grove").join("logs.db"))
-                .unwrap_or_else(|| std::env::temp_dir().join("grove_logs.db"));
+                .map(|d| d.join("claude-commander").join("logs.db"))
+                .unwrap_or_else(|| std::env::temp_dir().join("cc_logs.db"));
 
             // Ensure parent directory exists
             if let Some(parent) = log_db_path.parent() {
@@ -81,7 +84,7 @@ pub fn run() {
                 Err(e) => {
                     eprintln!("⚠ Warning: Failed to initialize logger: {}", e);
                     // Try fallback to temp directory
-                    let temp_log = std::env::temp_dir().join("grove_logs.db");
+                    let temp_log = std::env::temp_dir().join("cc_logs.db");
                     match Logger::new(temp_log.clone()) {
                         Ok(logger) => {
                             println!("✓ Logger initialized at temp location: {:?}", temp_log);
@@ -95,8 +98,8 @@ pub fn run() {
             // Initialize agent runs database early (needed for agent manager)
             let runs_db_path = dirs::data_local_dir()
                 .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
-                .map(|d| d.join("grove").join("agent_runs.db"))
-                .unwrap_or_else(|| std::env::temp_dir().join("grove_agent_runs.db"));
+                .map(|d| d.join("claude-commander").join("agent_runs.db"))
+                .unwrap_or_else(|| std::env::temp_dir().join("cc_agent_runs.db"));
 
             // Ensure parent directory exists
             if let Some(parent) = runs_db_path.parent() {
@@ -111,7 +114,7 @@ pub fn run() {
                 Err(e) => {
                     eprintln!("⚠ Warning: Failed to initialize agent runs database: {}", e);
                     // Try fallback to temp directory
-                    let temp_db = std::env::temp_dir().join("grove_agent_runs.db");
+                    let temp_db = std::env::temp_dir().join("cc_agent_runs.db");
                     match AgentRunsDB::new(temp_db.clone()) {
                         Ok(db) => {
                             println!("✓ Agent runs database initialized at temp location: {:?}", temp_db);
@@ -155,13 +158,41 @@ pub fn run() {
                 }
             };
 
-            // Start hook server
+            // Initialize security monitor (optional - works even without LLM)
+            let security_monitor = match SecurityMonitor::new(
+                agent_manager.clone(),
+                logger.clone(),
+                Arc::new(app.handle().clone()),
+                SecurityConfig::default(),
+                ResponseConfig::default(),
+            ) {
+                Ok(monitor) => {
+                    let monitor = Arc::new(monitor);
+                    // Start background analysis loop (returns JoinHandle, runs in background)
+                    let _ = monitor.clone().start_background_analysis();
+                    println!("✓ Security monitor initialized");
+                    Some(monitor)
+                }
+                Err(e) => {
+                    eprintln!("⚠ Warning: Failed to initialize security monitor: {}", e);
+                    eprintln!("  Security monitoring will be disabled.");
+                    None
+                }
+            };
+
+            // Start hook server (with security monitor if available)
             let agent_manager_clone = agent_manager.clone();
             let app_handle = app.handle().clone();
+            let security_monitor_for_hook = security_monitor.clone();
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) =
-                    hook_server::start_hook_server(agent_manager_clone, Arc::new(app_handle), hook_port).await
+                    hook_server::start_hook_server(
+                        agent_manager_clone,
+                        Arc::new(app_handle),
+                        hook_port,
+                        security_monitor_for_hook,
+                    ).await
                 {
                     eprintln!("Hook server error: {}", e);
                 }
@@ -254,6 +285,7 @@ pub fn run() {
                 verification_engine,
                 agent_runs_db,
                 auto_pipeline_manager,
+                security_monitor,
             });
 
             Ok(())
@@ -314,6 +346,9 @@ pub fn run() {
             commands::list_instruction_files,
             commands::get_instruction_file_content,
             commands::save_instruction_file,
+            // Instruction analysis commands
+            commands::analyze_instruction_content,
+            commands::apply_instruction_suggestions,
             // Skill commands
             commands::generate_skill_from_instruction,
             commands::list_generated_skills,
@@ -332,7 +367,15 @@ pub fn run() {
             // Auto-pipeline commands
             commands::create_auto_pipeline,
             commands::start_auto_pipeline,
-            commands::get_auto_pipeline
+            commands::get_auto_pipeline,
+            // Security commands
+            commands::get_security_status,
+            commands::set_security_enabled,
+            commands::get_pending_security_reviews,
+            commands::approve_security_action,
+            commands::reject_security_action,
+            commands::clear_security_reviews,
+            commands::scan_agent_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

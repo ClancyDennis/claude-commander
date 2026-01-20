@@ -46,6 +46,13 @@
   import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "./lib/stores/autoPipelines";
   import { updateActivity } from "./lib/stores/activity";
   import {
+    addSecurityAlert,
+    markAgentTerminated,
+    markAgentSuspended,
+    addPendingReview,
+    removePendingReview,
+  } from "./lib/stores/security";
+  import {
     setupEventListeners,
     setupKeyboardShortcuts,
     refreshAutoPipeline,
@@ -217,6 +224,99 @@
       },
       onOrchestratorDecision: (decision) => {
         addOrchestratorDecision(decision);
+      },
+
+      // Security callbacks
+      onSecurityAlert: (payload) => {
+        // Add to store
+        addSecurityAlert({
+          agentId: payload.agent_id,
+          alertId: payload.alert_id,
+          severity: payload.risk_level,
+          title: payload.title,
+          description: payload.description,
+          timestamp: new Date(payload.timestamp),
+        });
+
+        // Show toast notification
+        const toastType = payload.risk_level === "critical" || payload.risk_level === "high"
+          ? "error"
+          : "warning";
+
+        showToast({
+          type: toastType,
+          message: `Security: ${payload.title}`,
+          action: {
+            label: "View Agent",
+            onClick: () => selectedAgentId.set(payload.agent_id),
+          },
+          duration: payload.risk_level === "critical" ? 0 : 6000,
+        });
+      },
+
+      onSecurityAgentTerminated: (payload) => {
+        markAgentTerminated(payload.agent_id);
+        updateAgentStatus(payload.agent_id, "stopped");
+
+        showToast({
+          type: "error",
+          message: "Agent terminated: Critical security threat",
+          action: {
+            label: "View Agent",
+            onClick: () => selectedAgentId.set(payload.agent_id),
+          },
+          duration: 0, // Don't auto-dismiss
+        });
+      },
+
+      onSecurityAgentSuspended: (payload) => {
+        markAgentSuspended(payload.agent_id);
+        updateAgentStatus(payload.agent_id, "stopped");
+
+        showToast({
+          type: "warning",
+          message: "Agent suspended: Awaiting security review",
+          action: {
+            label: "View Agent",
+            onClick: () => selectedAgentId.set(payload.agent_id),
+          },
+          duration: 0, // Don't auto-dismiss
+        });
+      },
+
+      onSecurityPendingReview: (payload) => {
+        addPendingReview({
+          id: payload.id,
+          batchId: payload.batch_id,
+          summary: payload.analysis_summary,
+          riskLevel: payload.overall_risk_level,
+          recommendedAction: payload.recommended_action,
+          agentId: payload.agent_id,
+          createdAt: new Date(payload.created_at),
+        });
+
+        showToast({
+          type: "warning",
+          message: "Security review required",
+          action: {
+            label: "Review",
+            onClick: () => {
+              if (payload.agent_id) {
+                selectedAgentId.set(payload.agent_id);
+              }
+            },
+          },
+          duration: 0, // Don't auto-dismiss
+        });
+      },
+
+      onSecurityReviewCompleted: (payload) => {
+        removePendingReview(payload.review_id);
+
+        showToast({
+          type: payload.approved ? "success" : "info",
+          message: payload.approved ? "Security review approved" : "Security review dismissed",
+        });
       },
     });
 
