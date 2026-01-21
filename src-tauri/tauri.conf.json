@@ -9,7 +9,43 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
-  "bundle": {},
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Multi-agent mission control for Claude Code",
+    "longDescription": "A desktop application for running multiple Claude Code agents across directories. Centralize agent workflows, monitor tool activity in real-time, and manage structured multi-phase pipelines.",
+    "copyright": "Copyright © 2024 Claude Commander Contributors",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "frameworks": [],
+      "entitlements": null,
+      "exceptionDomain": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  },
   "app": {
     "windows": [
       {
