@@ -95,9 +95,8 @@ Comprehensive API cost monitoring:
 
 ### Prerequisites
 
-- **Node.js 22 LTS** (v24+ may cause issues with native bindings)
-- **Rust** 1.70+ and Cargo (install from https://rustup.rs/)
-- **Claude CLI** (`npm install -g @anthropic-ai/claude-code`)
+- Node.js 18+ and npm
+- Rust 1.70+ and Cargo
 - Anthropic API key (for meta-agent features)
 
 ### Steps
@@ -124,42 +123,30 @@ cp .env.example .env
 npm run tauri dev
 ```
 
-> **Troubleshooting npm install:**
-> If you see errors about missing native bindings (e.g., `@tauri-apps/cli-win32-x64-msvc` or `@rollup/rollup-win32-x64-msvc`), try:
-> ```bash
-> rm -rf node_modules package-lock.json
-> npm install
-> ```
-> This is a [known npm bug](https://github.com/npm/cli/issues/4828) with optional dependencies.
+### Troubleshooting
 
-### Windows-Specific Setup
+**Windows Installation Issues**
 
-**Node.js Version:**
-- Use Node.js 22 LTS (not v24+). Native packages may not have prebuilt binaries for bleeding-edge Node versions.
-- Download from https://nodejs.org/ (LTS version)
+If you encounter errors like `Cannot find module ...` or `npm has a bug related to optional dependencies` when running `npm install` or `npm run build`, it may be due to a known npm bug on Windows where platform-specific binaries for optional dependencies (like `@tauri-apps/cli` and `@rollup/rollup`) are skipped.
 
-**Claude CLI Path:**
-If the app can't find the Claude CLI, add this to your `.env` file:
-```
-CLAUDE_PATH=C:\Users\YourUsername\AppData\Roaming\npm\claude.cmd
-```
-Find your path with: `where claude`
+To fix this:
+1.  Explicitly install the missing Windows binaries as dev dependencies:
+    ```bash
+    npm install --save-dev --save-exact @tauri-apps/cli-win32-x64-msvc @rollup/rollup-win32-x64-msvc
+    ```
+2.  Clean the cache and reinstall:
+    ```bash
+    npm cache clean --force
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
 
-**PowerShell Execution Policy:**
-If npm commands fail in PowerShell with "not digitally signed" errors:
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-Or use Git Bash instead.
+**Missing Icon Error**
 
-### macOS/Linux Setup
+If you see an error like `` `icons/icon.ico` not found ``, you need to generate the platform-specific icons from the source image:
 
-The app should auto-detect the Claude CLI. If not, set `CLAUDE_PATH` in your `.env`:
 ```bash
-# Find your claude installation
-which claude
-# Add to .env
-CLAUDE_PATH=/path/to/claude
+npm run tauri icon src-tauri/icons/icon.png
 ```
 
 ## Building for Production
