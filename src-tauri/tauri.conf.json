@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Claude Commander",
+  "identifier": "com.claude.commander",
+  "version": "0.1.0",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Multi-agent mission control for Claude Code",
+    "longDescription": "A desktop application for running multiple Claude Code agents across directories. Centralize agent workflows, monitor tool activity in real-time, and manage structured multi-phase pipelines.",
+    "copyright": "Copyright © 2024 Claude Commander Contributors",
+    "targets": ["deb", "rpm", "dmg", "nsis"],
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "frameworks": [],
+      "entitlements": null,
+      "exceptionDomain": null,
+      "signingIdentity": null,
+      "providerShortName": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Claude Commander",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "visible": true,
+        "center": true,
+        "focus": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

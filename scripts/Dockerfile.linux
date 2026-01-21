@@ -1,0 +1,75 @@
+# Dockerfile for building Claude Commander for Linux
+# Supports both x86_64 and ARM64 (when run on ARM or with --platform)
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies for Tauri
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    curl \
+    wget \
+    git \
+    pkg-config \
+    # Tauri/WebKit dependencies
+    libwebkit2gtk-4.1-dev \
+    libappindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    # SSL and GTK
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    # File utilities
+    file \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 LTS
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Create app directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install npm dependencies
+RUN npm ci
+
+# Copy Cargo files for dependency caching
+COPY src-tauri/Cargo.toml src-tauri/Cargo.lock ./src-tauri/
+
+# Create dummy source files to cache Rust dependencies
+RUN mkdir -p src-tauri/src && \
+    echo 'fn main() {}' > src-tauri/src/main.rs && \
+    echo 'pub fn run() {}' > src-tauri/src/lib.rs
+
+# Build Rust dependencies (this layer gets cached)
+WORKDIR /app/src-tauri
+RUN cargo build --release 2>/dev/null || true
+WORKDIR /app
+
+# Remove dummy files
+RUN rm -rf src-tauri/src
+
+# Copy the rest of the application
+COPY . .
+
+# Build the frontend
+RUN npm run build
+
+# Build the Tauri application
+RUN npm run tauri build
+
+# Output location
+# The built artifacts will be in src-tauri/target/release/bundle/
