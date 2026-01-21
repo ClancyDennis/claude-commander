@@ -81,4 +81,4 @@ MANIFEST
 
 #Other
 *.claude
-*.grove-instructions
+*.instructions
