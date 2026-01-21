@@ -1,19 +1,89 @@
 # Claude Commander
 
-Mission control for Claude Code agents. A desktop application for AI-native agent orchestration with pipelines, cost tracking, and multi-agent workflows.
+A desktop “mission control” for running **multiple Claude Code agents** across directories without drowning in permission popups, juggling a dozen VS Code windows, or losing track of what each agent was doing.
 
-## Overview
+Claude Commander centralizes agent workflows into one place: pick a directory, give it a task (via Markdown instructions), monitor tool activity and outputs in real time, and review everything later—optionally with multi-phase pipelines that help carry work through to completion with fewer interruptions.
 
-Claude Commander is a comprehensive platform for:
-- **Running multiple Claude Code agents** in parallel workspaces
-- **Pipeline workflows** with 4-phase development (Planning → Implementation → Testing → Review)
-- **Cost tracking** with persistent analytics across sessions
-- **Multi-agent orchestration** with task decomposition and verification
-- **Real-time monitoring** of agent activity, tools, and outputs
+---
 
-## Key Features
+## Screenshots
 
-### 🔄 Pipeline System (4-Phase Workflow)
+> Add screenshots/GIFs here (high impact for a desktop app):
+> - `/assets/pipeline-overview.png`
+> - `/assets/agent-grid.png`
+> - `/assets/cost-tracker.png`
+>
+> A short GIF of “Create Pipeline → Approve Plan → Run → Verify → Complete” is ideal.
+
+---
+
+## Why I built this
+
+As I started trusting Claude Code more, the main bottleneck became **me**:
+
+- constantly mashing “Allow” prompts for tool access, and
+- getting lost with **10–12 parallel Claude Code sessions** spread across multiple VS Code windows.
+
+When I’d hit rate limits or step away, I’d come back and forget:
+- which instance was working on what,
+- which repo/directory it was in,
+- what changes it was trying to make,
+- and where the “good run” even lived.
+
+Claude Commander exists to remove that friction:
+- **Centralize** many agents + workspaces in one UI
+- Reduce permission/interaction overhead (without enabling everything globally)
+- Make runs **observable** (tools, timing, outputs)
+- Make runs **reviewable** (logs you can come back to)
+
+---
+
+## What it does
+
+- **Multi-workspace agent hub**: run multiple Claude Code agents across different directories from one place
+- **Instruction-driven workflow**: select a directory → provide a Markdown instruction/task → monitor progress
+- **Real-time monitoring**: track tool usage, timing, and status
+- **Persistent history**: logs + session artifacts so you can review what happened later
+- **Optional pipelines**: structured multi-phase workflows with checkpoints, validation, and verification
+- **Cost tracking**: persistent spend analytics by model/project/session
+
+---
+
+## LLM orchestration + safety monitoring (Anthropic or OpenAI)
+
+Claude Commander can use either an **Anthropic** or an **OpenAI** model as a supervising “system commander” LLM that:
+
+- Launches Claude Code agents in selected directories
+- Reads tool events + agent output
+- Decides next actions (iterate, spawn another agent, validate, or request review)
+- Routes work through optional pipelines with checkpoints
+
+To reduce risk when agents are consuming untrusted text (issues, logs, web content, etc.), Claude Commander also includes an **active prompt-injection monitoring layer** powered by a **smaller LLM**. This safety monitor scans instructions and outputs for common prompt-injection / policy-override patterns and can flag or block suspicious steps depending on your settings.
+
+> Defaults are conservative: expensive automation is opt-in, and human checkpoints remain available for high-impact phases.
+
+---
+
+## Key features
+
+### ✅ Centralized multi-agent workflow
+- One UI to manage many simultaneous Claude Code instances
+- Less context switching than juggling many VS Code windows
+- Clear visibility into “what’s running where”
+
+### 🔒 Safer, less annoying permissions
+- Designed to avoid the “enable everything forever” approach
+- Reduce approval fatigue while keeping control
+
+### 🧠 Instruction-driven development
+- Add new instructions by creating a **Markdown file**
+- Built-in assistant can review/refine instructions
+- (Planned) guided helpers for login/setup flows
+
+### 🔄 Pipeline mode (optional)
+Inspired by community patterns (e.g., IndieDevDan workflows and popular Claude Code looping / verification approaches), Pipeline mode can run a structured flow like:
+
+### 🔄 Ralphline System (4-Phase Workflow)
 
 Create structured development workflows with automatic progression:
 
@@ -32,8 +102,9 @@ Create structured development workflows with automatic progression:
 - Confidence scoring
 
 **Phase 4: Final Review**
-- Human approval checkpoint
-- Final validation before completion
+- LLM approval checkpoint
+- Final validation before completion 
+- loop if not up to spec
 
 ### 💰 Cost Tracking
 
@@ -44,52 +115,9 @@ Comprehensive API cost monitoring:
 - Real-time cost monitoring
 - **Keyboard shortcut**: `Ctrl+Shift+$` (or `Cmd+Shift+$` on Mac)
 
-### 🤖 Advanced Agent Patterns
 
-**P-Thread (Agent Pool)**
-- Shared pool for parallel task execution
-- Auto-scaling based on load
-- Agent acquisition and release
-- Pool dashboard with real-time metrics
 
-**B-Thread (Orchestration)**
-- Automatic task decomposition
-- Dependency management
-- Parallel task execution
-- Workflow state management
 
-**F-Thread (Verification)**
-- Best-of-N verification
-- Multiple fusion strategies:
-  - Majority vote
-  - Weighted consensus
-  - Meta-agent review
-  - First-correct selection
-- Confidence scoring
-
-**C-Thread (Checkpoints)**
-- Human review gates
-- Automatic validation commands
-- BestOfN verification checkpoints
-- Conditional routing
-
-### 📊 Real-Time Monitoring
-
-**Phase 1-4 Features** (Original Core Features):
-- **Phase 1**: Real-time statistics and token tracking
-- **Phase 2**: GitHub repository integration and cloning
-- **Phase 3**: Tool execution tracking with timing and status
-- **Phase 4**: Output management with search, filter, and multi-format export
-
-### 🎨 Modern UI
-
-- Dark theme design
-- Multiple layout modes (single, split, grid)
-- Toast notifications for key events
-- Pipeline progress visualization
-- Pool dashboard with metrics
-- Cost tracking interface
-- Settings panels for configuration
 
 ## Installation
 
@@ -97,7 +125,7 @@ Comprehensive API cost monitoring:
 
 - Node.js 18+ and npm
 - Rust 1.70+ and Cargo
-- Anthropic API key (for meta-agent features)
+- Anthropic API key (for meta-agent features, can login claude code via web auth)
 
 ### Steps
 
@@ -115,7 +143,7 @@ npm install
 3. Set up environment variables:
 ```bash
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Edit .env and add your OPENAI_API_KEY, set models
 ```
 
 4. Run development server:
@@ -159,35 +187,29 @@ The built application will be in `src-tauri/target/release`.
 
 ## Usage
 
-### Creating a Pipeline
+### Creating a Ralphline (INspired by https://ghuntley.com/ralph/)
 
 1. Click "New Agent" button (or press `Ctrl+N`)
-2. Select **"Pipeline"** creation type
+2. Select **"Ralphline"** creation type
 3. Choose working directory
-4. Optionally configure pipeline settings (gear icon):
-   - Enable/disable verification
-   - Set checkpoint requirements
-   - Configure agent pool
-   - Set orchestration options
+4. Give the Ralphline instructions
 5. Click "Create Pipeline"
 
-### Pipeline Flow Visualization
+### Ralphline Flow Visualization
 
 ```
 User Request
     ↓
 Phase 1: Planning
-    ├─ Meta-agent creates execution plan
-    └─ ✋ Human review checkpoint
+    ├─ Agent creates execution plan
+    └─ Orchestrator reviews and replans or begins
     ↓
 Phase 2: Implementation
-    ├─ Task decomposition (B-Thread)
-    ├─ Parallel execution (P-Thread)
-    └─ ✓ Automatic validation
+    ├─ Task decomposition (Claude code subagents)
+    ├─ Parallel execution
     ↓
-Phase 3: Testing
-    ├─ Best-of-N verification (F-Thread)
-    └─ ✓ Consensus from multiple agents
+Phase 3: Validation
+    └─ ✓ Automatic 
     ↓
 Phase 4: Final Review
     └─ ✋ Human approval
@@ -292,8 +314,7 @@ claude-agent-manager --hook-url http://localhost:19832/hook
 
 ## Configuration
 
-### Pipeline Settings
-
+### Configurable Pipeline Settings (inspired by https://www.youtube.com/watch?v=-WBHNFAB0OE&pp=2AbVCA%3D%3D)
 Configure via AgentSettings.svelte (gear icon in agent list):
 
 **Phase A (Agent Pool):**
@@ -316,30 +337,34 @@ Configure via AgentSettings.svelte (gear icon in agent list):
 - Set auto-validation command
 - Auto-approve on verification pass
 
-### Safety Defaults
+### 🤖 Advanced Agent Patterns
 
-All expensive features are **disabled by default** for safety:
-- Pipeline system: OFF
-- Agent pool: OFF
-- Orchestration: OFF
-- Verification: OFF (N=1 if enabled)
-- Checkpoints: ON (human gates enabled)
+**P-Thread (Agent Pool)**
+- Shared pool for parallel task execution
+- Auto-scaling based on load
+- Agent acquisition and release
+- Pool dashboard with real-time metrics
 
-See [PIPELINE_SETTINGS_GUIDE.md](PIPELINE_SETTINGS_GUIDE.md) for configuration details.
+**B-Thread (Orchestration)**
+- Automatic task decomposition
+- Dependency management
+- Parallel task execution
+- Workflow state management
 
-## Documentation
+**F-Thread (Verification)**
+- Best-of-N verification
+- Multiple fusion strategies:
+  - Majority vote
+  - Weighted consensus
+  - Meta-agent review
+  - First-correct selection
+- Confidence scoring
 
-Comprehensive guides available:
-
-- **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)** - Complete pipeline system design
-- **[PIPELINE_SETTINGS_GUIDE.md](PIPELINE_SETTINGS_GUIDE.md)** - Configuration and testing procedures
-- **[COST_TRACKING_GUIDE.md](COST_TRACKING_GUIDE.md)** - Cost tracking implementation details
-- **[AI_NATIVE_FEATURES.md](AI_NATIVE_FEATURES.md)** - Advanced AI pattern documentation
-- **[MODEL_SELECTION.md](MODEL_SELECTION.md)** - Model configuration guide
-- **[LOGGING.md](LOGGING.md)** - Logging system documentation
-- **[QUICK_START.md](QUICK_START.md)** - Getting started guide
-- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Implementation timeline
-
+**C-Thread (Checkpoints)**
+- Human review gates
+- Automatic validation commands
+- BestOfN verification checkpoints
+- Conditional routing
 ## Known Limitations
 
 - Agent pool requires careful configuration to avoid resource exhaustion
@@ -347,15 +372,6 @@ Comprehensive guides available:
 - No virtualization for very long output lists (>1000 items may cause slowdown)
 - Hook server runs on fixed port 19832
 - Cost data relies on API responses including `total_cost_usd` field
-
-## Performance Optimizations
-
-- Efficient reactive updates with Svelte 5 runes
-- Minimal array operations and filtering
-- Single-pass data transformations
-- Conditional rendering based on state
-- Optimized timestamp formatting
-- Agent pool auto-scaling
 
 ## Development
 
@@ -420,38 +436,6 @@ claude-commander/
 - **HTTP Server**: Tokio + Axum for hook server
 - **Persistence**: JSON files for cost history
 
-## Additional Tools
-
-### OneDrive PDF Connector
-
-A Python library for listing and downloading PDF files from Microsoft OneDrive, located in the `one_drive_connector/` directory.
-
-**Features:**
-- OAuth 2.0 device code flow authentication
-- Persistent token caching
-- Recursive PDF search
-- Batch downloads with progress tracking
-- Comprehensive error handling
-
-**Quick Start:**
-```bash
-cd one_drive_connector
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env and add your Azure AD client ID
-python example.py list-pdfs
-```
-
-See [one_drive_connector/README.md](one_drive_connector/README.md) for complete documentation.
-
-## Project History
-
-Claude Commander is a comprehensive AI-native orchestration platform featuring:
-
-- Multi-phase pipeline workflows
-- Advanced agent patterns (P/B/F/C threads)
-- Cost tracking and analytics
-- Meta-agent coordination via System Commander
 
 ## License
 
