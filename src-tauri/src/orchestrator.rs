@@ -4,7 +4,6 @@ use std::time::SystemTime;
 use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
 use crate::pool_manager::AgentPool;
-use crate::meta_agent::MetaAgent;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum AgentRole {
@@ -36,10 +35,10 @@ pub struct WorkflowTask {
     pub agent_id: Option<String>,    // Assigned agent (when running)
     pub result: Option<String>,      // Output when completed
     pub working_dir: String,
-    pub retry_count: usize,          // NEW - stability
-    pub max_retries: usize,          // NEW - stability (default: 3)
-    pub error_message: Option<String>, // NEW
-    pub allow_failure: bool,         // NEW - continue even if this fails
+    pub retry_count: usize,
+    pub max_retries: usize,          // default: 3
+    pub error_message: Option<String>,
+    pub allow_failure: bool,         // continue even if this fails
 }
 
 #[derive(Clone, Serialize)]
@@ -64,54 +63,58 @@ pub enum WorkflowStatus {
 pub struct TaskOrchestrator {
     workflows: Arc<Mutex<HashMap<String, Workflow>>>,
     agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    meta_agent: Arc<Mutex<MetaAgent>>,
     max_completed_workflows: usize,
 }
 
 impl TaskOrchestrator {
     pub fn new(
         agent_pool: Option<Arc<Mutex<AgentPool>>>,
-        meta_agent: Arc<Mutex<MetaAgent>>,
     ) -> Self {
         Self {
             workflows: Arc::new(Mutex::new(HashMap::new())),
             agent_pool,
-            meta_agent,
             max_completed_workflows: 100, // Keep last 100 workflows
         }
     }
 
-    /// Create a workflow from user request using meta-agent
+    /// Create a workflow from a list of tasks
+    ///
+    /// Workflows are created manually with explicit task definitions.
+    /// Use this method to define task dependencies and execution order.
+    pub async fn create_workflow(
+        &self,
+        description: String,
+        tasks: Vec<WorkflowTask>,
+    ) -> Result<String, String> {
+        let workflow_id = uuid::Uuid::new_v4().to_string();
+
+        let mut task_map = HashMap::new();
+        for task in tasks {
+            task_map.insert(task.id.clone(), task);
+        }
+
+        let workflow = Workflow {
+            id: workflow_id.clone(),
+            description,
+            tasks: task_map,
+            status: WorkflowStatus::Pending,
+            created_at: SystemTime::now(),
+            completed_at: None,
+        };
+
+        self.workflows.lock().await.insert(workflow_id.clone(), workflow);
+        Ok(workflow_id)
+    }
+
+    /// Create a workflow from user request
+    ///
+    /// Note: Automatic decomposition is not supported. Use create_workflow() with
+    /// explicit task definitions instead.
     pub async fn create_workflow_from_request(
         &self,
-        user_request: &str,
+        _user_request: &str,
     ) -> Result<String, String> {
-        // Use meta-agent to decompose request into tasks
-        let _decomposition_prompt = format!(
-            "Analyze this request and break it into a workflow of sub-tasks:\n\n{}\n\n\
-             Return a JSON array of tasks, each with:\n\
-             - id: unique identifier (use task1, task2, etc.)\n\
-             - description: what the task does\n\
-             - role: planner|executor|tester|reviewer|general\n\
-             - prompt: instructions for the agent\n\
-             - dependencies: array of task IDs that must complete first (empty if none)\n\
-             - working_dir: where the agent should work (use current directory '.')\n\
-             \n\
-             Return ONLY the JSON array, no other text.",
-            user_request
-        );
-
-        // TODO: Integrate with meta-agent once we have proper access to agent_manager and app_handle
-        // For now, allow manual workflow creation via direct task list
-        Err("Automatic workflow decomposition not yet implemented. Use manual task creation.".to_string())
-
-        /* Future implementation:
-        let mut meta = self.meta_agent.lock().await;
-        let response = meta.process_user_message(decomposition_prompt, agent_manager, app_handle).await?;
-
-        // Extract JSON from response...
-        // Parse and create workflow...
-        */
+        Err("Automatic workflow decomposition not supported. Use create_workflow() with explicit task definitions.".to_string())
     }
 
     /// Execute a workflow by running tasks in dependency order

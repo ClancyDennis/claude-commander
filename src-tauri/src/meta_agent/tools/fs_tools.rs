@@ -43,11 +43,11 @@ pub async fn list_directory(input: Value) -> Value {
     }
 }
 
-/// Expand ~ to home directory
+/// Expand ~ to home directory (cross-platform)
 fn expand_home_dir(path: &str) -> String {
     if path.starts_with('~') {
-        if let Ok(home) = std::env::var("HOME") {
-            path.replacen('~', &home, 1)
+        if let Some(home) = dirs::home_dir() {
+            path.replacen('~', &home.to_string_lossy().as_ref(), 1)
         } else {
             path.to_string()
         }

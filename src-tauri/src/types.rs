@@ -87,6 +87,8 @@ pub struct AgentInfo {
     pub source: AgentSource,  // Track origin of agent
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pooled: Option<bool>,  // Whether tracked by pool
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,  // Optional display title (e.g., pipeline stage)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

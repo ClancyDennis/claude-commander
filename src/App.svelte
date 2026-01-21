@@ -11,8 +11,11 @@
   import SplitView from "./lib/components/SplitView.svelte";
   import GridView from "./lib/components/GridView.svelte";
   import DatabaseStats from "./lib/components/DatabaseStats.svelte";
+  import Settings from "./lib/components/Settings.svelte";
   import PhaseProgress from "./lib/components/PhaseProgress.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
+  import RateLimitModal from "./lib/components/RateLimitModal.svelte";
+  import { checkAndSetRateLimit } from "./lib/stores/rateLimit";
   import AutoPipelineView from "./lib/components/AutoPipelineView.svelte";
   import {
     agents,
@@ -53,7 +56,9 @@
     markAgentSuspended,
     addPendingReview,
     removePendingReview,
+    showAlertDetail,
   } from "./lib/stores/security";
+  import SecurityAlertDetail from "./lib/components/SecurityAlertDetail.svelte";
   import {
     setupEventListeners,
     setupKeyboardShortcuts,
@@ -63,6 +68,7 @@
 
   let showNewAgentDialog = $state(false);
   let showDatabaseStats = $state(false);
+  let showSettings = $state(false);
 
   // Show toast notifications for key events
   function handleStatusChange(agentId: string, status: string) {
@@ -125,6 +131,10 @@
       // Agent callbacks
       onAgentOutput: (agentId, output) => {
         appendOutput(agentId, output);
+        // Check for rate limit errors in output content
+        if (output.content && (output.type === "error" || output.type === "text")) {
+          checkAndSetRateLimit(output.content);
+        }
       },
       onToolEvent: (agentId, event) => {
         appendToolEvent(agentId, event);
@@ -235,15 +245,20 @@
 
       // Security callbacks
       onSecurityAlert: (payload) => {
-        // Add to store
-        addSecurityAlert({
+        // Create alert with full threat details
+        const alert = {
           agentId: payload.agent_id,
           alertId: payload.alert_id,
           severity: payload.risk_level,
           title: payload.title,
           description: payload.description,
           timestamp: new Date(payload.timestamp),
-        });
+          threats: payload.threats || [],
+          overallConfidence: payload.overall_confidence || 0,
+        };
+
+        // Add to store
+        addSecurityAlert(alert);
 
         // Show toast notification
         const toastType = payload.risk_level === "critical" || payload.risk_level === "high"
@@ -256,6 +271,10 @@
           action: {
             label: "View Agent",
             onClick: () => selectedAgentId.set(payload.agent_id),
+          },
+          secondaryAction: {
+            label: "More Info",
+            onClick: () => showAlertDetail(alert),
           },
           duration: payload.risk_level === "critical" ? 0 : 6000,
         });
@@ -339,6 +358,7 @@
   <AgentList
     onNewAgent={() => (showNewAgentDialog = true)}
     onToggleDatabaseStats={() => (showDatabaseStats = !showDatabaseStats)}
+    onOpenSettings={() => (showSettings = !showSettings)}
   />
   <div class="main-content">
     {#if showDatabaseStats}
@@ -346,7 +366,11 @@
         <DatabaseStats />
       </div>
     {/if}
-    {#if $selectedAutoPipelineId}
+    {#if showSettings}
+      <div class="settings-container">
+        <Settings onClose={() => (showSettings = false)} />
+      </div>
+    {:else if $selectedAutoPipelineId}
       <!-- Show auto-pipeline view with orchestrator activity -->
       <div class="pipeline-view-container">
         <AutoPipelineView pipelineId={$selectedAutoPipelineId} />
@@ -375,6 +399,8 @@
 </div>
 
 <ToastNotifications />
+<RateLimitModal />
+<SecurityAlertDetail />
 
 {#if showNewAgentDialog}
   <NewAgentDialog onClose={() => (showNewAgentDialog = false)} />
@@ -402,5 +428,11 @@
     flex: 1;
     overflow: auto;
     padding: var(--space-lg);
+  }
+
+  .settings-container {
+    flex: 1;
+    overflow: auto;
+    background: var(--bg-primary);
   }
 </style>

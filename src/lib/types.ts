@@ -19,6 +19,7 @@ export interface Agent {
   pendingInput?: boolean;
   unreadOutputs?: number;
   githubContext?: GitHubContext;
+  title?: string;
 }
 
 export interface AgentOutput {
@@ -78,6 +79,7 @@ export interface AgentInfo {
     commit_sha?: string;
     last_synced?: string;
   };
+  title?: string;
 }
 
 export interface AgentOutputEvent {
@@ -306,6 +308,7 @@ export interface AgentRun {
   last_activity: number;
   initial_prompt?: string;
   error_message?: string;
+  pipeline_id?: string; // Links to orchestrator events for historical queries
   total_prompts: number;
   total_tool_calls: number;
   total_output_bytes: number;
@@ -388,8 +391,80 @@ export interface OrchestratorDecision {
   timestamp: number;
 }
 
+// Historical output record from database
+export interface AgentOutputRecord {
+  id?: number;
+  agent_id: string;
+  pipeline_id?: string;
+  output_type: 'text' | 'tool_use' | 'tool_result' | 'error' | 'system' | 'result';
+  content: string;
+  metadata?: string; // JSON serialized
+  timestamp: number; // Unix timestamp in milliseconds
+}
+
+// Database record types (from SQLite)
+// These match the Rust models.rs types returned by Tauri commands
+
+export interface OrchestratorToolCallRecord {
+  id?: number;
+  pipeline_id: string;
+  agent_id?: string;
+  tool_name: string;
+  tool_input?: string; // JSON serialized
+  is_error: boolean;
+  summary?: string;
+  current_state: string;
+  iteration: number;
+  step_number?: number; // 1=Planning, 2=Building, 3=Verifying
+  timestamp: number;
+}
+
+export interface OrchestratorStateChangeRecord {
+  id?: number;
+  pipeline_id: string;
+  old_state: string;
+  new_state: string;
+  iteration: number;
+  generated_skills: number;
+  generated_subagents: number;
+  claudemd_generated: boolean;
+  timestamp: number;
+}
+
+export interface OrchestratorDecisionRecord {
+  id?: number;
+  pipeline_id: string;
+  decision: string;
+  reasoning?: string;
+  issues: string[];
+  suggestions: string[];
+  timestamp: number;
+}
+
 // Security Types
 export type SecurityAlertSeverity = "low" | "medium" | "high" | "critical";
+
+export type ThreatType =
+  | "PromptInjection"
+  | "JailbreakAttempt"
+  | "DataExfiltration"
+  | "UnauthorizedAccess"
+  | "MaliciousCodeExecution"
+  | "PrivilegeEscalation"
+  | "SystemManipulation"
+  | "SocialEngineering"
+  | "ChainedAttack"
+  | "Unknown";
+
+export interface ThreatDetail {
+  eventId: string;
+  threatType: ThreatType;
+  severity: SecurityAlertSeverity;
+  confidence: number;
+  explanation: string;
+  evidence: string[];
+  mitigations: string[];
+}
 
 export interface SecurityAlertPayload {
   alert_id: string;
@@ -400,6 +475,8 @@ export interface SecurityAlertPayload {
   affected_agents: string[];
   recommended_actions: string[];
   timestamp: number;
+  threats: ThreatDetail[];
+  overall_confidence: number;
 }
 
 export interface SecurityAlert {
@@ -409,6 +486,8 @@ export interface SecurityAlert {
   title: string;
   description: string;
   timestamp: Date;
+  threats: ThreatDetail[];
+  overallConfidence: number;
 }
 
 // Agent terminated by security system
@@ -451,4 +530,25 @@ export interface PendingSecurityReview {
   recommendedAction: string;
   agentId?: string;
   createdAt: Date;
+}
+
+// Configuration Types
+export interface ModelConfig {
+  name: string;
+  value: string | null;
+  is_default: boolean;
+}
+
+export interface ApiKeyStatus {
+  provider: string;
+  is_configured: boolean;
+  key_preview: string;
+}
+
+export interface ConfigStatus {
+  provider: string;
+  api_keys: ApiKeyStatus[];
+  models: ModelConfig[];
+  available_claude_models: string[];
+  available_openai_models: string[];
 }

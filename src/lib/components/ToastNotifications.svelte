@@ -6,6 +6,7 @@
     type: "info" | "success" | "warning" | "error";
     message: string;
     action?: { label: string; onClick: () => void };
+    secondaryAction?: { label: string; onClick: () => void };
     duration?: number;
   }
 
@@ -72,6 +73,11 @@
         <span class="toast-message">{toast.message}</span>
       </div>
       <div class="toast-actions">
+        {#if toast.secondaryAction}
+          <button class="toast-action-btn secondary" onclick={toast.secondaryAction.onClick}>
+            {toast.secondaryAction.label}
+          </button>
+        {/if}
         {#if toast.action}
           <button class="toast-action-btn" onclick={toast.action.onClick}>
             {toast.action.label}
@@ -153,6 +159,18 @@
   .toast-action-btn:hover {
     background-color: var(--accent);
     color: white;
+  }
+
+  .toast-action-btn.secondary {
+    background-color: transparent;
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .toast-action-btn.secondary:hover {
+    background-color: var(--bg-tertiary);
+    border-color: var(--text-muted);
+    color: var(--text-primary);
   }
 
   .toast-close {

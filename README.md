@@ -95,8 +95,9 @@ Comprehensive API cost monitoring:
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- Rust 1.70+ and Cargo
+- **Node.js 22 LTS** (v24+ may cause issues with native bindings)
+- **Rust** 1.70+ and Cargo (install from https://rustup.rs/)
+- **Claude CLI** (`npm install -g @anthropic-ai/claude-code`)
 - Anthropic API key (for meta-agent features)
 
 ### Steps
@@ -121,6 +122,44 @@ cp .env.example .env
 4. Run development server:
 ```bash
 npm run tauri dev
+```
+
+> **Troubleshooting npm install:**
+> If you see errors about missing native bindings (e.g., `@tauri-apps/cli-win32-x64-msvc` or `@rollup/rollup-win32-x64-msvc`), try:
+> ```bash
+> rm -rf node_modules package-lock.json
+> npm install
+> ```
+> This is a [known npm bug](https://github.com/npm/cli/issues/4828) with optional dependencies.
+
+### Windows-Specific Setup
+
+**Node.js Version:**
+- Use Node.js 22 LTS (not v24+). Native packages may not have prebuilt binaries for bleeding-edge Node versions.
+- Download from https://nodejs.org/ (LTS version)
+
+**Claude CLI Path:**
+If the app can't find the Claude CLI, add this to your `.env` file:
+```
+CLAUDE_PATH=C:\Users\YourUsername\AppData\Roaming\npm\claude.cmd
+```
+Find your path with: `where claude`
+
+**PowerShell Execution Policy:**
+If npm commands fail in PowerShell with "not digitally signed" errors:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+Or use Git Bash instead.
+
+### macOS/Linux Setup
+
+The app should auto-detect the Claude CLI. If not, set `CLAUDE_PATH` in your `.env`:
+```bash
+# Find your claude installation
+which claude
+# Add to .env
+CLAUDE_PATH=/path/to/claude
 ```
 
 ## Building for Production

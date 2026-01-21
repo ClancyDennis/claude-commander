@@ -110,6 +110,15 @@ impl AgentRunsDB {
             conn.execute("ALTER TABLE agent_runs ADD COLUMN model_usage TEXT", [])?;
         }
 
+        // Migration: Add pipeline_id column for linking runs to orchestrator events
+        if !columns.contains(&"pipeline_id".to_string()) {
+            conn.execute("ALTER TABLE agent_runs ADD COLUMN pipeline_id TEXT", [])?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runs_pipeline_id ON agent_runs(pipeline_id)",
+                [],
+            )?;
+        }
+
         // ====================================================================
         // Orchestrator event tables (for hybrid persistence)
         // ====================================================================
@@ -215,10 +224,10 @@ impl AgentRunsDB {
             "INSERT INTO agent_runs (
                 agent_id, session_id, working_dir, github_url, github_context,
                 source, status, started_at, ended_at, last_activity,
-                initial_prompt, error_message, total_prompts, total_tool_calls,
+                initial_prompt, error_message, pipeline_id, total_prompts, total_tool_calls,
                 total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                 can_resume, resume_data
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
                 run.agent_id,
                 run.session_id,
@@ -232,6 +241,7 @@ impl AgentRunsDB {
                 run.last_activity,
                 run.initial_prompt,
                 run.error_message,
+                run.pipeline_id,
                 run.total_prompts,
                 run.total_tool_calls,
                 run.total_output_bytes,
@@ -257,14 +267,15 @@ impl AgentRunsDB {
                 ended_at = ?4,
                 last_activity = ?5,
                 error_message = ?6,
-                total_prompts = ?7,
-                total_tool_calls = ?8,
-                total_output_bytes = ?9,
-                total_tokens_used = ?10,
-                total_cost_usd = ?11,
-                model_usage = ?12,
-                can_resume = ?13,
-                resume_data = ?14
+                pipeline_id = ?7,
+                total_prompts = ?8,
+                total_tool_calls = ?9,
+                total_output_bytes = ?10,
+                total_tokens_used = ?11,
+                total_cost_usd = ?12,
+                model_usage = ?13,
+                can_resume = ?14,
+                resume_data = ?15
             WHERE agent_id = ?1",
             params![
                 run.agent_id,
@@ -273,6 +284,7 @@ impl AgentRunsDB {
                 run.ended_at,
                 run.last_activity,
                 run.error_message,
+                run.pipeline_id,
                 run.total_prompts,
                 run.total_tool_calls,
                 run.total_output_bytes,
@@ -294,7 +306,7 @@ impl AgentRunsDB {
         let mut stmt = db.prepare(
             "SELECT id, agent_id, session_id, working_dir, github_url, github_context,
                     source, status, started_at, ended_at, last_activity,
-                    initial_prompt, error_message, total_prompts, total_tool_calls,
+                    initial_prompt, error_message, pipeline_id, total_prompts, total_tool_calls,
                     total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                     can_resume, resume_data
              FROM agent_runs WHERE agent_id = ?1",
@@ -315,7 +327,7 @@ impl AgentRunsDB {
 
         let mut query = "SELECT id, agent_id, session_id, working_dir, github_url, github_context,
                                 source, status, started_at, ended_at, last_activity,
-                                initial_prompt, error_message, total_prompts, total_tool_calls,
+                                initial_prompt, error_message, pipeline_id, total_prompts, total_tool_calls,
                                 total_output_bytes, total_tokens_used, total_cost_usd, model_usage,
                                 can_resume, resume_data
                          FROM agent_runs WHERE 1=1"
@@ -935,7 +947,7 @@ impl AgentRunsDB {
 /// Helper to convert a row to AgentRun
 fn row_to_run(row: &rusqlite::Row) -> SqliteResult<AgentRun> {
     let status_str: String = row.get(7)?;
-    let can_resume_int: i32 = row.get(19)?;
+    let can_resume_int: i32 = row.get(20)?;
 
     Ok(AgentRun {
         id: Some(row.get(0)?),
@@ -951,13 +963,14 @@ fn row_to_run(row: &rusqlite::Row) -> SqliteResult<AgentRun> {
         last_activity: row.get(10)?,
         initial_prompt: row.get(11)?,
         error_message: row.get(12)?,
-        total_prompts: row.get(13)?,
-        total_tool_calls: row.get(14)?,
-        total_output_bytes: row.get(15)?,
-        total_tokens_used: row.get(16)?,
-        total_cost_usd: row.get(17)?,
-        model_usage: row.get(18)?,
+        pipeline_id: row.get(13)?,
+        total_prompts: row.get(14)?,
+        total_tool_calls: row.get(15)?,
+        total_output_bytes: row.get(16)?,
+        total_tokens_used: row.get(17)?,
+        total_cost_usd: row.get(18)?,
+        model_usage: row.get(19)?,
         can_resume: can_resume_int != 0,
-        resume_data: row.get(20)?,
+        resume_data: row.get(21)?,
     })
 }

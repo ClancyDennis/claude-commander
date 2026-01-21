@@ -15,6 +15,7 @@ pub mod database;
 pub mod auto_pipeline;
 pub mod security;
 pub mod events;
+pub mod config;
 
 // Re-export all command functions for registration in lib.rs
 pub use agent::*;
@@ -31,3 +32,4 @@ pub use database::*;
 pub use auto_pipeline::*;
 pub use security::*;
 pub use events::*;
+pub use config::*;

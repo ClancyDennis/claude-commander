@@ -121,7 +121,7 @@ fn dangerous_command_rules() -> Vec<DetectionRule> {
             enabled: true,
             patterns: vec![PatternSpec {
                 field: "command".to_string(),
-                pattern: r"(?i)(rm\s+-[rf]{1,2}f?\s+/(?!\w)|mkfs\s|dd\s+if=.+of=/dev/|wipefs|shred\s|format\s+[cC]:)".to_string(),
+                pattern: r"(?i)(rm\s+-[rf]{1,2}f?\s+/\s|rm\s+-[rf]{1,2}f?\s+/$|mkfs\s|dd\s+if=.+of=/dev/|wipefs|shred\s|format\s+[cC]:)".to_string(),
                 negate: false,
             }],
         },

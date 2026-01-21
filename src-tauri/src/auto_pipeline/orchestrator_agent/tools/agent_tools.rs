@@ -53,16 +53,18 @@ impl OrchestratorAgent {
             &subagents_section,
         );
 
-        // Spawn the planning agent
+        // Spawn the planning agent (linked to this pipeline for historical queries)
         let agent_id = {
             let manager = agent_manager.lock().await;
             match manager
-                .create_agent(
+                .create_agent_with_pipeline(
                     self.working_dir.clone(),
                     None,
                     None,
                     AgentSource::Pipeline,
                     event_emitter.clone(),
+                    Some(self.pipeline_id.clone()),
+                    Some("Planning".to_string()),
                 )
                 .await
             {
@@ -75,6 +77,9 @@ impl OrchestratorAgent {
                 }
             }
         };
+
+        // Track the spawned agent for later cleanup
+        self.spawned_agents[0] = Some(agent_id.clone());
 
         // Send the prompt
         // Note: No security_monitor for pipeline automated prompts
@@ -167,16 +172,18 @@ impl OrchestratorAgent {
             &notes_section,
         );
 
-        // Spawn the build agent
+        // Spawn the build agent (linked to this pipeline for historical queries)
         let agent_id = {
             let manager = agent_manager.lock().await;
             match manager
-                .create_agent(
+                .create_agent_with_pipeline(
                     self.working_dir.clone(),
                     None,
                     None,
                     AgentSource::Pipeline,
                     event_emitter.clone(),
+                    Some(self.pipeline_id.clone()),
+                    Some("Building".to_string()),
                 )
                 .await
             {
@@ -189,6 +196,9 @@ impl OrchestratorAgent {
                 }
             }
         };
+
+        // Track the spawned agent for later cleanup
+        self.spawned_agents[1] = Some(agent_id.clone());
 
         // Send the prompt
         // Note: No security_monitor for pipeline automated prompts
@@ -291,16 +301,18 @@ impl OrchestratorAgent {
             &subagents_section,
         );
 
-        // Spawn the verification agent
+        // Spawn the verification agent (linked to this pipeline for historical queries)
         let agent_id = {
             let manager = agent_manager.lock().await;
             match manager
-                .create_agent(
+                .create_agent_with_pipeline(
                     self.working_dir.clone(),
                     None,
                     None,
                     AgentSource::Pipeline,
                     event_emitter.clone(),
+                    Some(self.pipeline_id.clone()),
+                    Some("Verification".to_string()),
                 )
                 .await
             {
@@ -313,6 +325,9 @@ impl OrchestratorAgent {
                 }
             }
         };
+
+        // Track the spawned agent for later cleanup
+        self.spawned_agents[2] = Some(agent_id.clone());
 
         // Send the prompt
         // Note: No security_monitor for pipeline automated prompts

@@ -3,25 +3,41 @@
   import { formatPath, formatTimeRelative } from '$lib/utils/formatting';
   import { getStatusColor } from '$lib/utils/status';
   import { agentsWithAlerts } from '$lib/stores/security';
+  import { selectedAgentIds } from '$lib/stores/agents';
 
   let {
     agent,
     isSelected = false,
-    onSelect
+    isMultiSelected = false,
+    onSelect,
+    onMultiSelect
   }: {
     agent: Agent;
     isSelected?: boolean;
+    isMultiSelected?: boolean;
     onSelect: (id: string) => void;
+    onMultiSelect?: (id: string) => void;
   } = $props();
 
   let hasSecurityAlert = $derived($agentsWithAlerts.has(agent.id));
+  let inMultiSelection = $derived($selectedAgentIds.has(agent.id));
+
+  function handleClick(e: MouseEvent) {
+    // Ctrl+click (Windows/Linux) or Cmd+click (Mac) for multi-select
+    if ((e.ctrlKey || e.metaKey) && onMultiSelect) {
+      onMultiSelect(agent.id);
+    } else {
+      onSelect(agent.id);
+    }
+  }
 </script>
 
 <li>
   <button
     class="agent-btn"
     class:selected={isSelected}
-    onclick={() => onSelect(agent.id)}
+    class:multi-selected={inMultiSelection && !isSelected}
+    onclick={handleClick}
   >
     <div class="status-indicator" style="background-color: {getStatusColor(agent.status)}">
       {#if agent.status === "running" || agent.status === "waitingforinput"}
@@ -97,6 +113,16 @@
     background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(147, 51, 234, 0.1) 100%);
     border-color: var(--accent);
     box-shadow: 0 0 16px var(--accent-glow);
+  }
+
+  .agent-btn.multi-selected {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.2);
+  }
+
+  .agent-btn.multi-selected:hover {
+    border-color: rgba(59, 130, 246, 0.7);
   }
 
   .status-indicator {

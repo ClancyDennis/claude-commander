@@ -5,46 +5,20 @@
     orchestratorDecisions,
     orchestratorCurrentState,
   } from "../stores/agents";
-  import { formatTimeLocale } from '$lib/utils/formatting';
+  import { ToolCallList, StateChangeList, DecisionList } from './orchestrator';
 
   let activeTab = $state<"tools" | "states" | "decisions">("tools");
   let expanded = $state(true);
 
-  // Virtualization settings
-  const VISIBLE_ITEMS = 20; // Max items to render at once
-  const ITEM_HEIGHT = 80; // Approximate height per item in pixels
-
-  // Track scroll position for virtualization
-  let scrollContainer: HTMLDivElement | null = $state(null);
+  // Track scroll position for virtualization (passed to subcomponents)
   let scrollTop = $state(0);
-
-  // Calculate visible window for virtualization
-  function getVisibleItems<T>(items: T[]): { visible: T[]; startIndex: number; totalHeight: number } {
-    if (items.length <= VISIBLE_ITEMS) {
-      return { visible: items, startIndex: 0, totalHeight: items.length * ITEM_HEIGHT };
-    }
-
-    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 5);
-    const endIndex = Math.min(items.length, startIndex + VISIBLE_ITEMS + 10);
-
-    return {
-      visible: items.slice(startIndex, endIndex),
-      startIndex,
-      totalHeight: items.length * ITEM_HEIGHT
-    };
-  }
-
-  // Derived visible items for each tab
-  let visibleToolCalls = $derived(getVisibleItems($orchestratorToolCalls));
-  let visibleStateChanges = $derived(getVisibleItems($orchestratorStateChanges));
-  let visibleDecisions = $derived(getVisibleItems($orchestratorDecisions));
 
   function handleScroll(event: Event) {
     const target = event.target as HTMLDivElement;
     scrollTop = target.scrollTop;
   }
 
-  // State badge colors
+  // State badge colors (used for header)
   function getStateBadgeClass(state: string): string {
     if (state.includes("Completed")) return "badge-success";
     if (state.includes("Failed") || state.includes("GaveUp")) return "badge-error";
@@ -52,35 +26,6 @@
     if (state.includes("Planning") || state.includes("Ready")) return "badge-warning";
     return "badge-neutral";
   }
-
-  // Decision badge colors
-  function getDecisionBadgeClass(decision: string): string {
-    if (decision === "Complete") return "badge-success";
-    if (decision === "Iterate") return "badge-warning";
-    if (decision === "Replan") return "badge-info";
-    if (decision === "GiveUp") return "badge-error";
-    return "badge-neutral";
-  }
-
-  // Tool icon mapping
-  function getToolIcon(toolName: string): string {
-    const icons: Record<string, string> = {
-      read_instruction_file: "📖",
-      create_skill: "🎯",
-      create_subagent: "🤖",
-      generate_claudemd: "📝",
-      start_planning: "📋",
-      approve_plan: "✅",
-      start_execution: "🔨",
-      start_verification: "🔍",
-      complete: "🎉",
-      iterate: "🔄",
-      replan: "📋",
-      give_up: "❌",
-    };
-    return icons[toolName] || "⚙️";
-  }
-
 </script>
 
 <div class="orchestrator-activity">
@@ -123,113 +68,13 @@
       </button>
     </div>
 
-    <div class="activity-content" bind:this={scrollContainer} onscroll={handleScroll}>
+    <div class="activity-content" onscroll={handleScroll}>
       {#if activeTab === "tools"}
-        <div class="tool-list" style="height: {visibleToolCalls.totalHeight}px; position: relative;">
-          {#if $orchestratorToolCalls.length === 0}
-            <div class="empty-state">No tool calls yet</div>
-          {:else}
-            <div style="position: absolute; top: {visibleToolCalls.startIndex * ITEM_HEIGHT}px; width: 100%;">
-              {#each visibleToolCalls.visible as call, i (visibleToolCalls.startIndex + i)}
-                <div class="tool-item" class:error={call.is_error}>
-                  <div class="tool-header">
-                    <span class="tool-icon">{getToolIcon(call.tool_name)}</span>
-                    <span class="tool-name">{call.tool_name}</span>
-                    <span class="tool-time">{formatTimeLocale(call.timestamp)}</span>
-                  </div>
-                  {#if call.summary}
-                    <div class="tool-summary">{call.summary}</div>
-                  {/if}
-                  {#if call.tool_input && Object.keys(call.tool_input).length > 0}
-                    <details class="tool-details">
-                      <summary>Input</summary>
-                      <pre>{JSON.stringify(call.tool_input, null, 2)}</pre>
-                    </details>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <ToolCallList toolCalls={$orchestratorToolCalls} {scrollTop} />
       {:else if activeTab === "states"}
-        <div class="state-list" style="height: {visibleStateChanges.totalHeight}px; position: relative;">
-          {#if $orchestratorStateChanges.length === 0}
-            <div class="empty-state">No state changes yet</div>
-          {:else}
-            <div style="position: absolute; top: {visibleStateChanges.startIndex * ITEM_HEIGHT}px; width: 100%;">
-              {#each visibleStateChanges.visible as change, i (visibleStateChanges.startIndex + i)}
-                <div class="state-item">
-                  <div class="state-transition">
-                    <span class="state-badge {getStateBadgeClass(change.old_state)}">
-                      {change.old_state}
-                    </span>
-                    <span class="arrow">→</span>
-                    <span class="state-badge {getStateBadgeClass(change.new_state)}">
-                      {change.new_state}
-                    </span>
-                  </div>
-                  <div class="state-meta">
-                    <span class="iteration">Iteration {change.iteration}</span>
-                    <span class="time">{formatTimeLocale(change.timestamp)}</span>
-                  </div>
-                  {#if change.generated_skills > 0 || change.generated_subagents > 0 || change.claudemd_generated}
-                    <div class="state-resources">
-                      {#if change.generated_skills > 0}
-                        <span class="resource">🎯 {change.generated_skills} skills</span>
-                      {/if}
-                      {#if change.generated_subagents > 0}
-                        <span class="resource">🤖 {change.generated_subagents} subagents</span>
-                      {/if}
-                      {#if change.claudemd_generated}
-                        <span class="resource">📝 CLAUDE.md</span>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <StateChangeList stateChanges={$orchestratorStateChanges} {scrollTop} />
       {:else if activeTab === "decisions"}
-        <div class="decision-list" style="height: {visibleDecisions.totalHeight}px; position: relative;">
-          {#if $orchestratorDecisions.length === 0}
-            <div class="empty-state">No decisions yet</div>
-          {:else}
-            <div style="position: absolute; top: {visibleDecisions.startIndex * ITEM_HEIGHT}px; width: 100%;">
-              {#each visibleDecisions.visible as decision, i (visibleDecisions.startIndex + i)}
-                <div class="decision-item">
-                  <div class="decision-header">
-                    <span class="decision-badge {getDecisionBadgeClass(decision.decision)}">
-                      {decision.decision}
-                    </span>
-                    <span class="decision-time">{formatTimeLocale(decision.timestamp)}</span>
-                  </div>
-                  <div class="decision-reasoning">{decision.reasoning}</div>
-                  {#if decision.issues.length > 0}
-                    <div class="decision-issues">
-                      <strong>Issues:</strong>
-                      <ul>
-                        {#each decision.issues as issue}
-                          <li>{issue}</li>
-                        {/each}
-                      </ul>
-                    </div>
-                  {/if}
-                  {#if decision.suggestions.length > 0}
-                    <div class="decision-suggestions">
-                      <strong>Suggestions:</strong>
-                      <ul>
-                        {#each decision.suggestions as suggestion}
-                          <li>{suggestion}</li>
-                        {/each}
-                      </ul>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <DecisionList decisions={$orchestratorDecisions} {scrollTop} />
       {/if}
     </div>
   {/if}
@@ -358,188 +203,6 @@
     max-height: 400px;
     overflow-y: auto;
     padding: 12px;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 24px;
-    color: var(--text-muted, #666);
-    font-size: 13px;
-  }
-
-  /* Tool list styles */
-  .tool-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .tool-item {
-    background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-
-  .tool-item.error {
-    border-color: rgba(239, 68, 68, 0.4);
-  }
-
-  .tool-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .tool-icon {
-    font-size: 14px;
-  }
-
-  .tool-name {
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--text-primary, #e0e0e0);
-    flex: 1;
-  }
-
-  .tool-time {
-    font-size: 11px;
-    color: var(--text-muted, #666);
-  }
-
-  .tool-summary {
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--text-secondary, #999);
-    line-height: 1.4;
-  }
-
-  .tool-details {
-    margin-top: 8px;
-  }
-
-  .tool-details summary {
-    font-size: 11px;
-    color: var(--accent, #7c3aed);
-    cursor: pointer;
-  }
-
-  .tool-details pre {
-    margin-top: 6px;
-    padding: 8px;
-    background: var(--bg-tertiary, #252530);
-    border-radius: 6px;
-    font-size: 11px;
-    overflow-x: auto;
-    color: var(--text-secondary, #999);
-  }
-
-  /* State list styles */
-  .state-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .state-item {
-    background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-
-  .state-transition {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .arrow {
-    color: var(--text-muted, #666);
-    font-size: 14px;
-  }
-
-  .state-meta {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
-    font-size: 11px;
-    color: var(--text-muted, #666);
-  }
-
-  .state-resources {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-    font-size: 11px;
-  }
-
-  .resource {
-    color: var(--text-secondary, #999);
-  }
-
-  /* Decision list styles */
-  .decision-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .decision-item {
-    background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
-    border-radius: 8px;
-    padding: 12px;
-  }
-
-  .decision-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .decision-badge {
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 12px;
-    border-radius: 6px;
-  }
-
-  .decision-time {
-    font-size: 11px;
-    color: var(--text-muted, #666);
-  }
-
-  .decision-reasoning {
-    font-size: 13px;
-    color: var(--text-primary, #e0e0e0);
-    line-height: 1.5;
-    margin-bottom: 10px;
-  }
-
-  .decision-issues,
-  .decision-suggestions {
-    font-size: 12px;
-    margin-top: 8px;
-  }
-
-  .decision-issues strong,
-  .decision-suggestions strong {
-    color: var(--text-secondary, #999);
-  }
-
-  .decision-issues ul,
-  .decision-suggestions ul {
-    margin: 4px 0 0 16px;
-    padding: 0;
-    list-style: disc;
-  }
-
-  .decision-issues li,
-  .decision-suggestions li {
-    color: var(--text-primary, #e0e0e0);
-    margin-bottom: 2px;
   }
 
   /* Scrollbar styles */

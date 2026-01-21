@@ -75,14 +75,22 @@ pub async fn execute_verification_step(
 
     // Extract verification outputs before storing agent
     let verification_outputs = orchestrator_agent.verification_agent_outputs.clone();
+    let verification_agent_id = orchestrator_agent.spawned_agents[2].clone();
 
     eprintln!(
-        "[auto_pipeline] Verification complete. Outputs: {}",
-        verification_outputs.len()
+        "[auto_pipeline] Verification complete. Outputs: {}, Agent: {:?}",
+        verification_outputs.len(), verification_agent_id
     );
 
     // Store agent back for potential replan/iterate iterations
     store_orchestrator_agent(&orchestrator_agents, pipeline_id, orchestrator_agent).await;
+
+    // Store the spawned agent ID in the pipeline step for later cleanup
+    if let Some(agent_id) = verification_agent_id {
+        with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
+            pipeline.steps[2].agent_id = Some(agent_id);
+        }).await?;
+    }
 
     // Update pipeline
     with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {

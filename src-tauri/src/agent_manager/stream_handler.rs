@@ -7,7 +7,7 @@ use tokio::process::ChildStdout;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-use crate::agent_runs_db::{AgentRunsDB, RunStatus};
+use crate::agent_runs_db::{AgentOutputRecord, AgentRunsDB, RunStatus};
 use crate::types::{
     AgentInputRequiredEvent, AgentOutputEvent, AgentStatistics, AgentStatsEvent, AgentStatus,
     AgentStatusEvent,
@@ -30,6 +30,26 @@ pub struct StreamContext {
     pub stats: Arc<Mutex<AgentStatistics>>,
     pub output_buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
     pub runs_db: Option<Arc<AgentRunsDB>>,
+    pub pipeline_id: Option<String>,
+}
+
+/// Helper to persist agent outputs to the database
+async fn persist_output(ctx: &StreamContext, output_type: &str, content: &str) {
+    if let Some(ref runs_db) = ctx.runs_db {
+        let record = AgentOutputRecord {
+            id: None,
+            agent_id: ctx.agent_id.clone(),
+            pipeline_id: ctx.pipeline_id.clone(),
+            output_type: output_type.to_string(),
+            content: content.to_string(),
+            metadata: None,
+            timestamp: now_millis(),
+        };
+        let db = runs_db.clone();
+        tokio::spawn(async move {
+            let _ = db.insert_agent_output(&record).await;
+        });
+    }
 }
 
 /// Spawn the stdout stream handler task
@@ -142,13 +162,16 @@ async fn handle_system_message<F>(
 
     let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
         .output_type("system")
-        .content(content)
+        .content(&content)
         .parsed_json(Some(json.clone()))
         .session_context(session_id, uuid, parent_tool_use_id, subtype)
         .with_size_from_content()
         .build();
 
     let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+    // Persist to database
+    persist_output(ctx, "system", &content).await;
 }
 
 async fn handle_assistant_message<F>(
@@ -188,6 +211,9 @@ async fn handle_assistant_message<F>(
 
                                 store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
                                 let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+                                // Persist to database
+                                persist_output(ctx, "text", text).await;
                             }
                         }
                         "tool_use" => {
@@ -212,7 +238,7 @@ async fn handle_assistant_message<F>(
 
                             let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
                                 .output_type("tool_use")
-                                .content(content)
+                                .content(&content)
                                 .parsed_json(content_block.get("input").cloned())
                                 .session_context(
                                     session_id.clone(),
@@ -225,6 +251,9 @@ async fn handle_assistant_message<F>(
 
                             store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
                             let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+                            // Persist to database
+                            persist_output(ctx, "tool_use", &content).await;
                         }
                         _ => {}
                     }
@@ -295,12 +324,13 @@ async fn handle_user_message<F>(
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false);
                             let byte_size = result_text.len();
+                            let output_type = if is_error { "error" } else { "tool_result" };
 
                             update_output_bytes(&ctx.stats, byte_size).await;
 
                             let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
-                                .output_type(if is_error { "error" } else { "tool_result" })
-                                .content(result_text)
+                                .output_type(output_type)
+                                .content(&result_text)
                                 .parsed_json(if !content.is_string() {
                                     Some(content.clone())
                                 } else {
@@ -317,6 +347,9 @@ async fn handle_user_message<F>(
 
                             store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
                             let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+                            // Persist to database
+                            persist_output(ctx, output_type, &result_text).await;
                         }
                     }
                 }
@@ -391,7 +424,7 @@ async fn handle_result_message<F>(
 
     let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
         .output_type("result")
-        .content(content)
+        .content(&content)
         .parsed_json(Some(json.clone()))
         .session_context(session_id, uuid, parent_tool_use_id, subtype)
         .with_size_from_content()
@@ -399,6 +432,9 @@ async fn handle_result_message<F>(
 
     store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
     let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+    // Persist to database
+    persist_output(ctx, "result", &content).await;
 
     // Check if this is a successful completion
     if is_success {
@@ -490,6 +526,9 @@ async fn handle_plain_text(ctx: &StreamContext, line: &str) {
         .build();
 
     let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+    // Persist to database
+    persist_output(ctx, "text", line).await;
 }
 
 async fn handle_process_end(ctx: &StreamContext) {
@@ -564,6 +603,8 @@ pub fn spawn_stderr_handler(
     stderr: tokio::process::ChildStderr,
     agent_id: String,
     app_handle: Arc<dyn crate::events::AppEventEmitter>,
+    runs_db: Option<Arc<AgentRunsDB>>,
+    pipeline_id: Option<String>,
 ) {
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
@@ -577,6 +618,23 @@ pub fn spawn_stderr_handler(
                 .build();
 
             let _ = app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+
+            // Persist error to database
+            if let Some(ref db) = runs_db {
+                let record = AgentOutputRecord {
+                    id: None,
+                    agent_id: agent_id.clone(),
+                    pipeline_id: pipeline_id.clone(),
+                    output_type: "error".to_string(),
+                    content: line.clone(),
+                    metadata: None,
+                    timestamp: now_millis(),
+                };
+                let db_clone = db.clone();
+                tokio::spawn(async move {
+                    let _ = db_clone.insert_agent_output(&record).await;
+                });
+            }
         }
     });
 }

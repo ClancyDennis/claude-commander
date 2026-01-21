@@ -88,12 +88,14 @@ pub async fn execute_replan_step(
     let agent_id = {
         let manager = agent_manager.lock().await;
         manager
-            .create_agent(
+            .create_agent_with_pipeline(
                 working_dir.clone(),
                 None,
                 None,
                 AgentSource::Pipeline,
                 app_handle.clone(),
+                Some(pipeline_id.to_string()),
+                Some("Planning".to_string()),
             )
             .await?
     };

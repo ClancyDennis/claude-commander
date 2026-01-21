@@ -5,14 +5,16 @@
     outputs,
     onFilter,
     onExport,
+    initialFilterType = "text",
   }: {
     outputs: AgentOutput[];
     onFilter: (filtered: AgentOutput[]) => void;
     onExport: () => void;
+    initialFilterType?: string;
   } = $props();
 
   let searchQuery = $state("");
-  let filterType = $state<string>("text");
+  let filterType = $state<string>(initialFilterType);
 
   // Get unique output types for filter dropdown
   const outputTypes = $derived.by(() => {

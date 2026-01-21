@@ -131,14 +131,22 @@ pub async fn execute_planning_step(
     let generated_skills = orchestrator_agent.generated_skills().to_vec();
     let generated_subagents = orchestrator_agent.generated_subagents().to_vec();
     let planning_outputs = orchestrator_agent.planning_agent_outputs.clone();
+    let planning_agent_id = orchestrator_agent.spawned_agents[0].clone();
 
     eprintln!(
-        "[auto_pipeline] Planning complete. Skills: {:?}, Subagents: {:?}, Outputs: {}",
-        generated_skills, generated_subagents, planning_outputs.len()
+        "[auto_pipeline] Planning complete. Skills: {:?}, Subagents: {:?}, Outputs: {}, Agent: {:?}",
+        generated_skills, generated_subagents, planning_outputs.len(), planning_agent_id
     );
 
     // Store the orchestrator agent for use in subsequent steps
     store_orchestrator_agent(&orchestrator_agents, pipeline_id, orchestrator_agent).await;
+
+    // Store the spawned agent ID in the pipeline step for later cleanup
+    if let Some(agent_id) = planning_agent_id {
+        with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
+            pipeline.steps[0].agent_id = Some(agent_id);
+        }).await?;
+    }
 
     // Update pipeline with planning outputs
     with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {

@@ -18,6 +18,64 @@ use tokio::time::Instant;
 use crate::agent_runs_db::{AgentRun, AgentRunsDB, RunStatus};
 use crate::github;
 use crate::logger::Logger;
+
+/// Attempt to find the Claude CLI in common installation locations
+fn find_claude_cli() -> Result<String, std::env::VarError> {
+    #[cfg(windows)]
+    {
+        // Check npm global install location on Windows
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let npm_path = std::path::PathBuf::from(&appdata)
+                .join("npm")
+                .join("claude.cmd");
+            if npm_path.exists() {
+                return Ok(npm_path.to_string_lossy().to_string());
+            }
+        }
+        // Check Program Files
+        let program_files =
+            std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
+        let pf_path = std::path::PathBuf::from(&program_files)
+            .join("nodejs")
+            .join("claude.cmd");
+        if pf_path.exists() {
+            return Ok(pf_path.to_string_lossy().to_string());
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        // Check common Unix locations
+        if let Ok(home) = std::env::var("HOME") {
+            // Check ~/.local/bin (common for user installs)
+            let local_bin = std::path::PathBuf::from(&home).join(".local/bin/claude");
+            if local_bin.exists() {
+                return Ok(local_bin.to_string_lossy().to_string());
+            }
+
+            // Check nvm locations (try to find any node version)
+            let nvm_dir = std::path::PathBuf::from(&home).join(".nvm/versions/node");
+            if nvm_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                    for entry in entries.flatten() {
+                        let claude_path = entry.path().join("bin/claude");
+                        if claude_path.exists() {
+                            return Ok(claude_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check /usr/local/bin
+        let usr_local = std::path::PathBuf::from("/usr/local/bin/claude");
+        if usr_local.exists() {
+            return Ok(usr_local.to_string_lossy().to_string());
+        }
+    }
+
+    Err(std::env::VarError::NotPresent)
+}
 use crate::security_monitor::SecurityMonitor;
 use crate::types::{
     AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus,
@@ -92,6 +150,20 @@ impl AgentManager {
         source: crate::types::AgentSource,
         app_handle: Arc<dyn crate::events::AppEventEmitter>,
     ) -> Result<String, String> {
+        self.create_agent_with_pipeline(working_dir, github_url, selected_instruction_files, source, app_handle, None, None).await
+    }
+
+    /// Create a new agent with optional pipeline linkage and title
+    pub async fn create_agent_with_pipeline(
+        &self,
+        working_dir: String,
+        github_url: Option<String>,
+        selected_instruction_files: Option<Vec<String>>,
+        source: crate::types::AgentSource,
+        app_handle: Arc<dyn crate::events::AppEventEmitter>,
+        pipeline_id: Option<String>,
+        title: Option<String>,
+    ) -> Result<String, String> {
         let agent_id = uuid::Uuid::new_v4().to_string();
 
         // Create hooks config
@@ -143,6 +215,7 @@ impl AgentManager {
             github_context: github_context.clone(),
             source: source.clone(),
             pooled: None,
+            title,
         };
 
         // Store agent
@@ -177,6 +250,7 @@ impl AgentManager {
             &github_url,
             &github_context,
             &source,
+            pipeline_id.clone(),
             now,
         )
         .await;
@@ -205,11 +279,12 @@ impl AgentManager {
             stats,
             output_buffer,
             runs_db: self.runs_db.clone(),
+            pipeline_id: pipeline_id.clone(),
         };
 
         // Spawn stream handlers
         spawn_stdout_handler(stdout, stream_ctx);
-        spawn_stderr_handler(stderr, agent_id.clone(), app_handle);
+        spawn_stderr_handler(stderr, agent_id.clone(), app_handle, self.runs_db.clone(), pipeline_id);
 
         // Call the on_agent_created callback if set
         if let Some(callback) = &self.on_agent_created {
@@ -261,11 +336,14 @@ impl AgentManager {
         working_dir: &str,
     ) -> Result<tokio::process::Child, String> {
         let claude_path = std::env::var("CLAUDE_PATH")
-            .or_else(|_| {
-                std::env::var("HOME")
-                    .map(|home| format!("{}/.nvm/versions/node/v23.11.1/bin/claude", home))
-            })
-            .unwrap_or_else(|_| "claude".to_string());
+            .or_else(|_| find_claude_cli())
+            .unwrap_or_else(|_| {
+                if cfg!(windows) {
+                    "claude.cmd".to_string()
+                } else {
+                    "claude".to_string()
+                }
+            });
 
         Command::new(&claude_path)
             .args([
@@ -295,6 +373,7 @@ impl AgentManager {
         github_url: &Option<String>,
         github_context: &Option<crate::types::GitHubContext>,
         source: &crate::types::AgentSource,
+        pipeline_id: Option<String>,
         now: i64,
     ) {
         if let Some(ref runs_db) = self.runs_db {
@@ -316,6 +395,7 @@ impl AgentManager {
                 last_activity: now,
                 initial_prompt: None,
                 error_message: None,
+                pipeline_id, // Linked to orchestrator events for historical queries
                 total_prompts: 0,
                 total_tool_calls: 0,
                 total_output_bytes: 0,

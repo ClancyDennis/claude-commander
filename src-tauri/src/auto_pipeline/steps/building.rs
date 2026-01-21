@@ -113,14 +113,22 @@ pub async fn execute_building_step(
     // Extract build output and agent outputs
     let implementation = orchestrator_agent.current_implementation.clone();
     let building_outputs = orchestrator_agent.building_agent_outputs.clone();
+    let building_agent_id = orchestrator_agent.spawned_agents[1].clone();
 
     eprintln!(
-        "[auto_pipeline] Building complete. Outputs: {}",
-        building_outputs.len()
+        "[auto_pipeline] Building complete. Outputs: {}, Agent: {:?}",
+        building_outputs.len(), building_agent_id
     );
 
     // Store agent back for verification step
     store_orchestrator_agent(&orchestrator_agents, pipeline_id, orchestrator_agent).await;
+
+    // Store the spawned agent ID in the pipeline step for later cleanup
+    if let Some(agent_id) = building_agent_id {
+        with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
+            pipeline.steps[1].agent_id = Some(agent_id);
+        }).await?;
+    }
 
     // Update pipeline
     with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {

@@ -168,8 +168,11 @@ pub fn run() {
             ) {
                 Ok(monitor) => {
                     let monitor = Arc::new(monitor);
-                    // Start background analysis loop (returns JoinHandle, runs in background)
-                    let _ = monitor.clone().start_background_analysis();
+                    // Start background analysis loop inside async context
+                    let monitor_for_bg = monitor.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = monitor_for_bg.start_background_analysis();
+                    });
                     println!("✓ Security monitor initialized");
                     Some(monitor)
                 }
@@ -227,7 +230,6 @@ pub fn run() {
             // Initialize orchestrator
             let orchestrator = Arc::new(Mutex::new(TaskOrchestrator::new(
                 agent_pool.clone(),
-                meta_agent.clone(),
             )));
             println!("✓ Task orchestrator initialized");
 
@@ -251,13 +253,11 @@ pub fn run() {
             // Initialize verification engine first
             let verification_engine = Arc::new(Mutex::new(VerificationEngine::new(
                 agent_pool.clone(),
-                meta_agent.clone(),
             )));
             println!("✓ Verification engine initialized");
 
             // Initialize pipeline manager with verification engine
             let pipeline_manager = Arc::new(Mutex::new(PipelineManager::new(
-                meta_agent.clone(),
                 agent_manager.clone(),
                 orchestrator.clone(),
                 verification_engine.clone(),
@@ -386,7 +386,9 @@ pub fn run() {
             commands::get_orchestrator_decisions,
             commands::get_agent_output_history,
             commands::get_pipeline_history,
-            commands::clear_pipeline_events
+            commands::clear_pipeline_events,
+            // Config commands
+            commands::get_config_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

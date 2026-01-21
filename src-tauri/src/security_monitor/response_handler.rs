@@ -8,7 +8,33 @@ use crate::agent_manager::AgentManager;
 use crate::events::AppEventEmitter;
 use crate::logger::Logger;
 
-use super::llm_analyzer::{AnalysisResult, RecommendedAction, RiskLevel};
+use super::llm_analyzer::{AnalysisResult, RecommendedAction, RiskLevel, ThreatAssessment};
+
+/// Detailed threat information for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatDetailEvent {
+    pub event_id: String,
+    pub threat_type: String,
+    pub severity: String,
+    pub confidence: f32,
+    pub explanation: String,
+    pub evidence: Vec<String>,
+    pub mitigations: Vec<String>,
+}
+
+impl From<&ThreatAssessment> for ThreatDetailEvent {
+    fn from(threat: &ThreatAssessment) -> Self {
+        Self {
+            event_id: threat.event_id.clone(),
+            threat_type: format!("{:?}", threat.threat_type),
+            severity: format!("{:?}", threat.severity),
+            confidence: threat.confidence,
+            explanation: threat.explanation.clone(),
+            evidence: threat.evidence.clone(),
+            mitigations: threat.mitigations.clone(),
+        }
+    }
+}
 
 /// Security alert event emitted to UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +48,10 @@ pub struct SecurityAlertEvent {
     pub recommended_actions: Vec<String>,
     pub requires_acknowledgment: bool,
     pub batch_id: String,
+    /// Detailed threat assessments
+    pub threats: Vec<ThreatDetailEvent>,
+    /// Overall confidence score from analysis
+    pub overall_confidence: f32,
 }
 
 /// Response handler configuration
@@ -166,6 +196,12 @@ impl ResponseHandler {
                 .collect(),
             requires_acknowledgment: requires_ack,
             batch_id: analysis.batch_id.clone(),
+            threats: analysis
+                .threats_detected
+                .iter()
+                .map(ThreatDetailEvent::from)
+                .collect(),
+            overall_confidence: analysis.confidence,
         };
 
         if let Err(e) = self.app_handle.emit(

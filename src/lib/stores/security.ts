@@ -124,3 +124,16 @@ export function isAgentSuspended(agentId: string): boolean {
   })();
   return result;
 }
+
+// Store for selected alert detail (for modal display)
+export const selectedAlertDetail = writable<SecurityAlert | null>(null);
+
+// Show alert detail modal
+export function showAlertDetail(alert: SecurityAlert) {
+  selectedAlertDetail.set(alert);
+}
+
+// Hide alert detail modal
+export function hideAlertDetail() {
+  selectedAlertDetail.set(null);
+}

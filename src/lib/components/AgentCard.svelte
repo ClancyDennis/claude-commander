@@ -24,7 +24,7 @@
         </svg>
       </div>
       <div class="agent-details">
-        <h3 class="agent-name">{formatPath(agent.workingDir)}</h3>
+        <h3 class="agent-name">{#if agent.title}{agent.title} - {/if}{formatPath(agent.workingDir)}</h3>
         <span class="agent-path">{agent.workingDir}</span>
       </div>
     </div>

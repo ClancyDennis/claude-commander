@@ -32,9 +32,12 @@ pub fn build_initial_prompt(
     instruction_list: &str,
     custom_section: &str,
     user_request: &str,
+    system_context: &str,
 ) -> String {
     format!(
         r#"You are the orchestrator for an automated development pipeline. Your job is to guide a task through multiple phases by using tools.
+
+{system_context}
 
 ## Phase A: Resource Synthesis (Current Phase)
 

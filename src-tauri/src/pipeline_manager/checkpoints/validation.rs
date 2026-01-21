@@ -6,6 +6,14 @@ use crate::pipeline_manager::types::CheckpointResult;
 pub fn run_validation(command: &str, working_dir: &str) -> Result<CheckpointResult, String> {
     println!("Running validation command: {}", command);
 
+    #[cfg(windows)]
+    let output = Command::new("cmd")
+        .args(["/C", command])
+        .current_dir(working_dir)
+        .output()
+        .map_err(|e| format!("Failed to run command: {}", e))?;
+
+    #[cfg(not(windows))]
     let output = Command::new("sh")
         .arg("-c")
         .arg(command)

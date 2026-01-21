@@ -19,7 +19,6 @@ use std::time::SystemTime;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::meta_agent::MetaAgent;
 use crate::orchestrator::{TaskOrchestrator, WorkflowStatus};
 use crate::verification::VerificationEngine;
 
@@ -28,7 +27,6 @@ use phases::{check_phase_tasks_complete, execute_implementation_phase, execute_p
 
 pub struct PipelineManager {
     pipelines: Arc<Mutex<HashMap<String, Pipeline>>>,
-    meta_agent: Arc<Mutex<MetaAgent>>,
     #[allow(dead_code)]
     agent_manager: Arc<Mutex<AgentManager>>,
     orchestrator: Arc<Mutex<TaskOrchestrator>>,
@@ -38,14 +36,12 @@ pub struct PipelineManager {
 
 impl PipelineManager {
     pub fn new(
-        meta_agent: Arc<Mutex<MetaAgent>>,
         agent_manager: Arc<Mutex<AgentManager>>,
         orchestrator: Arc<Mutex<TaskOrchestrator>>,
         verification_engine: Arc<Mutex<VerificationEngine>>,
     ) -> Self {
         Self {
             pipelines: Arc::new(Mutex::new(HashMap::new())),
-            meta_agent,
             agent_manager,
             orchestrator,
             verification_engine,
@@ -159,7 +155,6 @@ impl PipelineManager {
 
         // Start pipeline execution in background
         let pipelines = self.pipelines.clone();
-        let meta_agent = self.meta_agent.clone();
         let orchestrator = self.orchestrator.clone();
         let verification_engine = self.verification_engine.clone();
         let config_arc = self.config.clone();
@@ -169,7 +164,6 @@ impl PipelineManager {
             Self::execute_pipeline(
                 pipeline_id_clone,
                 pipelines,
-                meta_agent,
                 orchestrator,
                 verification_engine,
                 config_arc,
@@ -184,7 +178,6 @@ impl PipelineManager {
     async fn execute_pipeline(
         pipeline_id: String,
         pipelines: Arc<Mutex<HashMap<String, Pipeline>>>,
-        meta_agent: Arc<Mutex<MetaAgent>>,
         orchestrator: Arc<Mutex<TaskOrchestrator>>,
         verification_engine: Arc<Mutex<VerificationEngine>>,
         config: Arc<Mutex<PipelineConfig>>,
@@ -232,7 +225,6 @@ impl PipelineManager {
                             if let Err(e) = execute_planning_phase(
                                 &pipeline_id,
                                 pipelines.clone(),
-                                meta_agent.clone(),
                             )
                             .await
                             {

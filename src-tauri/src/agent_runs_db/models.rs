@@ -57,6 +57,9 @@ pub struct AgentRun {
     pub initial_prompt: Option<String>,
     pub error_message: Option<String>,
 
+    // Pipeline linkage (for historical queries)
+    pub pipeline_id: Option<String>,
+
     // Statistics
     pub total_prompts: u32,
     pub total_tool_calls: u32,

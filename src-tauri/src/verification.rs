@@ -4,7 +4,6 @@ use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
 
 use crate::pool_manager::AgentPool;
-use crate::meta_agent::MetaAgent;
 use crate::pipeline_manager::FusionStrategy;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -46,15 +45,13 @@ pub struct VerificationResult {
 
 pub struct VerificationEngine {
     agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    meta_agent: Arc<Mutex<MetaAgent>>,
 }
 
 impl VerificationEngine {
     pub fn new(
         agent_pool: Option<Arc<Mutex<AgentPool>>>,
-        meta_agent: Arc<Mutex<MetaAgent>>
     ) -> Self {
-        Self { agent_pool, meta_agent }
+        Self { agent_pool }
     }
 
     /// Run Best-of-N verification
@@ -142,7 +139,7 @@ impl VerificationEngine {
         drop(pool_lock);
 
         // Fuse results based on strategy
-        let selected = self.fuse_results(&results, &config).await?;
+        let selected = self.fuse_results(&results, &config)?;
 
         let verification_time = start_time.elapsed().as_secs_f32();
 
@@ -155,7 +152,7 @@ impl VerificationEngine {
         })
     }
 
-    async fn fuse_results(
+    fn fuse_results(
         &self,
         results: &[AgentResult],
         config: &VerificationConfig
@@ -196,21 +193,17 @@ impl VerificationEngine {
             }
 
             FusionStrategy::MetaAgentReview => {
-                // Use meta-agent to pick best result
-                let _meta = self.meta_agent.lock().await;
-
-                let review_prompt = format!(
-                    "Review these {} results and pick the best one. Return just the agent_id of the best result.\n\nResults:\n{}",
-                    results.len(),
-                    serde_json::to_string_pretty(results).unwrap()
-                );
-
-                // TODO: Send to meta-agent properly
-                // For now, just pick first result
-                let _response = review_prompt; // Placeholder
-
-                // Return first result as placeholder
-                Ok(results[0].clone())
+                // MetaAgentReview is not supported - fall back to WeightedConsensus
+                // MetaAgent should not be called from verification engine
+                eprintln!("MetaAgentReview strategy not supported, falling back to WeightedConsensus");
+                results.iter()
+                    .max_by(|a, b| {
+                        a.confidence.unwrap_or(0.0)
+                            .partial_cmp(&b.confidence.unwrap_or(0.0))
+                            .unwrap()
+                    })
+                    .cloned()
+                    .ok_or_else(|| "No results with confidence".to_string())
             }
 
             FusionStrategy::FirstCorrect => {

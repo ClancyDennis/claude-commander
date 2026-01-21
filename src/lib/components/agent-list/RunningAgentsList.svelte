@@ -12,6 +12,7 @@
     viewMode,
     onOpenChat,
     onSelectAgent,
+    onMultiSelectAgent,
     onSelectPipeline
   }: {
     agents: Map<string, Agent>;
@@ -21,6 +22,7 @@
     viewMode: string;
     onOpenChat: () => void;
     onSelectAgent: (id: string) => void;
+    onMultiSelectAgent?: (id: string) => void;
     onSelectPipeline: (id: string) => void;
   } = $props();
 
@@ -103,6 +105,7 @@
         {agent}
         isSelected={isAgentSelected(agent.id)}
         onSelect={onSelectAgent}
+        onMultiSelect={onMultiSelectAgent}
       />
     {/each}
   </ul>

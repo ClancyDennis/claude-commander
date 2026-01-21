@@ -2,11 +2,32 @@
 //
 // Utilities for building context sections and AI communication.
 
+use chrono::Local;
+
 use crate::ai_client::{AIClient, ContentBlock, RichContentBlock, RichMessage, RichMessageContent, Tool};
 use crate::skill_generator::get_skill_content;
 use crate::subagent_generator::get_subagent_content;
 
 use super::types::{ContentBlockValue, ConversationContent, ConversationMessage};
+
+/// Build system context information (OS, date, time, architecture)
+/// This helps the AI give platform-specific and time-aware responses.
+pub fn build_system_context() -> String {
+    let now = Local::now();
+    format!(
+        r#"## System Information
+- Operating System: {}
+- OS Family: {}
+- Architecture: {}
+- Date: {}
+- Time: {}"#,
+        std::env::consts::OS,
+        std::env::consts::FAMILY,
+        std::env::consts::ARCH,
+        now.format("%Y-%m-%d"),
+        now.format("%H:%M %Z"),
+    )
+}
 
 /// Build a comprehensive skills section with full skill content (not just names).
 /// This loads SKILL.md, reference.md, and examples.md for each generated skill.

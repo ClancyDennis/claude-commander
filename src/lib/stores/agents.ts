@@ -216,17 +216,61 @@ export function selectMultipleAgents(agentIds: string[]) {
   selectedAgentIds.update(() => new Set(agentIds));
 }
 
+// Toggle agent in multi-select set (for Ctrl/Cmd+click)
+export function toggleAgentInSelection(agentId: string) {
+  selectedAgentIds.update((set) => {
+    const newSet = new Set(set);
+    if (newSet.has(agentId)) {
+      newSet.delete(agentId);
+    } else {
+      newSet.add(agentId);
+    }
+    return newSet;
+  });
+
+  // Also update selectedAgentId to the most recent selection for single view compat
+  const currentIds = get(selectedAgentIds);
+  if (currentIds.size > 0) {
+    const idsArray = Array.from(currentIds);
+    selectedAgentId.set(idsArray[idsArray.length - 1]);
+  } else {
+    selectedAgentId.set(null);
+  }
+}
+
+// Add agent to multi-select without removing others
+export function addAgentToSelection(agentId: string) {
+  selectedAgentIds.update((set) => {
+    const newSet = new Set(set);
+    newSet.add(agentId);
+    return newSet;
+  });
+}
+
 // Chat functions
 export function openChat() {
   viewMode.set('chat');
   selectedAgentId.set(null);
 }
 
-export function openAgent(agentId: string) {
+export function openAgent(agentId: string, multiSelect: boolean = false) {
   viewMode.set('agent');
   selectedAgentId.set(agentId);
   selectedAutoPipelineId.set(null);
   markAgentViewed(agentId);
+
+  // When not multi-selecting, reset selectedAgentIds to just this agent
+  // When multi-selecting, add to the set
+  if (multiSelect) {
+    selectedAgentIds.update((set) => {
+      const newSet = new Set(set);
+      newSet.add(agentId);
+      return newSet;
+    });
+  } else {
+    // Single select: replace the set with just this agent
+    selectedAgentIds.set(new Set([agentId]));
+  }
 }
 
 export function addChatMessage(message: ChatMessage) {

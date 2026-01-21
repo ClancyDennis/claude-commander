@@ -176,6 +176,7 @@ async function setupStatusListener(
           commitSha: info.github_context.commit_sha,
           lastSynced: info.github_context.last_synced,
         } : undefined,
+        title: info.title,
       };
     }
 

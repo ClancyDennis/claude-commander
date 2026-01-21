@@ -9,6 +9,11 @@
   let selectedTool = $state<string | "all">("all");
   let searchQuery = $state("");
   let eventsContainer: HTMLDivElement | null = $state(null);
+  let scrollTop = $state(0);
+
+  // Virtualization settings
+  const VISIBLE_ITEMS = 20;
+  const ITEM_HEIGHT = 100; // Approximate height of each tool event card
 
   // Calculate statistics from tool events
   const toolStats = $derived.by(() => {
@@ -85,6 +90,28 @@
     return needsFilter ? filtered.reverse() : filtered.slice().reverse();
   });
 
+  // Virtualization: calculate visible items based on scroll position
+  const visibleTools = $derived.by(() => {
+    const filtered = filteredTools;
+    if (filtered.length <= VISIBLE_ITEMS) {
+      return { visible: filtered, startIndex: 0, totalHeight: filtered.length * ITEM_HEIGHT };
+    }
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 5);
+    const endIndex = Math.min(filtered.length, startIndex + VISIBLE_ITEMS + 10);
+
+    return {
+      visible: filtered.slice(startIndex, endIndex),
+      startIndex,
+      totalHeight: filtered.length * ITEM_HEIGHT
+    };
+  });
+
+  function handleScroll(e: Event) {
+    const target = e.target as HTMLElement;
+    scrollTop = target.scrollTop;
+  }
+
   function formatToolInput(input: Record<string, unknown>): string {
     if (input.command) return String(input.command);
     if (input.file_path) return String(input.file_path);
@@ -100,6 +127,7 @@
   $effect(() => {
     const currentLength = $selectedAgentTools.length;
     const container = eventsContainer; // capture current value
+    const totalHeight = visibleTools.totalHeight; // capture for virtualized scroll
     // Skip scroll operations during resize to prevent layout thrashing
     if ($isResizing) return;
 
@@ -107,14 +135,14 @@
     if (container && currentLength > scrollState.prevLength && currentLength > 0 && filterType === "all" && selectedTool === "all" && !searchQuery.trim()) {
       scrollState.prevLength = currentLength;
 
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+      const { scrollTop: currentScrollTop, clientHeight } = container;
+      const distanceToBottom = totalHeight - currentScrollTop - clientHeight;
 
       // Auto-scroll if we are within 500px of the bottom (or at the top)
-      if (distanceToBottom < 500 || scrollTop === 0) {
+      if (distanceToBottom < 500 || currentScrollTop === 0) {
         requestAnimationFrame(() => {
           if (container) {
-            container.scrollTop = container.scrollHeight;
+            container.scrollTop = totalHeight;
           }
         });
       }
@@ -182,9 +210,11 @@
     />
   </div>
 
-  <div class="events" bind:this={eventsContainer}>
-    {#each filteredTools as event, i (event.toolCallId + i)}
-      <div class="event {event.hookEventName.toLowerCase()} animate-slide-up">
+  <div class="events" bind:this={eventsContainer} onscroll={handleScroll}>
+    <div class="virtual-spacer" style="height: {visibleTools.totalHeight}px; position: relative;">
+      <div style="position: absolute; top: {visibleTools.startIndex * ITEM_HEIGHT}px; width: 100%;">
+        {#each visibleTools.visible as event, i (event.toolCallId + (visibleTools.startIndex + i))}
+          <div class="event {event.hookEventName.toLowerCase()}">
         <div class="event-header">
           <div class="tool-info">
             <span class="tool-icon {event.toolName.toLowerCase()}">
@@ -269,7 +299,9 @@
           {event.timestamp.toLocaleTimeString()}
         </span>
       </div>
-    {/each}
+        {/each}
+      </div>
+    </div>
 
     {#if filteredTools.length === 0 && $selectedAgentTools.length > 0}
       <div class="empty">

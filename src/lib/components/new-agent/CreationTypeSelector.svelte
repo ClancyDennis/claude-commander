@@ -28,22 +28,6 @@
         <span>Focused mission</span>
       </div>
     </label>
-    <label class="radio-option" class:selected={creationType === 'pipeline'}>
-      <input type="radio" bind:group={creationType} value="pipeline" disabled={isCreating} />
-      <div class="corner-help">
-        <HelpTip
-          placement="top"
-          text="Runs a multi-phase workflow (planning/execution/verification) with configurable checkpoints."
-        />
-      </div>
-      <div class="type-image" aria-hidden="true">
-        <img src={pipelineTypeImage} alt="" />
-      </div>
-      <div class="radio-content">
-        <strong>Pipeline</strong>
-        <span>Multi-phase</span>
-      </div>
-    </label>
     <label class="radio-option" class:selected={creationType === 'auto-pipeline'}>
       <input type="radio" bind:group={creationType} value="auto-pipeline" disabled={isCreating} />
       <div class="corner-help">
@@ -58,6 +42,22 @@
       <div class="radio-content">
         <strong>Ralphline</strong>
         <span>I'm helping!</span>
+      </div>
+    </label>
+    <label class="radio-option" class:selected={creationType === 'pipeline'}>
+      <input type="radio" bind:group={creationType} value="pipeline" disabled={isCreating} />
+      <div class="corner-help">
+        <HelpTip
+          placement="top"
+          text="Runs a multi-phase workflow (planning/execution/verification) with configurable checkpoints."
+        />
+      </div>
+      <div class="type-image" aria-hidden="true">
+        <img src={pipelineTypeImage} alt="" />
+      </div>
+      <div class="radio-content">
+        <strong>Custom</strong>
+        <span>Multi-phase</span>
       </div>
     </label>
   </div>

@@ -14,6 +14,7 @@ mod types;
 
 pub use types::OrchestratorAction;
 
+use context_builders::build_system_context;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -76,6 +77,10 @@ pub struct OrchestratorAgent {
     pub(crate) planning_replan_count: u8,
     /// Maximum allowed replans during planning phase (0 = unlimited)
     pub(crate) max_planning_replans: u8,
+    /// Pipeline ID for linking spawned agents to this pipeline
+    pub(crate) pipeline_id: String,
+    /// Spawned agent IDs for tracking: [planning, building, verification]
+    pub(crate) spawned_agents: [Option<String>; 3],
 }
 
 impl OrchestratorAgent {
@@ -166,7 +171,8 @@ impl OrchestratorAgent {
             .map(|i| format!("\n## Custom Instructions\n{}\n", i))
             .unwrap_or_default();
 
-        let initial_prompt = build_initial_prompt(&instruction_list, &custom_section, &user_request);
+        let system_context = build_system_context();
+        let initial_prompt = build_initial_prompt(&instruction_list, &custom_section, &user_request, &system_context);
 
         let messages = vec![ConversationMessage {
             role: "user".to_string(),
@@ -197,6 +203,8 @@ impl OrchestratorAgent {
             verification_agent_outputs: Vec::new(),
             planning_replan_count: 0,
             max_planning_replans: 1, // Default: allow 1 replan during planning
+            pipeline_id: uuid::Uuid::new_v4().to_string(),
+            spawned_agents: [None, None, None],
         })
     }
 

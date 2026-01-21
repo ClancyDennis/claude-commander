@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { layoutMode, gridSize } from "../stores/agents";
+  import { layoutMode, gridSize, selectedAgentIds } from "../stores/agents";
   import HelpDialog from "./HelpDialog.svelte";
   import HelpTip from "./new-agent/HelpTip.svelte";
 
   let showHelp = $state(false);
+
+  const selectedCount = $derived($selectedAgentIds.size);
+  const showSelectionHint = $derived($layoutMode !== 'single' && selectedCount < 2);
 
   function cycleLayout() {
     layoutMode.update((current) => {
@@ -24,7 +27,7 @@
 
 <div class="layout-manager">
   <div class="layout-controls">
-    <HelpTip text="Switch between single, split, and grid layouts to view multiple agents at once." placement="bottom" />
+    <HelpTip text="Switch between single, split, and grid layouts to view multiple agents at once. Use Ctrl+click (Cmd+click on Mac) to select multiple agents." placement="bottom" />
     <button
       class="layout-btn"
       class:active={$layoutMode === 'single'}
@@ -78,6 +81,15 @@
       >
         3x3
       </button>
+    </div>
+  {/if}
+
+  {#if $layoutMode !== 'single'}
+    <div class="selection-info">
+      <span class="selection-count">{selectedCount} selected</span>
+      {#if showSelectionHint}
+        <span class="selection-hint">Ctrl+click agents to add</span>
+      {/if}
     </div>
   {/if}
 
@@ -181,6 +193,29 @@
     background-color: var(--accent-glow);
     border-color: var(--accent);
     color: var(--accent);
+  }
+
+  .selection-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 6px 12px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .selection-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .selection-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding-left: var(--space-sm);
+    border-left: 1px solid var(--border);
   }
 
   .help-btn {

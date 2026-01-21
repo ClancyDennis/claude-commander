@@ -44,6 +44,9 @@
   // Filtered outputs managed by OutputControls
   let filteredOutputs = $state<AgentOutput[]>([]);
 
+  // Default filter type (must match OutputControls default)
+  const DEFAULT_FILTER_TYPE = "text";
+
   // Use a plain object for tracking state to avoid reactive loops in Svelte 5
   // Plain objects are not reactive, so modifying them in $effect won't trigger re-runs
   const filterState = {
@@ -59,18 +62,17 @@
   });
 
   // Handle agent switches and filter initialization
+  // Apply filter IMMEDIATELY to avoid flash of unfiltered content
   $effect(() => {
     const currentAgentId = effectiveAgentId;
     const currentOutputs = outputs;
 
-    // Reset filter on agent switch
+    // Reset filter on agent switch - apply default filter synchronously
     if (currentAgentId !== filterState.previousAgentId) {
       filterState.previousAgentId = currentAgentId;
-      filterState.hasReceivedFilter = false;
-      filteredOutputs = currentOutputs;
-    } else if (!filterState.hasReceivedFilter && currentOutputs.length > 0) {
-      // Initialize filtered outputs with all outputs when first loaded
-      filteredOutputs = currentOutputs;
+      filterState.hasReceivedFilter = true; // Mark as received immediately
+      // Apply default filter (type="text") synchronously to avoid flash
+      filteredOutputs = currentOutputs.filter(o => o.type === DEFAULT_FILTER_TYPE);
     }
   });
 
@@ -124,19 +126,19 @@
         {#if outputs.length > 0}
           <OutputControls
             outputs={outputs}
+            initialFilterType={DEFAULT_FILTER_TYPE}
             onFilter={(filtered) => {
-              filterState.hasReceivedFilter = true;
               filteredOutputs = filtered;
             }}
             onExport={() => showExportDialog = true}
           />
         {/if}
-        
+
         <AgentOutputList
-          outputs={filterState.hasReceivedFilter ? filteredOutputs : outputs}
+          outputs={filteredOutputs}
           hasAnyOutput={outputs.length > 0}
           isProcessing={agent.isProcessing}
-          onClearFilter={() => { filterState.hasReceivedFilter = false; filteredOutputs = outputs; }}
+          onClearFilter={() => { filteredOutputs = outputs.filter(o => o.type === DEFAULT_FILTER_TYPE); }}
         />
 
         <AgentInput 
