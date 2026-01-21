@@ -1,0 +1,35 @@
+# Docker Compose for local build testing
+# Usage: docker compose -f docker-compose.build.yml build linux
+#        docker compose -f docker-compose.build.yml up linux
+
+services:
+  # Build for native Linux (x86_64 or ARM64 depending on host)
+  linux:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.linux
+    volumes:
+      # Mount output directory to get build artifacts
+      - ./dist-docker:/app/src-tauri/target/release/bundle
+    environment:
+      - CARGO_TERM_COLOR=always
+
+  # Cross-compile to Linux ARM64 (from x86_64 host)
+  linux-arm64:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.linux-arm64
+    volumes:
+      - ./dist-docker-arm64:/app/src-tauri/target/aarch64-unknown-linux-gnu/release
+    environment:
+      - CARGO_TERM_COLOR=always
+
+  # Use buildx for true ARM64 build (requires Docker buildx)
+  linux-arm64-native:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.linux
+      platforms:
+        - linux/arm64
+    volumes:
+      - ./dist-docker-arm64-native:/app/src-tauri/target/release/bundle
