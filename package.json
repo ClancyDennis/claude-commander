@@ -20,7 +20,7 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.5.0",
     "@tauri-apps/plugin-shell": "^2.3.4",
-    "@types/dompurify": "^3.0.5",
+    "@types/dompurify": "^3.2.0",
     "@types/highlight.js": "^9.12.4",
     "@types/marked": "^5.0.2",
     "dompurify": "^3.3.1",
