@@ -1,0 +1,188 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - platform: linux
+            os: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            tauri_args: ''
+            artifact_suffix: linux-x86_64
+
+          # Linux ARM64
+          - platform: linux-arm64
+            os: ubuntu-22.04
+            rust_target: aarch64-unknown-linux-gnu
+            tauri_args: '--target aarch64-unknown-linux-gnu'
+            artifact_suffix: linux-arm64
+
+          # Windows x86_64
+          - platform: windows
+            os: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            tauri_args: ''
+            artifact_suffix: windows-x86_64
+
+          # macOS Intel
+          - platform: macos-intel
+            os: macos-13
+            rust_target: x86_64-apple-darwin
+            tauri_args: '--target x86_64-apple-darwin'
+            artifact_suffix: macos-x86_64
+
+          # macOS Apple Silicon
+          - platform: macos-arm
+            os: macos-14
+            rust_target: aarch64-apple-darwin
+            tauri_args: '--target aarch64-apple-darwin'
+            artifact_suffix: macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ matrix.rust_target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.rust_target }}-
+
+      # Linux dependencies
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux' || matrix.platform == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      # Linux ARM64 cross-compilation setup
+      - name: Setup ARM64 cross-compilation
+        if: matrix.platform == 'linux-arm64'
+        run: |
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+
+          # Setup pkg-config for cross-compilation
+          echo "PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing for macOS (optional - add secrets if needed)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Code signing for Windows (optional - add secrets if needed)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: ${{ matrix.tauri_args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-commander-${{ matrix.artifact_suffix }}
+          path: |
+            src-tauri/target/*/release/bundle/**/*.AppImage
+            src-tauri/target/*/release/bundle/**/*.deb
+            src-tauri/target/*/release/bundle/**/*.rpm
+            src-tauri/target/*/release/bundle/**/*.dmg
+            src-tauri/target/*/release/bundle/**/*.app
+            src-tauri/target/*/release/bundle/**/*.exe
+            src-tauri/target/*/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.app
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: find artifacts -type f | head -50
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.dmg
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

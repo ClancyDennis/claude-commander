@@ -180,10 +180,30 @@ npm run tauri icon src-tauri/icons/icon.png
 ## Building for Production
 
 ```bash
+# Quick build for current platform
+./scripts/build.sh release        # Linux/macOS
+.\scripts\build.ps1 release       # Windows (PowerShell)
+
+# Or manually
 npm run tauri build
 ```
 
-The built application will be in `src-tauri/target/release`.
+The built application will be in `src-tauri/target/release/bundle/`.
+
+### Cross-Platform Builds
+
+For multi-platform builds (Linux, Windows, macOS), Docker builds, and CI/CD setup, see [BUILD.md](BUILD.md).
+
+**Quick Docker build (Linux):**
+```bash
+./scripts/build.sh docker         # Build Linux x86_64
+./scripts/build.sh docker-arm64   # Build Linux ARM64
+```
+
+**GitHub Actions:** The project includes workflows for automated releases. Tag a version to trigger:
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
 
 ## Usage
 
