@@ -39,6 +39,7 @@ Organize your cloud files. Send emails. Deploy websites. Generate images. Search
 - **Cost tracking** — see exactly what you're spending across all agents in real-time
 - **Human-in-the-loop** — review and approve plans before execution
 - **Smart verification** — run the same task with multiple agents and automatically pick the best result
+![ClaudeCommander_desktopCaleanupv2 - SD 480p](https://github.com/user-attachments/assets/b74520df-ef10-431e-abc3-c746294ad2b6)
 
 <!--
 DEMO GIF NEEDED: demo.gif
@@ -71,6 +72,7 @@ EDITING NOTES:
 - Smooth transitions between clips
 - No audio needed
 -->
+<img width="1516" height="970" alt="image" src="https://github.com/user-attachments/assets/d7882f43-e3be-44a7-9c08-75a747fe254f" />
 
 ---
 
