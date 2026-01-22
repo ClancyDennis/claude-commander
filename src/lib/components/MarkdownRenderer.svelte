@@ -1,0 +1,199 @@
+<script lang="ts">
+  import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
+  import hljs from 'highlight.js';
+  import 'highlight.js/styles/atom-one-dark.css';
+
+  let { content }: { content: string } = $props();
+  let container: HTMLDivElement | null = $state(null);
+  let cleanupFns: (() => void)[] = [];
+
+  $effect(() => {
+    if (container && content) {
+      // Clean up previous event listeners
+      cleanupFns.forEach(fn => fn());
+      cleanupFns = [];
+
+      // Parse markdown synchronously
+      const rawHtml = marked.parse(content, { async: false }) as string;
+      // Sanitize
+      const cleanHtml = DOMPurify.sanitize(rawHtml);
+      // Update DOM
+      container.innerHTML = cleanHtml;
+      // Apply syntax highlighting
+      container.querySelectorAll('pre code').forEach((el) => {
+        hljs.highlightElement(el as HTMLElement);
+      });
+      // Add copy buttons to code blocks
+      container.querySelectorAll('pre').forEach((pre) => {
+        if (pre.querySelector('.copy-btn')) return; // Already added
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        `;
+        copyBtn.title = "Copy code";
+
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const clickHandler = () => {
+          const code = pre.querySelector('code')?.innerText || '';
+          navigator.clipboard.writeText(code);
+
+          // Clear any pending timeout
+          if (timeoutId) clearTimeout(timeoutId);
+
+          // Feedback
+          const originalHTML = copyBtn.innerHTML;
+          copyBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          `;
+          copyBtn.classList.add('copied');
+
+          timeoutId = setTimeout(() => {
+            if (copyBtn.isConnected) {
+              copyBtn.innerHTML = originalHTML;
+              copyBtn.classList.remove('copied');
+            }
+          }, 2000);
+        };
+
+        copyBtn.addEventListener('click', clickHandler);
+
+        // Track cleanup for this button
+        cleanupFns.push(() => {
+          if (timeoutId) clearTimeout(timeoutId);
+          copyBtn.removeEventListener('click', clickHandler);
+        });
+
+        pre.style.position = 'relative';
+        pre.appendChild(copyBtn);
+      });
+    }
+
+    // Return cleanup function for when effect re-runs or component unmounts
+    return () => {
+      cleanupFns.forEach(fn => fn());
+      cleanupFns = [];
+    };
+  });
+</script>
+
+<div class="markdown-content" bind:this={container}></div>
+
+<style>
+  :global(.markdown-content) {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
+
+  :global(.markdown-content h1),
+  :global(.markdown-content h2),
+  :global(.markdown-content h3),
+  :global(.markdown-content h4) {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  :global(.markdown-content h1) { font-size: 1.5em; }
+  :global(.markdown-content h2) { font-size: 1.3em; }
+  :global(.markdown-content h3) { font-size: 1.1em; }
+
+  :global(.markdown-content p) {
+    margin-bottom: 1em;
+  }
+
+  :global(.markdown-content ul),
+  :global(.markdown-content ol) {
+    margin-bottom: 1em;
+    padding-left: 1.5em;
+  }
+
+  :global(.markdown-content li) {
+    margin-bottom: 0.25em;
+  }
+
+  :global(.markdown-content code) {
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+  }
+
+  :global(.markdown-content pre) {
+    margin: 1em 0;
+    padding: 1em;
+    background-color: #1e1e24 !important; /* Override theme slightly to match app */
+    border-radius: 8px;
+    overflow-x: auto;
+    position: relative;
+    border: 1px solid var(--border);
+  }
+
+  :global(.markdown-content pre code) {
+    background-color: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 13px;
+  }
+
+  :global(.markdown-content blockquote) {
+    border-left: 4px solid var(--accent);
+    margin: 1em 0;
+    padding-left: 1em;
+    color: var(--text-secondary);
+    background: rgba(124, 58, 237, 0.05);
+    padding: 0.5em 1em;
+    border-radius: 0 4px 4px 0;
+  }
+
+  :global(.markdown-content a) {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  :global(.markdown-content a:hover) {
+    text-decoration: underline;
+  }
+  
+  /* Copy Button Styles */
+  :global(.copy-btn) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 4px;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s;
+    opacity: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(pre:hover .copy-btn) {
+    opacity: 1;
+  }
+
+  :global(.copy-btn:hover) {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+  }
+
+  :global(.copy-btn.copied) {
+    color: var(--success);
+  }
+</style>
