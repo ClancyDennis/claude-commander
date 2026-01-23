@@ -244,8 +244,7 @@ Get your [Anthropic API key](https://console.anthropic.com/) — you'll need thi
 
 ### Step 3: Run Claude Commander
 
-**Pre-built releases** — Coming soon! For now, build from source:
-
+**Pre-built releases** — [(https://github.com/ClancyDennis/claude-commander/releases)](https://github.com/ClancyDennis/claude-commander/releases)
 ```bash
 # Clone and install (requires Node.js 18+ and Rust 1.70+)
 git clone https://github.com/ClancyDennis/claude-commander.git
