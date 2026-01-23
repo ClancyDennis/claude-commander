@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 use super::pattern_matcher::PatternMatch;
-use super::session_expectations::ExpectationCheckResult;
+use super::anomaly_detection::ExpectationCheckResult;
 
 /// Security-relevant event extracted from agent activity
 #[derive(Debug, Clone, Serialize, Deserialize)]

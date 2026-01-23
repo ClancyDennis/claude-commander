@@ -140,10 +140,21 @@ export interface AgentStatsEvent {
   };
 }
 
+// Image attachment for chat messages
+export interface ImageAttachment {
+  id: string;
+  filename: string;
+  mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  base64Data: string;
+  previewUrl: string;
+  sizeBytes: number;
+}
+
 // Chat-related types for meta-agent
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: ImageAttachment;  // Optional single image attachment
   toolCalls?: ToolCall[];
   timestamp: number;
 }
@@ -563,6 +574,23 @@ export interface ConfigStatus {
   available_claude_models: string[];
   available_openai_models: string[];
   config_path: string;
+  is_first_run?: boolean;
+}
+
+export interface ConfigUpdate {
+  key: string;
+  value: string;
+}
+
+export interface ConfigUpdateResult {
+  success: boolean;
+  message: string;
+  requires_restart: boolean;
+}
+
+export interface ApiKeyValidationResult {
+  valid: boolean;
+  message: string;
 }
 
 // ============================================================================

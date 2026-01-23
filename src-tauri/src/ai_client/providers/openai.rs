@@ -84,6 +84,9 @@ impl OpenAIProvider {
                                 RichContentBlock::Text { text } => {
                                     text_content = Some(text.clone());
                                 }
+                                RichContentBlock::Image { .. } => {
+                                    // Images don't appear in assistant messages
+                                }
                                 RichContentBlock::ToolUse { id, name, input } => {
                                     tool_calls.push(json!({
                                         "id": id,
@@ -109,13 +112,27 @@ impl OpenAIProvider {
                         }
                         openai_messages.push(assistant_msg);
                     } else if msg.role == "user" {
-                        // User message with potential tool results
+                        // User message with potential tool results or images
+                        // Collect content parts for multimodal messages
+                        let mut content_parts: Vec<Value> = Vec::new();
+                        let mut has_image = false;
+
                         for block in blocks {
                             match block {
                                 RichContentBlock::Text { text } => {
-                                    openai_messages.push(json!({
-                                        "role": "user",
-                                        "content": text
+                                    content_parts.push(json!({
+                                        "type": "text",
+                                        "text": text
+                                    }));
+                                }
+                                RichContentBlock::Image { source } => {
+                                    has_image = true;
+                                    // OpenAI uses data URL format for images
+                                    content_parts.push(json!({
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": format!("data:{};base64,{}", source.media_type, source.data)
+                                        }
                                     }));
                                 }
                                 RichContentBlock::ToolResult {
@@ -132,6 +149,31 @@ impl OpenAIProvider {
                                 RichContentBlock::ToolUse { .. } => {
                                     // Tool uses don't appear in user messages
                                 }
+                            }
+                        }
+
+                        // If we have content parts (text or images), create a user message
+                        if !content_parts.is_empty() {
+                            if has_image {
+                                // Multimodal message with images
+                                openai_messages.push(json!({
+                                    "role": "user",
+                                    "content": content_parts
+                                }));
+                            } else if content_parts.len() == 1 {
+                                // Single text content - use simple format
+                                if let Some(text) = content_parts[0].get("text") {
+                                    openai_messages.push(json!({
+                                        "role": "user",
+                                        "content": text
+                                    }));
+                                }
+                            } else {
+                                // Multiple text parts - use array format
+                                openai_messages.push(json!({
+                                    "role": "user",
+                                    "content": content_parts
+                                }));
                             }
                         }
                     }

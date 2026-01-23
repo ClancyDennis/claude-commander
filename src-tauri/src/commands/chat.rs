@@ -1,17 +1,18 @@
 // Chat/Meta-agent related Tauri commands
 
-use crate::types::{ChatMessage, ChatResponse};
+use crate::types::{ChatMessage, ChatResponse, ImageAttachment};
 use crate::AppState;
 
 #[tauri::command]
 pub async fn send_chat_message(
     message: String,
+    image: Option<ImageAttachment>,
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<ChatResponse, String> {
     let mut meta_agent = state.meta_agent.lock().await;
     meta_agent
-        .process_user_message(message, state.agent_manager.clone(), app_handle)
+        .process_user_message_with_image(message, image, state.agent_manager.clone(), app_handle)
         .await
 }
 

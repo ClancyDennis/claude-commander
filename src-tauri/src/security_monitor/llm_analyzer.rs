@@ -1,11 +1,12 @@
 //! LLM-based semantic analysis for sophisticated threat detection.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
-use crate::ai_client::{AIClient, ContentBlock, Message, Tool};
+use crate::ai_client::{AIClient, Message, Tool};
 
 use super::collector::{SecurityEvent, SecurityEventType};
+use super::expectation_generator::ExpectationGenerator;
+use super::parsing_utils::parse_analysis_response;
 use super::pattern_matcher::{PatternMatch, Severity};
 use super::session_expectations::InitialExpectations;
 
@@ -185,7 +186,7 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
         }];
 
         // Create the analysis tool
-        let analysis_tool = self.create_analysis_tool();
+        let analysis_tool = create_analysis_tool();
 
         // Send to LLM
         let response = self
@@ -195,7 +196,7 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
             .map_err(|e| format!("LLM analysis failed: {}", e))?;
 
         // Parse response
-        let mut result = self.parse_analysis_response(response, batch_id, timestamp)?;
+        let mut result = parse_analysis_response(response, batch_id, timestamp)?;
 
         // Populate missing agent_ids in threats by looking up from events
         let event_agent_map: std::collections::HashMap<&str, &str> = events
@@ -214,340 +215,6 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
         Ok(result)
     }
 
-    /// Create the tool definition for structured analysis output
-    fn create_analysis_tool(&self) -> Tool {
-        Tool {
-            name: "report_threat_analysis".to_string(),
-            description:
-                "Report the results of security threat analysis for a batch of agent events"
-                    .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "required": ["threats_detected", "overall_risk_level", "recommended_actions", "analysis_summary", "confidence"],
-                "properties": {
-                    "threats_detected": {
-                        "type": "array",
-                        "description": "List of detected threats with details",
-                        "items": {
-                            "type": "object",
-                            "required": ["event_id", "threat_type", "severity", "confidence", "explanation"],
-                            "properties": {
-                                "event_id": {
-                                    "type": "string",
-                                    "description": "ID of the event that triggered this threat detection"
-                                },
-                                "threat_type": {
-                                    "type": "string",
-                                    "enum": ["PromptInjection", "JailbreakAttempt", "DataExfiltration",
-                                             "UnauthorizedAccess", "MaliciousCodeExecution",
-                                             "PrivilegeEscalation", "SystemManipulation",
-                                             "SocialEngineering", "ChainedAttack", "Unknown"],
-                                    "description": "Type of threat detected"
-                                },
-                                "severity": {
-                                    "type": "string",
-                                    "enum": ["Info", "Low", "Medium", "High", "Critical"],
-                                    "description": "Severity level of the threat"
-                                },
-                                "confidence": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1,
-                                    "description": "Confidence score (0-1) for this detection"
-                                },
-                                "explanation": {
-                                    "type": "string",
-                                    "description": "Detailed explanation of why this was flagged"
-                                },
-                                "evidence": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "Specific evidence supporting this detection"
-                                },
-                                "mitigations": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "Suggested mitigations or responses"
-                                }
-                            }
-                        }
-                    },
-                    "overall_risk_level": {
-                        "type": "string",
-                        "enum": ["None", "Low", "Medium", "High", "Critical"],
-                        "description": "Overall risk level for this batch of events"
-                    },
-                    "recommended_actions": {
-                        "type": "array",
-                        "description": "List of recommended actions to take",
-                        "items": {
-                            "type": "object",
-                            "required": ["action_type"],
-                            "properties": {
-                                "action_type": {
-                                    "type": "string",
-                                    "enum": ["Continue", "Alert", "SuspendAgent", "TerminateAgent", "BlockOperation", "RequestHumanReview"],
-                                    "description": "Type of action recommended"
-                                },
-                                "message": {
-                                    "type": "string",
-                                    "description": "Alert message (for Alert action)"
-                                },
-                                "agent_id": {
-                                    "type": "string",
-                                    "description": "Agent ID (for SuspendAgent/TerminateAgent actions)"
-                                },
-                                "event_id": {
-                                    "type": "string",
-                                    "description": "Event ID (for BlockOperation action)"
-                                },
-                                "reason": {
-                                    "type": "string",
-                                    "description": "Reason for blocking (for BlockOperation action)"
-                                },
-                                "events": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "Event IDs to review (for RequestHumanReview action)"
-                                }
-                            }
-                        }
-                    },
-                    "analysis_summary": {
-                        "type": "string",
-                        "description": "Human-readable summary of the analysis findings"
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
-                        "description": "Overall confidence in this analysis"
-                    }
-                }
-            }),
-        }
-    }
-
-    /// Parse the LLM response into an AnalysisResult
-    fn parse_analysis_response(
-        &self,
-        response: crate::ai_client::AIResponse,
-        batch_id: String,
-        timestamp: i64,
-    ) -> Result<AnalysisResult, String> {
-        // Look for tool use in response
-        for content in response.content {
-            if let ContentBlock::ToolUse { name, input, .. } = content {
-                if name == "report_threat_analysis" {
-                    return self.parse_tool_input(input, batch_id, timestamp);
-                }
-            }
-        }
-
-        // If no tool use, return a default "no threats" result
-        Ok(AnalysisResult {
-            batch_id,
-            timestamp,
-            threats_detected: vec![],
-            overall_risk_level: RiskLevel::None,
-            recommended_actions: vec![RecommendedAction::Continue],
-            analysis_summary: "No security threats detected in this batch.".to_string(),
-            confidence: 0.5, // Lower confidence when LLM didn't use the tool
-        })
-    }
-
-    /// Parse the tool input into an AnalysisResult
-    fn parse_tool_input(
-        &self,
-        input: serde_json::Value,
-        batch_id: String,
-        timestamp: i64,
-    ) -> Result<AnalysisResult, String> {
-        // Parse threats_detected
-        let threats_detected: Vec<ThreatAssessment> = input
-            .get("threats_detected")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| self.parse_threat_assessment(t))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Parse overall_risk_level
-        let overall_risk_level = input
-            .get("overall_risk_level")
-            .and_then(|v| v.as_str())
-            .map(|s| match s {
-                "Critical" => RiskLevel::Critical,
-                "High" => RiskLevel::High,
-                "Medium" => RiskLevel::Medium,
-                "Low" => RiskLevel::Low,
-                _ => RiskLevel::None,
-            })
-            .unwrap_or(RiskLevel::None);
-
-        // Parse recommended_actions
-        let recommended_actions: Vec<RecommendedAction> = input
-            .get("recommended_actions")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|a| self.parse_recommended_action(a))
-                    .collect()
-            })
-            .unwrap_or_else(|| vec![RecommendedAction::Continue]);
-
-        // Parse analysis_summary
-        let analysis_summary = input
-            .get("analysis_summary")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Analysis complete.")
-            .to_string();
-
-        // Parse confidence
-        let confidence = input
-            .get("confidence")
-            .and_then(|v| v.as_f64())
-            .map(|f| f as f32)
-            .unwrap_or(0.8);
-
-        Ok(AnalysisResult {
-            batch_id,
-            timestamp,
-            threats_detected,
-            overall_risk_level,
-            recommended_actions,
-            analysis_summary,
-            confidence,
-        })
-    }
-
-    /// Parse a single threat assessment from JSON
-    fn parse_threat_assessment(&self, value: &serde_json::Value) -> Option<ThreatAssessment> {
-        let event_id = value.get("event_id")?.as_str()?.to_string();
-
-        let threat_type = value
-            .get("threat_type")
-            .and_then(|v| v.as_str())
-            .map(|s| match s {
-                "PromptInjection" => ThreatType::PromptInjection,
-                "JailbreakAttempt" => ThreatType::JailbreakAttempt,
-                "DataExfiltration" => ThreatType::DataExfiltration,
-                "UnauthorizedAccess" => ThreatType::UnauthorizedAccess,
-                "MaliciousCodeExecution" => ThreatType::MaliciousCodeExecution,
-                "PrivilegeEscalation" => ThreatType::PrivilegeEscalation,
-                "SystemManipulation" => ThreatType::SystemManipulation,
-                "SocialEngineering" => ThreatType::SocialEngineering,
-                "ChainedAttack" => ThreatType::ChainedAttack,
-                _ => ThreatType::Unknown,
-            })?;
-
-        let severity = value
-            .get("severity")
-            .and_then(|v| v.as_str())
-            .map(|s| match s {
-                "Critical" => Severity::Critical,
-                "High" => Severity::High,
-                "Medium" => Severity::Medium,
-                "Low" => Severity::Low,
-                _ => Severity::Info,
-            })?;
-
-        let confidence = value
-            .get("confidence")
-            .and_then(|v| v.as_f64())
-            .map(|f| f as f32)
-            .unwrap_or(0.8);
-
-        let explanation = value
-            .get("explanation")
-            .and_then(|v| v.as_str())
-            .unwrap_or("No explanation provided")
-            .to_string();
-
-        let evidence: Vec<String> = value
-            .get("evidence")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|e| e.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let mitigations: Vec<String> = value
-            .get("mitigations")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| m.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Try to get agent_id from JSON (LLM might provide it), fallback to empty string
-        // The caller should populate this from the events if empty
-        let agent_id = value
-            .get("agent_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        Some(ThreatAssessment {
-            event_id,
-            agent_id,
-            threat_type,
-            severity,
-            confidence,
-            explanation,
-            evidence,
-            mitigations,
-        })
-    }
-
-    /// Parse a recommended action from JSON
-    fn parse_recommended_action(&self, value: &serde_json::Value) -> Option<RecommendedAction> {
-        let action_type = value.get("action_type")?.as_str()?;
-
-        Some(match action_type {
-            "Continue" => RecommendedAction::Continue,
-            "Alert" => RecommendedAction::Alert {
-                message: value
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Security alert")
-                    .to_string(),
-            },
-            "SuspendAgent" => RecommendedAction::SuspendAgent {
-                agent_id: value.get("agent_id")?.as_str()?.to_string(),
-            },
-            "TerminateAgent" => RecommendedAction::TerminateAgent {
-                agent_id: value.get("agent_id")?.as_str()?.to_string(),
-            },
-            "BlockOperation" => RecommendedAction::BlockOperation {
-                event_id: value.get("event_id")?.as_str()?.to_string(),
-                reason: value
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Security concern")
-                    .to_string(),
-            },
-            "RequestHumanReview" => RecommendedAction::RequestHumanReview {
-                events: value
-                    .get("events")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|e| e.as_str().map(|s| s.to_string()))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            },
-            _ => RecommendedAction::Continue,
-        })
-    }
-
     /// Generate initial expectations from a user prompt
     ///
     /// This analyzes the prompt to predict what tools, paths, and behaviors
@@ -557,195 +224,8 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
         prompt: &str,
         working_dir: &str,
     ) -> Result<InitialExpectations, String> {
-        let system_prompt = r#"You are a security analyst predicting AI agent behavior. Given a user's task prompt, predict what tools and resources the agent will likely need.
-
-## Available Tools
-- Read: Read files
-- Write: Create/overwrite files
-- Edit: Modify existing files
-- Bash: Execute shell commands
-- Glob: Find files by pattern
-- Grep: Search file contents
-- WebFetch: Fetch web pages
-- WebSearch: Search the web
-- Task: Spawn sub-agents
-- TodoWrite: Update task list
-
-## Your Task
-Analyze the prompt and predict:
-1. Which tools will be needed
-2. What file paths/patterns will be accessed
-3. Whether network access is likely needed
-4. Whether destructive operations (delete, overwrite) are likely
-5. What bash commands might be run (if any)
-
-Be conservative - only include tools/paths that are clearly needed for the task.
-For file patterns, use glob syntax: "*.md", "src/**/*.rs", etc.
-
-You MUST respond by calling the `generate_expectations` tool."#;
-
-        let user_message = format!(
-            "Working directory: {}\n\nUser prompt:\n{}",
-            working_dir, prompt
-        );
-
-        let messages = vec![Message {
-            role: "user".to_string(),
-            content: format!("{}\n\n{}", system_prompt, user_message),
-        }];
-
-        // Create the expectations tool
-        let expectations_tool = self.create_expectations_tool();
-
-        // Send to LLM
-        let response = self
-            .ai_client
-            .send_message_with_tools(messages, vec![expectations_tool])
-            .await
-            .map_err(|e| format!("LLM expectation generation failed: {}", e))?;
-
-        // Parse response
-        self.parse_expectations_response(response)
-    }
-
-    /// Create the tool definition for structured expectations output
-    fn create_expectations_tool(&self) -> Tool {
-        Tool {
-            name: "generate_expectations".to_string(),
-            description: "Report the expected tools, paths, and behaviors for a user task"
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "required": ["expected_tools", "expected_path_patterns", "network_likely", "destructive_likely", "confidence", "reasoning"],
-                "properties": {
-                    "expected_tools": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "List of tool names the agent will likely use: Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, Task, TodoWrite"
-                    },
-                    "expected_path_patterns": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "File path patterns the agent will likely access. Use glob syntax: 'README.md', '*.rs', 'src/**/*.ts'. Relative to working directory unless absolute."
-                    },
-                    "network_likely": {
-                        "type": "boolean",
-                        "description": "Will the task likely require network access (web fetch, API calls)?"
-                    },
-                    "destructive_likely": {
-                        "type": "boolean",
-                        "description": "Will the task likely involve destructive operations (delete files, overwrite)?"
-                    },
-                    "bash_patterns": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Expected bash command patterns if Bash is needed: 'npm *', 'cargo *', 'git *'"
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
-                        "description": "Confidence in these predictions (0-1)"
-                    },
-                    "reasoning": {
-                        "type": "string",
-                        "description": "Brief explanation of why these tools/paths are expected"
-                    }
-                }
-            }),
-        }
-    }
-
-    /// Parse the LLM response into InitialExpectations
-    fn parse_expectations_response(
-        &self,
-        response: crate::ai_client::AIResponse,
-    ) -> Result<InitialExpectations, String> {
-        // Look for tool use in response
-        for content in response.content {
-            if let ContentBlock::ToolUse { name, input, .. } = content {
-                if name == "generate_expectations" {
-                    return self.parse_expectations_input(input);
-                }
-            }
-        }
-
-        // If no tool use, return defaults
-        Ok(InitialExpectations::default())
-    }
-
-    /// Parse the tool input into InitialExpectations
-    fn parse_expectations_input(
-        &self,
-        input: serde_json::Value,
-    ) -> Result<InitialExpectations, String> {
-        let expected_tools: HashSet<String> = input
-            .get("expected_tools")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_else(|| {
-                // Default safe tools
-                ["Read", "Glob", "Grep", "Edit", "TodoWrite"]
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            });
-
-        let expected_path_patterns: Vec<String> = input
-            .get("expected_path_patterns")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_else(|| vec!["**/*".to_string()]);
-
-        let network_likely = input
-            .get("network_likely")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let destructive_likely = input
-            .get("destructive_likely")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let bash_patterns: Vec<String> = input
-            .get("bash_patterns")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let confidence = input
-            .get("confidence")
-            .and_then(|v| v.as_f64())
-            .map(|f| f as f32)
-            .unwrap_or(0.7);
-
-        let reasoning = input
-            .get("reasoning")
-            .and_then(|v| v.as_str())
-            .unwrap_or("LLM-generated expectations")
-            .to_string();
-
-        Ok(InitialExpectations {
-            expected_tools,
-            expected_path_patterns,
-            network_likely,
-            destructive_likely,
-            bash_patterns,
-            confidence,
-            reasoning,
-        })
+        let generator = ExpectationGenerator::new(&self.ai_client);
+        generator.generate(prompt, working_dir).await
     }
 
     /// Format anomaly information from events into a section for the LLM prompt
@@ -772,7 +252,7 @@ You MUST respond by calling the `generate_expectations` tool."#;
                     tool_name,
                     tool_input,
                 } => {
-                    let input_preview = serde_json::to_string(tool_input)
+                    let input_preview = serde_json::to_string(&tool_input)
                         .unwrap_or_default()
                         .chars()
                         .take(100)
@@ -791,7 +271,7 @@ You MUST respond by calling the `generate_expectations` tool."#;
             let severity = format!("{:?}", anomaly.severity);
 
             section.push_str(&format!(
-                "⚠️ **{} ({} severity)**\n",
+                "Warning: **{} ({} severity)**\n",
                 anomaly_type, severity
             ));
             section.push_str(&format!("   Event: {}\n", event_summary));
@@ -805,5 +285,119 @@ You MUST respond by calling the `generate_expectations` tool."#;
         section.push_str("Consider these anomalies in your analysis - they may indicate the agent is deviating from the intended task.\n\n");
 
         section
+    }
+}
+
+/// Create the tool definition for structured analysis output
+fn create_analysis_tool() -> Tool {
+    Tool {
+        name: "report_threat_analysis".to_string(),
+        description:
+            "Report the results of security threat analysis for a batch of agent events"
+                .to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "required": ["threats_detected", "overall_risk_level", "recommended_actions", "analysis_summary", "confidence"],
+            "properties": {
+                "threats_detected": {
+                    "type": "array",
+                    "description": "List of detected threats with details",
+                    "items": {
+                        "type": "object",
+                        "required": ["event_id", "threat_type", "severity", "confidence", "explanation"],
+                        "properties": {
+                            "event_id": {
+                                "type": "string",
+                                "description": "ID of the event that triggered this threat detection"
+                            },
+                            "threat_type": {
+                                "type": "string",
+                                "enum": ["PromptInjection", "JailbreakAttempt", "DataExfiltration",
+                                         "UnauthorizedAccess", "MaliciousCodeExecution",
+                                         "PrivilegeEscalation", "SystemManipulation",
+                                         "SocialEngineering", "ChainedAttack", "Unknown"],
+                                "description": "Type of threat detected"
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": ["Info", "Low", "Medium", "High", "Critical"],
+                                "description": "Severity level of the threat"
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "description": "Confidence score (0-1) for this detection"
+                            },
+                            "explanation": {
+                                "type": "string",
+                                "description": "Detailed explanation of why this was flagged"
+                            },
+                            "evidence": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Specific evidence supporting this detection"
+                            },
+                            "mitigations": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Suggested mitigations or responses"
+                            }
+                        }
+                    }
+                },
+                "overall_risk_level": {
+                    "type": "string",
+                    "enum": ["None", "Low", "Medium", "High", "Critical"],
+                    "description": "Overall risk level for this batch of events"
+                },
+                "recommended_actions": {
+                    "type": "array",
+                    "description": "List of recommended actions to take",
+                    "items": {
+                        "type": "object",
+                        "required": ["action_type"],
+                        "properties": {
+                            "action_type": {
+                                "type": "string",
+                                "enum": ["Continue", "Alert", "SuspendAgent", "TerminateAgent", "BlockOperation", "RequestHumanReview"],
+                                "description": "Type of action recommended"
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Alert message (for Alert action)"
+                            },
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Agent ID (for SuspendAgent/TerminateAgent actions)"
+                            },
+                            "event_id": {
+                                "type": "string",
+                                "description": "Event ID (for BlockOperation action)"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for blocking (for BlockOperation action)"
+                            },
+                            "events": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Event IDs to review (for RequestHumanReview action)"
+                            }
+                        }
+                    }
+                },
+                "analysis_summary": {
+                    "type": "string",
+                    "description": "Human-readable summary of the analysis findings"
+                },
+                "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Overall confidence in this analysis"
+                }
+            }
+        }),
     }
 }

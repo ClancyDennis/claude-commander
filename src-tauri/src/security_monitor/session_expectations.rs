@@ -1,14 +1,19 @@
-// Session-based expectation tracking for security monitoring
-//
-// When a user sends a prompt, we use LLM to generate initial expectations
-// (expected tools, paths, commands), then check every tool call against
-// those expectations and refine them as the session progresses.
+//! Session-based expectation tracking for security monitoring.
+//!
+//! When a user sends a prompt, we use LLM to generate initial expectations
+//! (expected tools, paths, commands), then check every tool call against
+//! those expectations and refine them as the session progresses.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+use super::anomaly_detection::{
+    categorize_tool_risk_default, is_destructive_tool, is_network_tool, AnomalySeverity,
+    AnomalyType, ExpectationCheckResult,
+};
 use super::collector::{SecurityEvent, SecurityEventType};
 use super::llm_analyzer::LLMAnalyzer;
+use super::path_matching::{extract_path_from_input, truncate_string, ForbiddenPathConfig, PathScope};
 
 /// Tracks expected behavior patterns for each agent session
 pub struct SessionExpectations {
@@ -23,8 +28,8 @@ pub struct SessionExpectations {
 pub struct ExpectationConfig {
     /// Enable prompt-seeded expectations
     pub enabled: bool,
-    /// Paths that are ALWAYS forbidden regardless of expectations
-    pub always_forbidden_paths: Vec<String>,
+    /// Configuration for forbidden paths
+    pub forbidden_paths: ForbiddenPathConfig,
     /// Tools that require explicit expectation (high risk)
     pub high_risk_tools: Vec<String>,
     /// Whether to expand expectations based on observed behavior
@@ -35,14 +40,7 @@ impl Default for ExpectationConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            always_forbidden_paths: vec![
-                "/etc/shadow".to_string(),
-                "/etc/passwd".to_string(),
-                "~/.ssh/id_rsa".to_string(),
-                "~/.ssh/id_ed25519".to_string(),
-                "~/.aws/credentials".to_string(),
-                "~/.gnupg/".to_string(),
-            ],
+            forbidden_paths: ForbiddenPathConfig::default(),
             high_risk_tools: vec![
                 "Bash".to_string(),
                 "WebFetch".to_string(),
@@ -50,6 +48,13 @@ impl Default for ExpectationConfig {
             ],
             adaptive_expansion: true,
         }
+    }
+}
+
+impl ExpectationConfig {
+    /// Get the list of always-forbidden paths (for backward compatibility)
+    pub fn always_forbidden_paths(&self) -> &[String] {
+        &self.forbidden_paths.paths
     }
 }
 
@@ -75,6 +80,13 @@ pub struct AgentSessionState {
     pub allowed_path_scope: PathScope,
     pub network_allowed: bool,
     pub destructive_allowed: bool,
+}
+
+impl AgentSessionState {
+    /// Check if a path is within the allowed scope
+    pub fn is_path_in_scope(&self, path: &str) -> bool {
+        self.allowed_path_scope.contains(path, &self.working_dir)
+    }
 }
 
 /// LLM-generated expectations from analyzing the user prompt
@@ -107,86 +119,6 @@ impl Default for InitialExpectations {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum PathScope {
-    /// Only working directory (strict)
-    WorkingDirOnly(String),
-    /// Working dir + subdirs
-    WorkingDirAndChildren(String),
-    /// Glob patterns from expectations
-    SpecificPatterns(Vec<String>),
-    /// Broad task with system access
-    Unrestricted,
-}
-
-/// Result of checking an event against expectations
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExpectationCheckResult {
-    pub is_anomaly: bool,
-    pub anomaly_type: Option<AnomalyType>,
-    pub severity: AnomalySeverity,
-    pub explanation: String,
-    pub expected_context: Option<String>,
-}
-
-impl ExpectationCheckResult {
-    pub fn ok() -> Self {
-        Self {
-            is_anomaly: false,
-            anomaly_type: None,
-            severity: AnomalySeverity::Info,
-            explanation: String::new(),
-            expected_context: None,
-        }
-    }
-
-    pub fn anomaly(
-        anomaly_type: AnomalyType,
-        severity: AnomalySeverity,
-        explanation: String,
-        expected_context: Option<String>,
-    ) -> Self {
-        Self {
-            is_anomaly: true,
-            anomaly_type: Some(anomaly_type),
-            severity,
-            explanation,
-            expected_context,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum AnomalyType {
-    UnexpectedTool,
-    PathOutOfScope,
-    UnexpectedNetwork,
-    UnexpectedDestructive,
-    SuspiciousBashCommand,
-    ForbiddenPath,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
-pub enum AnomalySeverity {
-    Info,
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-impl AnomalySeverity {
-    pub fn to_score(&self) -> f32 {
-        match self {
-            AnomalySeverity::Info => 0.1,
-            AnomalySeverity::Low => 0.3,
-            AnomalySeverity::Medium => 0.5,
-            AnomalySeverity::High => 0.7,
-            AnomalySeverity::Critical => 0.9,
-        }
-    }
-}
-
 impl SessionExpectations {
     pub fn new() -> Self {
         Self {
@@ -200,6 +132,11 @@ impl SessionExpectations {
             sessions: HashMap::new(),
             config,
         }
+    }
+
+    /// Check if a path is in the always-forbidden list
+    pub fn is_forbidden_path(&self, path: &str) -> bool {
+        self.config.forbidden_paths.is_forbidden(path)
     }
 
     /// Initialize session with LLM-generated expectations from prompt
@@ -278,8 +215,8 @@ impl SessionExpectations {
             return ExpectationCheckResult::ok();
         }
 
-        // Extract forbidden paths from config before borrowing sessions
-        let forbidden_paths = self.config.always_forbidden_paths.clone();
+        // Extract forbidden paths config before borrowing sessions
+        let forbidden_config = self.config.forbidden_paths.clone();
 
         let Some(state) = self.sessions.get(agent_id) else {
             // No expectations seeded - can't check
@@ -290,7 +227,7 @@ impl SessionExpectations {
             SecurityEventType::ToolUseRequest {
                 tool_name,
                 tool_input,
-            } => Self::check_tool_use_static(&forbidden_paths, state, tool_name, tool_input),
+            } => Self::check_tool_use_static(&forbidden_config, state, tool_name, tool_input),
             _ => ExpectationCheckResult::ok(),
         };
 
@@ -304,14 +241,14 @@ impl SessionExpectations {
 
     /// Check a tool use event against expectations (static version to avoid borrow issues)
     fn check_tool_use_static(
-        forbidden_paths: &[String],
+        forbidden_config: &ForbiddenPathConfig,
         state: &AgentSessionState,
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) -> ExpectationCheckResult {
         // Check 1: Always-forbidden paths (highest priority)
         if let Some(path) = extract_path_from_input(tool_input) {
-            if Self::is_forbidden_path_static(forbidden_paths, &path) {
+            if forbidden_config.is_forbidden(&path) {
                 return ExpectationCheckResult::anomaly(
                     AnomalyType::ForbiddenPath,
                     AnomalySeverity::Critical,
@@ -340,7 +277,7 @@ impl SessionExpectations {
 
         // Build result based on checks
         if !tool_ok {
-            let severity = categorize_tool_risk_static(tool_name);
+            let severity = categorize_tool_risk_default(tool_name);
             ExpectationCheckResult::anomaly(
                 AnomalyType::UnexpectedTool,
                 severity,
@@ -383,18 +320,6 @@ impl SessionExpectations {
         } else {
             ExpectationCheckResult::ok()
         }
-    }
-
-    /// Check if a path is in the always-forbidden list (static version)
-    fn is_forbidden_path_static(forbidden_paths: &[String], path: &str) -> bool {
-        let normalized = normalize_path(path);
-        for forbidden in forbidden_paths {
-            let forbidden_normalized = normalize_path(forbidden);
-            if normalized.starts_with(&forbidden_normalized) || normalized == forbidden_normalized {
-                return true;
-            }
-        }
-        false
     }
 
     /// Update observed behavior and potentially expand allowed scope
@@ -442,161 +367,13 @@ impl SessionExpectations {
     }
 }
 
-impl AgentSessionState {
-    /// Check if a path is within the allowed scope
-    pub fn is_path_in_scope(&self, path: &str) -> bool {
-        let normalized = normalize_path(path);
-
-        match &self.allowed_path_scope {
-            PathScope::WorkingDirOnly(wd) => {
-                let wd_normalized = normalize_path(wd);
-                normalized == wd_normalized
-            }
-            PathScope::WorkingDirAndChildren(wd) => {
-                let wd_normalized = normalize_path(wd);
-                normalized.starts_with(&wd_normalized)
-            }
-            PathScope::SpecificPatterns(patterns) => {
-                // Check if path matches any of the glob patterns
-                for pattern in patterns {
-                    if matches_glob_pattern(&normalized, pattern, &self.working_dir) {
-                        return true;
-                    }
-                }
-                // Also allow paths within working directory
-                let wd_normalized = normalize_path(&self.working_dir);
-                normalized.starts_with(&wd_normalized)
-            }
-            PathScope::Unrestricted => true,
-        }
-    }
-}
-
-// Helper functions
-
-fn extract_path_from_input(tool_input: &serde_json::Value) -> Option<String> {
-    // Try common path fields
-    tool_input
-        .get("file_path")
-        .or_else(|| tool_input.get("path"))
-        .or_else(|| tool_input.get("directory"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
-fn is_network_tool(tool_name: &str) -> bool {
-    matches!(tool_name, "WebFetch" | "WebSearch")
-}
-
-fn is_destructive_tool(tool_name: &str, tool_input: &serde_json::Value) -> bool {
-    match tool_name {
-        "Write" => true, // Creating/overwriting files
-        "Edit" => false, // Edit is generally safe (modifies existing)
-        "Bash" => {
-            // Check for destructive bash commands
-            if let Some(cmd) = tool_input.get("command").and_then(|v| v.as_str()) {
-                let cmd_lower = cmd.to_lowercase();
-                cmd_lower.contains("rm ")
-                    || cmd_lower.contains("rm\t")
-                    || cmd_lower.contains("rmdir")
-                    || cmd_lower.contains("mv ")
-                    || cmd_lower.contains("dd ")
-                    || cmd_lower.contains("> /")
-                    || cmd_lower.contains("truncate")
-            } else {
-                false
-            }
-        }
-        _ => false,
-    }
-}
-
-fn categorize_tool_risk(tool_name: &str, config: &ExpectationConfig) -> AnomalySeverity {
-    if config.high_risk_tools.contains(&tool_name.to_string()) {
-        AnomalySeverity::High
-    } else {
-        categorize_tool_risk_static(tool_name)
-    }
-}
-
-/// Categorize tool risk without config (uses default high-risk list)
-fn categorize_tool_risk_static(tool_name: &str) -> AnomalySeverity {
-    match tool_name {
-        "Bash" => AnomalySeverity::High,
-        "WebFetch" | "WebSearch" => AnomalySeverity::Medium,
-        "Write" => AnomalySeverity::Medium,
-        _ => AnomalySeverity::Low,
-    }
-}
-
-fn normalize_path(path: &str) -> String {
-    // Expand ~ to home directory pattern
-    let expanded = if path.starts_with("~/") {
-        // Keep as pattern for matching
-        path.to_string()
-    } else {
-        path.to_string()
-    };
-
-    // Remove trailing slashes for consistency
-    expanded.trim_end_matches('/').to_string()
-}
-
-fn matches_glob_pattern(path: &str, pattern: &str, working_dir: &str) -> bool {
-    // Simple glob matching
-    // For production, consider using the `glob` or `globset` crate
-
-    let pattern_normalized = if pattern.starts_with('/') || pattern.starts_with("~/") {
-        pattern.to_string()
-    } else {
-        // Relative pattern - prepend working directory
-        format!("{}/{}", working_dir.trim_end_matches('/'), pattern)
-    };
-
-    // Handle ** (recursive)
-    if pattern_normalized.contains("**") {
-        let parts: Vec<&str> = pattern_normalized.split("**").collect();
-        if parts.len() == 2 {
-            let prefix = parts[0].trim_end_matches('/');
-            let suffix = parts[1].trim_start_matches('/');
-
-            let path_starts_ok = prefix.is_empty() || path.starts_with(prefix);
-            let path_ends_ok = suffix.is_empty() || path.ends_with(suffix);
-
-            return path_starts_ok && path_ends_ok;
-        }
-    }
-
-    // Handle * (single level)
-    if pattern_normalized.contains('*') {
-        let parts: Vec<&str> = pattern_normalized.split('*').collect();
-        if parts.len() == 2 {
-            let prefix = parts[0];
-            let suffix = parts[1];
-
-            return path.starts_with(prefix) && path.ends_with(suffix);
-        }
-    }
-
-    // Exact match
-    path == pattern_normalized
-}
-
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_path_scope_working_dir_only() {
-        let state = AgentSessionState {
+    fn create_test_state(path_scope: PathScope) -> AgentSessionState {
+        AgentSessionState {
             agent_id: "test".to_string(),
             working_dir: "/home/user/project".to_string(),
             started_at: 0,
@@ -608,10 +385,15 @@ mod tests {
             network_activity_seen: false,
             destructive_ops_seen: false,
             allowed_tools: HashSet::new(),
-            allowed_path_scope: PathScope::WorkingDirOnly("/home/user/project".to_string()),
+            allowed_path_scope: path_scope,
             network_allowed: false,
             destructive_allowed: false,
-        };
+        }
+    }
+
+    #[test]
+    fn test_path_scope_working_dir_only() {
+        let state = create_test_state(PathScope::WorkingDirOnly("/home/user/project".to_string()));
 
         assert!(state.is_path_in_scope("/home/user/project"));
         assert!(!state.is_path_in_scope("/home/user/project/subdir"));
@@ -620,22 +402,9 @@ mod tests {
 
     #[test]
     fn test_path_scope_with_children() {
-        let state = AgentSessionState {
-            agent_id: "test".to_string(),
-            working_dir: "/home/user/project".to_string(),
-            started_at: 0,
-            original_prompt: "test".to_string(),
-            initial_expectations: InitialExpectations::default(),
-            observed_tools: HashSet::new(),
-            observed_paths: HashSet::new(),
-            observed_bash_commands: Vec::new(),
-            network_activity_seen: false,
-            destructive_ops_seen: false,
-            allowed_tools: HashSet::new(),
-            allowed_path_scope: PathScope::WorkingDirAndChildren("/home/user/project".to_string()),
-            network_allowed: false,
-            destructive_allowed: false,
-        };
+        let state = create_test_state(PathScope::WorkingDirAndChildren(
+            "/home/user/project".to_string(),
+        ));
 
         assert!(state.is_path_in_scope("/home/user/project"));
         assert!(state.is_path_in_scope("/home/user/project/subdir"));
@@ -645,45 +414,11 @@ mod tests {
     }
 
     #[test]
-    fn test_glob_pattern_matching() {
-        assert!(matches_glob_pattern(
-            "/home/user/project/README.md",
-            "*.md",
-            "/home/user/project"
-        ));
-        assert!(matches_glob_pattern(
-            "/home/user/project/src/main.rs",
-            "src/**/*.rs",
-            "/home/user/project"
-        ));
-        assert!(!matches_glob_pattern(
-            "/etc/passwd",
-            "*.md",
-            "/home/user/project"
-        ));
-    }
-
-    #[test]
     fn test_forbidden_paths() {
         let expectations = SessionExpectations::new();
         assert!(expectations.is_forbidden_path("/etc/shadow"));
         assert!(expectations.is_forbidden_path("/etc/passwd"));
         assert!(expectations.is_forbidden_path("~/.ssh/id_rsa"));
         assert!(!expectations.is_forbidden_path("/home/user/project/file.txt"));
-    }
-
-    #[test]
-    fn test_is_destructive_tool() {
-        let rm_input = serde_json::json!({"command": "rm -rf /tmp/test"});
-        assert!(is_destructive_tool("Bash", &rm_input));
-
-        let ls_input = serde_json::json!({"command": "ls -la"});
-        assert!(!is_destructive_tool("Bash", &ls_input));
-
-        let write_input = serde_json::json!({"file_path": "/tmp/test.txt"});
-        assert!(is_destructive_tool("Write", &write_input));
-
-        let edit_input = serde_json::json!({"file_path": "/tmp/test.txt"});
-        assert!(!is_destructive_tool("Edit", &edit_input));
     }
 }

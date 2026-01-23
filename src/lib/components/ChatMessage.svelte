@@ -21,6 +21,16 @@
       <span class="timestamp">{formatTimeOfDay(message.timestamp)}</span>
     </div>
 
+    {#if message.image}
+      <div class="message-image-container">
+        <img
+          src={message.image.previewUrl || `data:${message.image.mimeType};base64,${message.image.base64Data}`}
+          alt={message.image.filename}
+          class="message-image"
+        />
+      </div>
+    {/if}
+
     <div class="message-content">
       <MarkdownRenderer content={message.content} />
     </div>
@@ -102,6 +112,27 @@
   .timestamp {
     font-size: 11px;
     opacity: 0.7;
+  }
+
+  .message-image-container {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .message-image {
+    max-width: 100%;
+    max-height: 300px;
+    width: auto;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+
+  .message-image:hover {
+    transform: scale(1.02);
   }
 
   .message-content {

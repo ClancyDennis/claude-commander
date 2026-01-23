@@ -5,6 +5,8 @@
 
 mod cost;
 mod models;
+mod orchestrator_events;
+mod schema;
 
 use rusqlite::{params, Connection, Result as SqliteResult};
 use std::fs;
@@ -34,6 +36,7 @@ pub use models::{
 };
 
 use cost::CostOperations;
+use orchestrator_events::OrchestratorEventOps;
 
 pub struct AgentRunsDB {
     db: Arc<Mutex<Connection>>,
@@ -44,183 +47,8 @@ impl AgentRunsDB {
     pub fn new(db_path: PathBuf) -> SqliteResult<Self> {
         let conn = Connection::open(&db_path)?;
 
-        // Create agent_runs table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS agent_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_id TEXT NOT NULL UNIQUE,
-                session_id TEXT,
-                working_dir TEXT NOT NULL,
-                github_url TEXT,
-                github_context TEXT,
-                source TEXT NOT NULL,
-                status TEXT NOT NULL,
-                started_at INTEGER NOT NULL,
-                ended_at INTEGER,
-                last_activity INTEGER NOT NULL,
-                initial_prompt TEXT,
-                error_message TEXT,
-                total_prompts INTEGER DEFAULT 0,
-                total_tool_calls INTEGER DEFAULT 0,
-                total_output_bytes INTEGER DEFAULT 0,
-                total_tokens_used INTEGER,
-                total_cost_usd REAL,
-                model_usage TEXT,
-                can_resume INTEGER DEFAULT 0,
-                resume_data TEXT
-            )",
-            [],
-        )?;
-
-        // Create indexes for common queries
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON agent_runs(agent_id)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_runs_status ON agent_runs(status)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_runs_started_at ON agent_runs(started_at DESC)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_runs_working_dir ON agent_runs(working_dir)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_runs_source ON agent_runs(source)",
-            [],
-        )?;
-
-        // Create prompts table for tracking conversation history
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS agent_prompts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_id TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                prompt TEXT NOT NULL,
-                response_summary TEXT,
-                FOREIGN KEY (agent_id) REFERENCES agent_runs(agent_id)
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_prompts_agent ON agent_prompts(agent_id, timestamp)",
-            [],
-        )?;
-
-        // Migration: Add model_usage column if it doesn't exist
-        let columns: Vec<String> = conn
-            .prepare("PRAGMA table_info(agent_runs)")?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if !columns.contains(&"model_usage".to_string()) {
-            conn.execute("ALTER TABLE agent_runs ADD COLUMN model_usage TEXT", [])?;
-        }
-
-        // Migration: Add pipeline_id column for linking runs to orchestrator events
-        if !columns.contains(&"pipeline_id".to_string()) {
-            conn.execute("ALTER TABLE agent_runs ADD COLUMN pipeline_id TEXT", [])?;
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_runs_pipeline_id ON agent_runs(pipeline_id)",
-                [],
-            )?;
-        }
-
-        // ====================================================================
-        // Orchestrator event tables (for hybrid persistence)
-        // ====================================================================
-
-        // Create orchestrator_tool_calls table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS orchestrator_tool_calls (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pipeline_id TEXT NOT NULL,
-                agent_id TEXT,
-                tool_name TEXT NOT NULL,
-                tool_input TEXT,
-                is_error INTEGER DEFAULT 0,
-                summary TEXT,
-                current_state TEXT NOT NULL,
-                iteration INTEGER NOT NULL,
-                step_number INTEGER,
-                timestamp INTEGER NOT NULL
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tool_calls_pipeline ON orchestrator_tool_calls(pipeline_id, timestamp DESC)",
-            [],
-        )?;
-
-        // Create orchestrator_state_changes table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS orchestrator_state_changes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pipeline_id TEXT NOT NULL,
-                old_state TEXT NOT NULL,
-                new_state TEXT NOT NULL,
-                iteration INTEGER NOT NULL,
-                generated_skills INTEGER DEFAULT 0,
-                generated_subagents INTEGER DEFAULT 0,
-                claudemd_generated INTEGER DEFAULT 0,
-                timestamp INTEGER NOT NULL
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_state_changes_pipeline ON orchestrator_state_changes(pipeline_id, timestamp DESC)",
-            [],
-        )?;
-
-        // Create orchestrator_decisions table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS orchestrator_decisions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pipeline_id TEXT NOT NULL,
-                decision TEXT NOT NULL,
-                reasoning TEXT,
-                issues TEXT,
-                suggestions TEXT,
-                timestamp INTEGER NOT NULL
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decisions_pipeline ON orchestrator_decisions(pipeline_id, timestamp DESC)",
-            [],
-        )?;
-
-        // Create agent_outputs table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS agent_outputs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_id TEXT NOT NULL,
-                pipeline_id TEXT,
-                output_type TEXT NOT NULL,
-                content TEXT NOT NULL,
-                metadata TEXT,
-                timestamp INTEGER NOT NULL
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_outputs_agent ON agent_outputs(agent_id, timestamp DESC)",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_outputs_pipeline ON agent_outputs(pipeline_id, timestamp DESC)",
-            [],
-        )?;
+        // Initialize all database tables and run migrations
+        schema::initialize_schema(&conn)?;
 
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -547,7 +375,9 @@ impl AgentRunsDB {
         })
     }
 
+    // ========================================================================
     // Cost operations - delegated to CostOperations
+    // ========================================================================
 
     /// Get cost summary aggregated by working directory
     pub async fn get_cost_by_working_dir(&self) -> SqliteResult<Vec<(String, f64)>> {
@@ -593,33 +423,14 @@ impl AgentRunsDB {
     }
 
     // ========================================================================
-    // Orchestrator Event Persistence Methods
+    // Orchestrator Event Persistence - delegated to OrchestratorEventOps
     // ========================================================================
 
     /// Insert a single orchestrator tool call record
     pub async fn insert_tool_call(&self, record: &OrchestratorToolCallRecord) -> SqliteResult<i64> {
-        let db = self.db.lock().await;
-
-        db.execute(
-            "INSERT INTO orchestrator_tool_calls
-             (pipeline_id, agent_id, tool_name, tool_input, is_error, summary,
-              current_state, iteration, step_number, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                record.pipeline_id,
-                record.agent_id,
-                record.tool_name,
-                record.tool_input,
-                if record.is_error { 1 } else { 0 },
-                record.summary,
-                record.current_state,
-                record.iteration,
-                record.step_number,
-                record.timestamp
-            ],
-        )?;
-
-        Ok(db.last_insert_rowid())
+        OrchestratorEventOps::new(&self.db)
+            .insert_tool_call(record)
+            .await
     }
 
     /// Insert a single orchestrator state change record
@@ -627,139 +438,33 @@ impl AgentRunsDB {
         &self,
         record: &OrchestratorStateChangeRecord,
     ) -> SqliteResult<i64> {
-        let db = self.db.lock().await;
-
-        db.execute(
-            "INSERT INTO orchestrator_state_changes
-             (pipeline_id, old_state, new_state, iteration, generated_skills,
-              generated_subagents, claudemd_generated, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                record.pipeline_id,
-                record.old_state,
-                record.new_state,
-                record.iteration,
-                record.generated_skills,
-                record.generated_subagents,
-                if record.claudemd_generated { 1 } else { 0 },
-                record.timestamp
-            ],
-        )?;
-
-        Ok(db.last_insert_rowid())
+        OrchestratorEventOps::new(&self.db)
+            .insert_state_change(record)
+            .await
     }
 
     /// Insert a single orchestrator decision record
     pub async fn insert_decision(&self, record: &OrchestratorDecisionRecord) -> SqliteResult<i64> {
-        let db = self.db.lock().await;
-
-        let issues_json =
-            serde_json::to_string(&record.issues).unwrap_or_else(|_| "[]".to_string());
-        let suggestions_json =
-            serde_json::to_string(&record.suggestions).unwrap_or_else(|_| "[]".to_string());
-
-        db.execute(
-            "INSERT INTO orchestrator_decisions
-             (pipeline_id, decision, reasoning, issues, suggestions, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                record.pipeline_id,
-                record.decision,
-                record.reasoning,
-                issues_json,
-                suggestions_json,
-                record.timestamp
-            ],
-        )?;
-
-        Ok(db.last_insert_rowid())
+        OrchestratorEventOps::new(&self.db)
+            .insert_decision(record)
+            .await
     }
 
     /// Insert a single agent output record
     pub async fn insert_agent_output(&self, record: &AgentOutputRecord) -> SqliteResult<i64> {
-        let db = self.db.lock().await;
-
-        db.execute(
-            "INSERT INTO agent_outputs
-             (agent_id, pipeline_id, output_type, content, metadata, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                record.agent_id,
-                record.pipeline_id,
-                record.output_type,
-                record.content,
-                record.metadata,
-                record.timestamp
-            ],
-        )?;
-
-        Ok(db.last_insert_rowid())
+        OrchestratorEventOps::new(&self.db)
+            .insert_agent_output(record)
+            .await
     }
-
-    // ========================================================================
-    // Orchestrator Event Query Methods
-    // ========================================================================
 
     /// Query orchestrator tool calls with filters
     pub async fn query_tool_calls(
         &self,
         filters: EventQueryFilters,
     ) -> SqliteResult<Vec<OrchestratorToolCallRecord>> {
-        let db = self.db.lock().await;
-
-        let mut query = "SELECT id, pipeline_id, agent_id, tool_name, tool_input, is_error,
-                                summary, current_state, iteration, step_number, timestamp
-                         FROM orchestrator_tool_calls WHERE 1=1"
-            .to_string();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        if let Some(ref pipeline_id) = filters.pipeline_id {
-            query.push_str(" AND pipeline_id = ?");
-            params.push(Box::new(pipeline_id.clone()));
-        }
-        if let Some(ref agent_id) = filters.agent_id {
-            query.push_str(" AND agent_id = ?");
-            params.push(Box::new(agent_id.clone()));
-        }
-        if let Some(since) = filters.since_timestamp {
-            query.push_str(" AND timestamp >= ?");
-            params.push(Box::new(since));
-        }
-        if let Some(until) = filters.until_timestamp {
-            query.push_str(" AND timestamp <= ?");
-            params.push(Box::new(until));
-        }
-
-        query.push_str(" ORDER BY timestamp DESC");
-
-        if let Some(limit) = filters.limit {
-            query.push_str(&format!(" LIMIT {}", limit));
-        }
-        if let Some(offset) = filters.offset {
-            query.push_str(&format!(" OFFSET {}", offset));
-        }
-
-        let mut stmt = db.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            let is_error_int: i32 = row.get(5)?;
-            Ok(OrchestratorToolCallRecord {
-                id: Some(row.get(0)?),
-                pipeline_id: row.get(1)?,
-                agent_id: row.get(2)?,
-                tool_name: row.get(3)?,
-                tool_input: row.get(4)?,
-                is_error: is_error_int != 0,
-                summary: row.get(6)?,
-                current_state: row.get(7)?,
-                iteration: row.get(8)?,
-                step_number: row.get(9)?,
-                timestamp: row.get(10)?,
-            })
-        })?;
-
-        rows.collect()
+        OrchestratorEventOps::new(&self.db)
+            .query_tool_calls(filters)
+            .await
     }
 
     /// Query orchestrator state changes with filters
@@ -767,55 +472,9 @@ impl AgentRunsDB {
         &self,
         filters: EventQueryFilters,
     ) -> SqliteResult<Vec<OrchestratorStateChangeRecord>> {
-        let db = self.db.lock().await;
-
-        let mut query = "SELECT id, pipeline_id, old_state, new_state, iteration,
-                                generated_skills, generated_subagents, claudemd_generated, timestamp
-                         FROM orchestrator_state_changes WHERE 1=1"
-            .to_string();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        if let Some(ref pipeline_id) = filters.pipeline_id {
-            query.push_str(" AND pipeline_id = ?");
-            params.push(Box::new(pipeline_id.clone()));
-        }
-        if let Some(since) = filters.since_timestamp {
-            query.push_str(" AND timestamp >= ?");
-            params.push(Box::new(since));
-        }
-        if let Some(until) = filters.until_timestamp {
-            query.push_str(" AND timestamp <= ?");
-            params.push(Box::new(until));
-        }
-
-        query.push_str(" ORDER BY timestamp DESC");
-
-        if let Some(limit) = filters.limit {
-            query.push_str(&format!(" LIMIT {}", limit));
-        }
-        if let Some(offset) = filters.offset {
-            query.push_str(&format!(" OFFSET {}", offset));
-        }
-
-        let mut stmt = db.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            let claudemd_int: i32 = row.get(7)?;
-            Ok(OrchestratorStateChangeRecord {
-                id: Some(row.get(0)?),
-                pipeline_id: row.get(1)?,
-                old_state: row.get(2)?,
-                new_state: row.get(3)?,
-                iteration: row.get(4)?,
-                generated_skills: row.get(5)?,
-                generated_subagents: row.get(6)?,
-                claudemd_generated: claudemd_int != 0,
-                timestamp: row.get(8)?,
-            })
-        })?;
-
-        rows.collect()
+        OrchestratorEventOps::new(&self.db)
+            .query_state_changes(filters)
+            .await
     }
 
     /// Query orchestrator decisions with filters
@@ -823,58 +482,9 @@ impl AgentRunsDB {
         &self,
         filters: EventQueryFilters,
     ) -> SqliteResult<Vec<OrchestratorDecisionRecord>> {
-        let db = self.db.lock().await;
-
-        let mut query =
-            "SELECT id, pipeline_id, decision, reasoning, issues, suggestions, timestamp
-                         FROM orchestrator_decisions WHERE 1=1"
-                .to_string();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        if let Some(ref pipeline_id) = filters.pipeline_id {
-            query.push_str(" AND pipeline_id = ?");
-            params.push(Box::new(pipeline_id.clone()));
-        }
-        if let Some(since) = filters.since_timestamp {
-            query.push_str(" AND timestamp >= ?");
-            params.push(Box::new(since));
-        }
-        if let Some(until) = filters.until_timestamp {
-            query.push_str(" AND timestamp <= ?");
-            params.push(Box::new(until));
-        }
-
-        query.push_str(" ORDER BY timestamp DESC");
-
-        if let Some(limit) = filters.limit {
-            query.push_str(&format!(" LIMIT {}", limit));
-        }
-        if let Some(offset) = filters.offset {
-            query.push_str(&format!(" OFFSET {}", offset));
-        }
-
-        let mut stmt = db.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            let issues_json: String = row.get(4)?;
-            let suggestions_json: String = row.get(5)?;
-            let issues: Vec<String> = serde_json::from_str(&issues_json).unwrap_or_default();
-            let suggestions: Vec<String> =
-                serde_json::from_str(&suggestions_json).unwrap_or_default();
-
-            Ok(OrchestratorDecisionRecord {
-                id: Some(row.get(0)?),
-                pipeline_id: row.get(1)?,
-                decision: row.get(2)?,
-                reasoning: row.get(3)?,
-                issues,
-                suggestions,
-                timestamp: row.get(6)?,
-            })
-        })?;
-
-        rows.collect()
+        OrchestratorEventOps::new(&self.db)
+            .query_decisions(filters)
+            .await
     }
 
     /// Query agent outputs with filters
@@ -882,56 +492,9 @@ impl AgentRunsDB {
         &self,
         filters: EventQueryFilters,
     ) -> SqliteResult<Vec<AgentOutputRecord>> {
-        let db = self.db.lock().await;
-
-        let mut query =
-            "SELECT id, agent_id, pipeline_id, output_type, content, metadata, timestamp
-                         FROM agent_outputs WHERE 1=1"
-                .to_string();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        if let Some(ref pipeline_id) = filters.pipeline_id {
-            query.push_str(" AND pipeline_id = ?");
-            params.push(Box::new(pipeline_id.clone()));
-        }
-        if let Some(ref agent_id) = filters.agent_id {
-            query.push_str(" AND agent_id = ?");
-            params.push(Box::new(agent_id.clone()));
-        }
-        if let Some(since) = filters.since_timestamp {
-            query.push_str(" AND timestamp >= ?");
-            params.push(Box::new(since));
-        }
-        if let Some(until) = filters.until_timestamp {
-            query.push_str(" AND timestamp <= ?");
-            params.push(Box::new(until));
-        }
-
-        query.push_str(" ORDER BY timestamp DESC");
-
-        if let Some(limit) = filters.limit {
-            query.push_str(&format!(" LIMIT {}", limit));
-        }
-        if let Some(offset) = filters.offset {
-            query.push_str(&format!(" OFFSET {}", offset));
-        }
-
-        let mut stmt = db.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok(AgentOutputRecord {
-                id: Some(row.get(0)?),
-                agent_id: row.get(1)?,
-                pipeline_id: row.get(2)?,
-                output_type: row.get(3)?,
-                content: row.get(4)?,
-                metadata: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
-        })?;
-
-        rows.collect()
+        OrchestratorEventOps::new(&self.db)
+            .query_agent_outputs(filters)
+            .await
     }
 
     /// Get all history for a pipeline (for restoring UI state after reload)
@@ -939,44 +502,16 @@ impl AgentRunsDB {
         &self,
         pipeline_id: &str,
     ) -> SqliteResult<PipelineHistoryBundle> {
-        let filters = EventQueryFilters {
-            pipeline_id: Some(pipeline_id.to_string()),
-            ..Default::default()
-        };
-
-        let tool_calls = self.query_tool_calls(filters.clone()).await?;
-        let state_changes = self.query_state_changes(filters.clone()).await?;
-        let decisions = self.query_decisions(filters).await?;
-
-        Ok(PipelineHistoryBundle {
-            tool_calls,
-            state_changes,
-            decisions,
-        })
+        OrchestratorEventOps::new(&self.db)
+            .get_pipeline_history(pipeline_id)
+            .await
     }
 
     /// Clear all orchestrator events for a pipeline
     pub async fn clear_pipeline_events(&self, pipeline_id: &str) -> SqliteResult<()> {
-        let db = self.db.lock().await;
-
-        db.execute(
-            "DELETE FROM orchestrator_tool_calls WHERE pipeline_id = ?1",
-            params![pipeline_id],
-        )?;
-        db.execute(
-            "DELETE FROM orchestrator_state_changes WHERE pipeline_id = ?1",
-            params![pipeline_id],
-        )?;
-        db.execute(
-            "DELETE FROM orchestrator_decisions WHERE pipeline_id = ?1",
-            params![pipeline_id],
-        )?;
-        db.execute(
-            "DELETE FROM agent_outputs WHERE pipeline_id = ?1",
-            params![pipeline_id],
-        )?;
-
-        Ok(())
+        OrchestratorEventOps::new(&self.db)
+            .clear_pipeline_events(pipeline_id)
+            .await
     }
 }
 

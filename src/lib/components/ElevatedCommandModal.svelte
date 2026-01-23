@@ -9,7 +9,13 @@
     updateElevatedCommandStatus,
   } from "../stores/security";
   import { agents } from "../stores/agents";
-  import type { PendingElevatedCommand, CommandRiskLevel } from "../types";
+  import {
+    RiskBadge,
+    CommandDisplay,
+    WarningsSection,
+    ScopeApproval,
+    ApprovalButtons,
+  } from "./elevated-command";
 
   let approveScope = $state(false);
   let isProcessing = $state(false);
@@ -30,29 +36,6 @@
       closeElevatedCommandModal();
     }
   });
-
-  // Risk level styling
-  function getRiskClass(level: CommandRiskLevel): string {
-    switch (level) {
-      case "high":
-        return "risk-high";
-      case "suspicious":
-        return "risk-suspicious";
-      default:
-        return "risk-normal";
-    }
-  }
-
-  function getRiskLabel(level: CommandRiskLevel): string {
-    switch (level) {
-      case "high":
-        return "HIGH RISK";
-      case "suspicious":
-        return "SUSPICIOUS";
-      default:
-        return "NORMAL";
-    }
-  }
 
   function getAgentName(agentId: string): string {
     if (!agentId) return "Unknown";
@@ -124,6 +107,10 @@
       closeElevatedCommandModal();
     }
   }
+
+  function handleApproveScopeChange(value: boolean) {
+    approveScope = value;
+  }
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -150,9 +137,7 @@
 
       <div class="content">
         <!-- Risk level badge -->
-        <div class="risk-badge {getRiskClass(currentCommand.riskLevel)}">
-          {getRiskLabel(currentCommand.riskLevel)}
-        </div>
+        <RiskBadge riskLevel={currentCommand.riskLevel} />
 
         <!-- Agent info -->
         <div class="info-row">
@@ -169,93 +154,21 @@
           <span class="timer">Expires in {getTimeRemaining(currentCommand.expiresAt)}</span>
         </div>
 
-        <!-- Command display -->
-        <div class="command-section">
-          <h3>Command</h3>
-          <div class="command-box">
-            <code>{currentCommand.command}</code>
-          </div>
-        </div>
+        <!-- Command display with compound breakdown and inner command -->
+        <CommandDisplay command={currentCommand} />
 
-        <!-- Compound command breakdown (if applicable) -->
-        {#if currentCommand.preCommands?.length || currentCommand.postCommands?.length}
-          <div class="compound-section">
-            <h4>Compound Command Breakdown</h4>
-            {#if currentCommand.preCommands?.length}
-              <div class="compound-part">
-                <span class="compound-label">Before sudo:</span>
-                <code class="compound-cmd">{currentCommand.preCommands.join(" && ")}</code>
-              </div>
-            {/if}
-            {#if currentCommand.sudoCommand}
-              <div class="compound-part sudo-part">
-                <span class="compound-label">Sudo runs:</span>
-                <code class="compound-cmd highlight">{currentCommand.sudoCommand}</code>
-              </div>
-            {/if}
-            {#if currentCommand.postCommands?.length}
-              <div class="compound-part">
-                <span class="compound-label">After sudo:</span>
-                <code class="compound-cmd">{currentCommand.postCommands.join(" && ")}</code>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        <!-- Inner command for bash -c -->
-        {#if currentCommand.innerCommand}
-          <div class="inner-command-section">
-            <h4>Expanded Command (from bash -c)</h4>
-            <div class="command-box inner">
-              <code>{currentCommand.innerCommand}</code>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Warnings -->
-        {#if currentCommand.warnings?.length}
-          <div class="warnings-section">
-            <h4>Warnings</h4>
-            <ul class="warnings-list">
-              {#each currentCommand.warnings as warning}
-                <li class="warning-item">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 9v4m0 4h.01M12 2L2 22h20L12 2z"/>
-                  </svg>
-                  <span>{warning}</span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-
-        <!-- High risk extra warning -->
-        {#if currentCommand.riskLevel === "high"}
-          <div class="danger-warning">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 9v4m0 4h.01M12 2L2 22h20L12 2z"/>
-            </svg>
-            <div class="danger-text">
-              <strong>DANGER:</strong> This command has been flagged as potentially destructive.
-              Carefully review before approving.
-            </div>
-          </div>
-        {/if}
+        <!-- Warnings and danger alerts -->
+        <WarningsSection warnings={currentCommand.warnings} riskLevel={currentCommand.riskLevel} />
 
         <!-- Script scope option -->
-        {#if currentCommand.scriptHash}
-          <div class="scope-option">
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={approveScope} />
-              <span>Approve all commands from this script</span>
-            </label>
-            {#if currentCommand.parentCmd}
-              <span class="parent-cmd">Script: {currentCommand.parentCmd}</span>
-            {/if}
-          </div>
-        {/if}
+        <ScopeApproval
+          scriptHash={currentCommand.scriptHash}
+          parentCmd={currentCommand.parentCmd}
+          {approveScope}
+          onApproveScopeChange={handleApproveScopeChange}
+        />
 
-        <!-- Error display -->
+        <!-- Error display (inside content for better positioning) -->
         {#if error}
           <div class="error-message">
             {error}
@@ -263,27 +176,14 @@
         {/if}
       </div>
 
-      <div class="footer">
-        <button
-          class="btn btn-deny"
-          onclick={handleDeny}
-          disabled={isProcessing}
-        >
-          {isProcessing ? "Processing..." : "Deny"}
-        </button>
-        <button
-          class="btn btn-approve"
-          class:btn-dangerous={currentCommand?.riskLevel === "high"}
-          onclick={handleApprove}
-          disabled={isProcessing}
-        >
-          {#if currentCommand?.riskLevel === "high"}
-            {isProcessing ? "Processing..." : "Approve Anyway"}
-          {:else}
-            {isProcessing ? "Processing..." : "Approve"}
-          {/if}
-        </button>
-      </div>
+      <!-- Approval buttons in footer -->
+      <ApprovalButtons
+        riskLevel={currentCommand.riskLevel}
+        {isProcessing}
+        error={null}
+        onApprove={handleApprove}
+        onDeny={handleDeny}
+      />
     </div>
   </div>
 {/if}
@@ -375,34 +275,6 @@
     gap: var(--space-md);
   }
 
-  .risk-badge {
-    display: inline-flex;
-    align-self: flex-start;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-  }
-
-  .risk-badge.risk-normal {
-    background-color: var(--success-bg, rgba(34, 197, 94, 0.1));
-    color: var(--success);
-    border: 1px solid var(--success);
-  }
-
-  .risk-badge.risk-suspicious {
-    background-color: var(--warning-bg, rgba(234, 179, 8, 0.1));
-    color: var(--warning);
-    border: 1px solid var(--warning);
-  }
-
-  .risk-badge.risk-high {
-    background-color: var(--error-bg, rgba(239, 68, 68, 0.1));
-    color: var(--error);
-    border: 1px solid var(--error);
-  }
-
   .info-row {
     display: flex;
     align-items: center;
@@ -430,169 +302,6 @@
     font-weight: 600;
   }
 
-  .command-section h3,
-  .compound-section h4,
-  .inner-command-section h4,
-  .warnings-section h4 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-muted);
-    margin: 0 0 var(--space-sm) 0;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .command-box {
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: var(--space-md);
-    overflow-x: auto;
-  }
-
-  .command-box code {
-    font-family: var(--font-mono);
-    font-size: 14px;
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .command-box.inner {
-    background-color: var(--bg-tertiary);
-    border-color: var(--warning);
-  }
-
-  .compound-section {
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: var(--space-md);
-  }
-
-  .compound-part {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-  }
-
-  .compound-part:last-child {
-    margin-bottom: 0;
-  }
-
-  .compound-label {
-    color: var(--text-muted);
-    font-size: 12px;
-    min-width: 90px;
-    flex-shrink: 0;
-  }
-
-  .compound-cmd {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-
-  .compound-cmd.highlight {
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .sudo-part {
-    background-color: var(--accent-glow);
-    margin: 0 calc(-1 * var(--space-md));
-    padding: var(--space-sm) var(--space-md);
-  }
-
-  .warnings-section {
-    background-color: var(--warning-bg, rgba(234, 179, 8, 0.1));
-    border: 1px solid var(--warning);
-    border-radius: 8px;
-    padding: var(--space-md);
-  }
-
-  .warnings-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .warning-item {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-sm);
-    color: var(--warning);
-    font-size: 14px;
-    margin-bottom: var(--space-xs);
-  }
-
-  .warning-item:last-child {
-    margin-bottom: 0;
-  }
-
-  .warning-item svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .danger-warning {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-md);
-    background-color: var(--error-bg, rgba(239, 68, 68, 0.1));
-    border: 2px solid var(--error);
-    border-radius: 8px;
-    padding: var(--space-md);
-  }
-
-  .danger-warning svg {
-    width: 24px;
-    height: 24px;
-    color: var(--error);
-    flex-shrink: 0;
-  }
-
-  .danger-text {
-    color: var(--error);
-    font-size: 14px;
-    line-height: 1.5;
-  }
-
-  .scope-option {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-    padding: var(--space-md);
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    cursor: pointer;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-
-  .checkbox-label input {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-  }
-
-  .parent-cmd {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-left: 24px;
-  }
-
   .error-message {
     background-color: var(--error-bg, rgba(239, 68, 68, 0.1));
     border: 1px solid var(--error);
@@ -600,54 +309,6 @@
     padding: var(--space-md);
     color: var(--error);
     font-size: 14px;
-  }
-
-  .footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-md);
-    padding: var(--space-lg);
-    border-top: 1px solid var(--border);
-    background-color: var(--bg-primary);
-  }
-
-  .btn {
-    padding: 10px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-deny {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-  }
-
-  .btn-deny:hover:not(:disabled) {
-    background-color: var(--bg-secondary);
-    border-color: var(--text-muted);
-  }
-
-  .btn-approve {
-    background-color: var(--success);
-    color: white;
-  }
-
-  .btn-approve:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .btn-approve.btn-dangerous {
-    background-color: var(--error);
   }
 
   /* Animations */

@@ -8,8 +8,12 @@
 //! a prompt, the LLM generates initial expectations (expected tools, paths, commands),
 //! then every tool call is checked against those expectations for anomaly detection.
 
+pub mod anomaly_detection;
 pub mod collector;
+mod expectation_generator;
 pub mod llm_analyzer;
+mod parsing_utils;
+pub mod path_matching;
 pub mod pattern_matcher;
 pub mod response_handler;
 pub mod rules;
@@ -24,7 +28,8 @@ pub use llm_analyzer::{
 };
 pub use pattern_matcher::{DetectionRule, PatternMatch, PatternMatcher, Severity, ThreatCategory};
 pub use response_handler::{ResponseConfig, ResponseHandler, SecurityAlertEvent};
-pub use session_expectations::{ExpectationCheckResult, InitialExpectations, SessionExpectations};
+pub use anomaly_detection::ExpectationCheckResult;
+pub use session_expectations::{InitialExpectations, SessionExpectations};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

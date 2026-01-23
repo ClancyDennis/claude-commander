@@ -2,93 +2,39 @@
 //
 // Handles spawning, managing, and communicating with Claude CLI agent processes.
 
+mod claude_cli;
+mod database_ops;
+mod event_handlers;
+mod message_handlers;
 mod output_builder;
+mod process_spawner;
+mod result_handlers;
 mod statistics;
 mod stream_handler;
+mod stream_parser;
 mod types;
 
 use std::collections::HashMap;
-use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-use crate::agent_runs_db::{AgentRun, AgentRunsDB, RunStatus};
+use crate::agent_runs_db::{AgentRunsDB, RunStatus};
 use crate::github;
 use crate::logger::Logger;
-
-/// Attempt to find the Claude CLI in common installation locations
-fn find_claude_cli() -> Result<String, std::env::VarError> {
-    #[cfg(windows)]
-    {
-        // Check npm global install location on Windows
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let npm_path = std::path::PathBuf::from(&appdata)
-                .join("npm")
-                .join("claude.cmd");
-            if npm_path.exists() {
-                return Ok(npm_path.to_string_lossy().to_string());
-            }
-        }
-        // Check Program Files
-        let program_files =
-            std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-        let pf_path = std::path::PathBuf::from(&program_files)
-            .join("nodejs")
-            .join("claude.cmd");
-        if pf_path.exists() {
-            return Ok(pf_path.to_string_lossy().to_string());
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        // Check common Unix locations
-        if let Ok(home) = std::env::var("HOME") {
-            // Check ~/.local/bin (common for user installs)
-            let local_bin = std::path::PathBuf::from(&home).join(".local/bin/claude");
-            if local_bin.exists() {
-                return Ok(local_bin.to_string_lossy().to_string());
-            }
-
-            // Check nvm locations (try to find any node version)
-            let nvm_dir = std::path::PathBuf::from(&home).join(".nvm/versions/node");
-            if nvm_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
-                    for entry in entries.flatten() {
-                        let claude_path = entry.path().join("bin/claude");
-                        if claude_path.exists() {
-                            return Ok(claude_path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check /usr/local/bin
-        let usr_local = std::path::PathBuf::from("/usr/local/bin/claude");
-        if usr_local.exists() {
-            return Ok(usr_local.to_string_lossy().to_string());
-        }
-    }
-
-    Err(std::env::VarError::NotPresent)
-}
 use crate::security_monitor::SecurityMonitor;
-
-/// Environment variables to exclude from Claude Code child processes
-/// when CLAUDE_CODE_API_KEY_MODE is set to "blocked".
-/// This allows meta agents to use the Anthropic API while Claude Code uses OAuth.
-const SENSITIVE_ENV_VARS: &[&str] = &["ANTHROPIC_API_KEY"];
 use crate::types::{
-    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus, AgentStatusEvent,
+    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus,
+    AgentStatusEvent,
 };
 use crate::utils::time::now_millis;
 
+use database_ops::record_run_in_db;
+use process_spawner::{create_hooks_config, spawn_claude_process};
 use statistics::create_initial_stats;
 use stream_handler::{spawn_stderr_handler, spawn_stdout_handler, StreamContext};
+
 pub use types::AgentProcess;
 
 pub struct AgentManager {
@@ -204,10 +150,10 @@ impl AgentManager {
         let agent_id = uuid::Uuid::new_v4().to_string();
 
         // Create hooks config
-        let settings_path = self.create_hooks_config(&agent_id)?;
+        let settings_path = create_hooks_config(self.hook_port, &agent_id)?;
 
         // Spawn claude process
-        let mut child = self.spawn_claude_process(&settings_path, &working_dir, &agent_id)?;
+        let mut child = spawn_claude_process(&settings_path, &working_dir, &agent_id)?;
 
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
@@ -277,7 +223,9 @@ impl AgentManager {
         }
 
         // Record run in database
-        self.record_run_in_db(
+        record_run_in_db(
+            &self.runs_db,
+            &self.logger,
             &agent_id,
             &working_dir,
             &github_url,
@@ -332,218 +280,6 @@ impl AgentManager {
         }
 
         Ok(agent_id)
-    }
-
-    fn create_hooks_config(&self, agent_id: &str) -> Result<std::path::PathBuf, String> {
-        let settings_path = std::env::temp_dir().join(format!("claude_hooks_{}.json", agent_id));
-        let hooks_config = serde_json::json!({
-            "hooks": {
-                "PreToolUse": [{
-                    "matcher": "*",
-                    "hooks": [{
-                        "type": "command",
-                        "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", self.hook_port)
-                    }]
-                }],
-                "PostToolUse": [{
-                    "matcher": "*",
-                    "hooks": [{
-                        "type": "command",
-                        "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", self.hook_port)
-                    }]
-                }],
-                "Stop": [{
-                    "hooks": [{
-                        "type": "command",
-                        "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", self.hook_port)
-                    }]
-                }]
-            }
-        });
-
-        std::fs::write(
-            &settings_path,
-            serde_json::to_string_pretty(&hooks_config).unwrap(),
-        )
-        .map_err(|e| format!("Failed to create settings file: {}", e))?;
-
-        Ok(settings_path)
-    }
-
-    fn spawn_claude_process(
-        &self,
-        settings_path: &std::path::Path,
-        working_dir: &str,
-        agent_id: &str,
-    ) -> Result<tokio::process::Child, String> {
-        let claude_path = std::env::var("CLAUDE_PATH")
-            .or_else(|_| find_claude_cli())
-            .unwrap_or_else(|_| {
-                if cfg!(windows) {
-                    "claude.cmd".to_string()
-                } else {
-                    "claude".to_string()
-                }
-            });
-
-        // Check if we should block API keys from Claude Code
-        // Default to "blocked" if not set (Claude Code uses OAuth)
-        let api_key_mode =
-            std::env::var("CLAUDE_CODE_API_KEY_MODE").unwrap_or_else(|_| "blocked".to_string());
-
-        let mut cmd = Command::new(&claude_path);
-        cmd.args([
-            "-p",
-            "--verbose",
-            "--permission-mode",
-            "bypassPermissions",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--settings",
-            settings_path.to_str().unwrap(),
-        ])
-        .current_dir(working_dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-        // Get elevation-bin path based on platform
-        let elevation_bin_path = self.get_elevation_bin_path();
-
-        // Apply environment filtering based on mode
-        if api_key_mode.to_lowercase() == "blocked" {
-            // Filter out sensitive API keys so Claude Code uses OAuth authentication
-            let mut filtered_env: HashMap<String, String> = std::env::vars()
-                .filter(|(key, _)| !SENSITIVE_ENV_VARS.contains(&key.as_str()))
-                .collect();
-
-            // Inject elevation-bin into PATH (prepend so our sudo wrapper is found first)
-            if let Some(elevation_path) = &elevation_bin_path {
-                let existing_path = filtered_env.get("PATH").cloned().unwrap_or_default();
-                let new_path = format!("{}:{}", elevation_path.display(), existing_path);
-                filtered_env.insert("PATH".to_string(), new_path);
-            }
-
-            // Set CLAUDE_AGENT_ID so wrapper script knows which agent is calling
-            filtered_env.insert("CLAUDE_AGENT_ID".to_string(), agent_id.to_string());
-
-            cmd.env_clear().envs(&filtered_env);
-        } else {
-            // "passthrough" mode: inherit all env vars but still inject elevation
-            if let Some(elevation_path) = &elevation_bin_path {
-                let existing_path = std::env::var("PATH").unwrap_or_default();
-                let new_path = format!("{}:{}", elevation_path.display(), existing_path);
-                cmd.env("PATH", new_path);
-            }
-            cmd.env("CLAUDE_AGENT_ID", agent_id);
-        }
-
-        cmd.spawn()
-            .map_err(|e| format!("Failed to spawn claude: {}", e))
-    }
-
-    /// Get the path to the elevation-bin directory for the current platform
-    fn get_elevation_bin_path(&self) -> Option<std::path::PathBuf> {
-        // First try the app's data directory (where elevation scripts are copied on startup)
-        if let Some(data_dir) = dirs::data_local_dir() {
-            let app_elevation_dir = data_dir.join("claude-commander").join("elevation-bin");
-
-            #[cfg(target_os = "linux")]
-            let platform_dir = app_elevation_dir.join("linux");
-
-            #[cfg(target_os = "macos")]
-            let platform_dir = app_elevation_dir.join("macos");
-
-            #[cfg(target_os = "windows")]
-            let platform_dir = app_elevation_dir.join("windows");
-
-            #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-            let platform_dir = app_elevation_dir.join("linux"); // Fallback
-
-            if platform_dir.exists() {
-                return Some(platform_dir);
-            }
-        }
-
-        // Fallback: try relative to executable (development mode)
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                #[cfg(target_os = "linux")]
-                let dev_dir = exe_dir.join("elevation-bin").join("linux");
-
-                #[cfg(target_os = "macos")]
-                let dev_dir = exe_dir.join("elevation-bin").join("macos");
-
-                #[cfg(target_os = "windows")]
-                let dev_dir = exe_dir.join("elevation-bin").join("windows");
-
-                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-                let dev_dir = exe_dir.join("elevation-bin").join("linux");
-
-                if dev_dir.exists() {
-                    return Some(dev_dir);
-                }
-            }
-        }
-
-        None
-    }
-
-    async fn record_run_in_db(
-        &self,
-        agent_id: &str,
-        working_dir: &str,
-        github_url: &Option<String>,
-        github_context: &Option<crate::types::GitHubContext>,
-        source: &crate::types::AgentSource,
-        pipeline_id: Option<String>,
-        now: i64,
-    ) {
-        if let Some(ref runs_db) = self.runs_db {
-            let github_context_json = github_context
-                .as_ref()
-                .and_then(|gc| serde_json::to_string(gc).ok());
-
-            let run = AgentRun {
-                id: None,
-                agent_id: agent_id.to_string(),
-                session_id: None,
-                working_dir: working_dir.to_string(),
-                github_url: github_url.clone(),
-                github_context: github_context_json,
-                source: source.as_str().to_string(),
-                status: RunStatus::Running,
-                started_at: now,
-                ended_at: None,
-                last_activity: now,
-                initial_prompt: None,
-                error_message: None,
-                pipeline_id, // Linked to orchestrator events for historical queries
-                total_prompts: 0,
-                total_tool_calls: 0,
-                total_output_bytes: 0,
-                total_tokens_used: None,
-                total_cost_usd: None,
-                model_usage: None,
-                can_resume: true,
-                resume_data: None,
-            };
-
-            if let Err(e) = runs_db.create_run(&run).await {
-                if let Some(ref logger) = self.logger {
-                    let _ = logger
-                        .error(
-                            "agent_manager",
-                            &format!("Failed to record run in database: {}", e),
-                            Some(agent_id.to_string()),
-                            None,
-                        )
-                        .await;
-                }
-            }
-        }
     }
 
     pub async fn send_prompt(

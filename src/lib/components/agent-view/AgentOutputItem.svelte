@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { AgentOutput } from "$lib/types";
+  import { getOutputTypeLabel, shouldDisplayOutputType, isJsonContent, extractResultText } from "$lib/utils/outputTypes";
   import MarkdownRenderer from "../MarkdownRenderer.svelte";
 
   let { data: output, index: i }: { data: AgentOutput; index: number } = $props();
@@ -8,54 +9,12 @@
     if (!timestamp) return "";
     return new Date(timestamp).toLocaleTimeString();
   }
-
-  // Check if content is JSON
-  function isJsonContent(content: string): boolean {
-    if (!content || typeof content !== 'string') return false;
-    const trimmed = content.trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
-    try {
-      JSON.parse(content);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  // Extract meaningful text from result JSON
-  function extractResultText(content: string): string | null {
-    try {
-      const json = JSON.parse(content);
-      if (json.result && typeof json.result === 'string') {
-        return json.result;
-      }
-    } catch { /* ignore parse errors */ }
-    return null;
-  }
-
-  // Should this output type be displayed?
-  function shouldDisplay(type: string): boolean {
-    // Skip system and stream_event as they're internal messages
-    return !['system', 'stream_event'].includes(type);
-  }
-
-  // Get display label for output type
-  function getTypeLabel(type: string): string {
-    switch (type) {
-      case 'text': return 'Text';
-      case 'tool_use': return 'Tool';
-      case 'tool_result': return 'Result';
-      case 'error': return 'Error';
-      case 'result': return 'Completed';
-      default: return type;
-    }
-  }
 </script>
 
-{#if shouldDisplay(output.type)}
+{#if shouldDisplayOutputType(output.type)}
   <div class="output-item {output.type} animate-slide-up" data-index={i}>
     <div class="output-header">
-      <span class="output-type">{getTypeLabel(output.type)}</span>
+      <span class="output-type">{getOutputTypeLabel(output.type)}</span>
       <span class="timestamp">
         {formatTimestamp(output.timestamp)}
       </span>

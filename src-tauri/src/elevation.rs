@@ -48,12 +48,12 @@ const HIGH_RISK_PATTERNS: &[&str] = &[
 
 /// Suspicious patterns that warrant a warning banner
 const SUSPICIOUS_PATTERNS: &[&str] = &[
-    "curl|bash",
-    "curl|sh",
-    "wget|bash",
-    "wget|sh",
-    "curl -s|",
-    "wget -q|",
+    "| bash",
+    "|bash",
+    "| sh",
+    "|sh",
+    "curl -s |",
+    "wget -q |",
     "bash -c",
     "sh -c",
     "eval ",

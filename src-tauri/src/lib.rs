@@ -398,6 +398,7 @@ pub fn run() {
             commands::list_instruction_files,
             commands::get_instruction_file_content,
             commands::save_instruction_file,
+            commands::open_instructions_directory,
             // Instruction analysis commands
             commands::analyze_instruction_content,
             commands::apply_instruction_suggestions,
@@ -446,7 +447,10 @@ pub fn run() {
             // Config commands
             commands::get_config_status,
             commands::open_config_directory,
-            commands::create_env_placeholder
+            commands::create_env_placeholder,
+            commands::update_config_value,
+            commands::update_config_batch,
+            commands::validate_api_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

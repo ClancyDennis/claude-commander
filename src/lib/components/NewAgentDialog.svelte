@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
   import { homeDir } from "@tauri-apps/api/path";
   import { onMount } from "svelte";
   import { addAgent, selectedAgentId } from "../stores/agents";
@@ -13,10 +12,12 @@
   import { useSkillGeneration } from "../hooks/useSkillGeneration.svelte";
 
   import CreationTypeSelector from "./new-agent/CreationTypeSelector.svelte";
+  import WorkingDirectoryInput from "./new-agent/WorkingDirectoryInput.svelte";
   import RepoSelector from "./new-agent/RepoSelector.svelte";
+  import TaskDescriptionInput from "./new-agent/TaskDescriptionInput.svelte";
   import InstructionSelector from "./new-agent/InstructionSelector.svelte";
   import PipelineSettingsForm from "./new-agent/PipelineSettingsForm.svelte";
-  import HelpTip from "./new-agent/HelpTip.svelte";
+  import DialogFooter from "./new-agent/DialogFooter.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -33,8 +34,13 @@
   // Skill generation tracking via hook
   const skillGen = useSkillGeneration();
 
+  // Derived validation state
+  let canCreate = $derived(
+    workingDir.trim() !== '' &&
+    ((creationType !== 'pipeline' && creationType !== 'auto-pipeline') || pipelineTask.trim() !== '')
+  );
+
   onMount(async () => {
-    // Set working directory to user's home directory
     try {
       workingDir = await homeDir();
     } catch (e) {
@@ -44,22 +50,6 @@
     skillGen.start();
     return () => skillGen.cleanup();
   });
-
-  async function selectDirectory() {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: workingDir,
-      });
-
-      if (selected) {
-        workingDir = selected as string;
-      }
-    } catch (e) {
-      console.error("Failed to open directory picker:", e);
-    }
-  }
 
   async function handleCreate() {
     if (!workingDir.trim()) {
@@ -111,11 +101,11 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-       onClose();
-    } else if (e.key === "Enter" && workingDir.trim() && !e.shiftKey) {
-       if (document.activeElement?.tagName !== 'TEXTAREA') {
-          handleCreate();
-       }
+      onClose();
+    } else if (e.key === "Enter" && canCreate && !e.shiftKey) {
+      if (document.activeElement?.tagName !== 'TEXTAREA') {
+        handleCreate();
+      }
     }
   }
 </script>
@@ -162,37 +152,7 @@
       <div class="form-grid">
         <!-- Left Column: Configuration -->
         <div class="col-left">
-          <label>
-            <span class="label-text">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              Working Directory
-              <HelpTip
-                text="Where the agent/pipeline will read and write files. Pick the folder you want it to work inside."
-              />
-            </span>
-            <div class="input-group">
-              <input
-                type="text"
-                bind:value={workingDir}
-                placeholder="/path/to/your/project"
-                disabled={isCreating}
-              />
-              <button
-                type="button"
-                class="browse-btn"
-                onclick={selectDirectory}
-                disabled={isCreating}
-                title="Browse for directory"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-              </button>
-            </div>
-          </label>
-
+          <WorkingDirectoryInput bind:workingDir {isCreating} />
           <RepoSelector bind:githubUrl {isCreating} />
 
           {#if creationType === 'pipeline'}
@@ -202,32 +162,11 @@
 
         <!-- Right Column: Context -->
         <div class="col-right">
-          {#if creationType === 'pipeline' || creationType === 'auto-pipeline'}
-            <label>
-              <span class="label-text">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                Task Description
-                <HelpTip
-                  text="Describe the outcome you want. More context (stack, constraints, files) helps the pipeline do the right thing."
-                />
-              </span>
-              <textarea
-                bind:value={pipelineTask}
-                placeholder={creationType === 'auto-pipeline'
-                  ? "What should Ralph build?"
-                  : "Describe the pipeline objective..."}
-                rows="4"
-                disabled={isCreating}
-              ></textarea>
-            </label>
-          {/if}
-
-          <InstructionSelector 
-            {workingDir} 
-            bind:selectedInstructions 
-            {isCreating} 
+          <TaskDescriptionInput bind:pipelineTask {creationType} {isCreating} />
+          <InstructionSelector
+            {workingDir}
+            bind:selectedInstructions
+            {isCreating}
           />
         </div>
       </div>
@@ -244,56 +183,14 @@
       {/if}
     </div>
 
-    <footer>
-      {#if skillGen.state.active}
-        <div class="skill-generation-progress">
-          <div class="skill-gen-header">
-            <span class="skill-gen-spinner"></span>
-            <span>Generating skills...</span>
-          </div>
-          <div class="skill-gen-details">
-            <span class="skill-gen-count">{skillGen.state.completed + skillGen.state.skipped}/{skillGen.state.total}</span>
-            {#if skillGen.state.currentFile}
-              <span class="skill-gen-current" title={skillGen.state.currentFile}>
-                {skillGen.state.currentFile.length > 30
-                  ? '...' + skillGen.state.currentFile.slice(-27)
-                  : skillGen.state.currentFile}
-              </span>
-            {/if}
-          </div>
-          <div class="skill-gen-bar">
-            <div
-              class="skill-gen-bar-fill"
-              style="width: {((skillGen.state.completed + skillGen.state.skipped) / skillGen.state.total) * 100}%"
-            ></div>
-          </div>
-        </div>
-      {:else}
-        <button class="secondary" onclick={onClose} disabled={isCreating}>
-          Cancel
-        </button>
-        <button
-          class="primary"
-          onclick={handleCreate}
-          disabled={isCreating || !workingDir.trim() || ((creationType === 'pipeline' || creationType === 'auto-pipeline') && !pipelineTask.trim())}
-        >
-          {#if isCreating}
-            <span class="spinner"></span>
-            {creationType === 'pipeline' ? 'Starting...' : creationType === 'auto-pipeline' ? 'Starting...' : 'Creating...'}
-          {:else}
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              {#if creationType === 'pipeline'}
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              {:else}
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              {/if}
-            </svg>
-            {creationType === 'pipeline' ? 'Start Pipeline' : creationType === 'auto-pipeline' ? 'Start Ralphline' : 'Create Agent'}
-          {/if}
-        </button>
-      {/if}
-    </footer>
+    <DialogFooter
+      {creationType}
+      {isCreating}
+      {canCreate}
+      skillGenState={skillGen.state}
+      onCreate={handleCreate}
+      onCancel={onClose}
+    />
   </div>
 </div>
 
@@ -406,74 +303,6 @@
     gap: var(--space-lg);
   }
 
-  label {
-    display: block;
-  }
-
-  .label-text {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .label-text svg {
-    width: 18px;
-    height: 18px;
-    color: var(--accent);
-  }
-
-  .input-group {
-    display: flex;
-    gap: var(--space-sm);
-  }
-
-  .input-group input {
-    flex: 1;
-    padding: var(--space-md);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text-primary);
-    font-size: 14px;
-    transition: all 0.2s ease;
-  }
-
-  .input-group input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-
-  .browse-btn {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-    padding: 0 var(--space-md);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-  }
-
-  .browse-btn:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
-    color: var(--text-primary);
-  }
-
-  .browse-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
   .error {
     margin-top: var(--space-md);
     padding: var(--space-md);
@@ -491,196 +320,5 @@
     width: 20px;
     height: 20px;
     flex-shrink: 0;
-  }
-
-  footer {
-    flex-shrink: 0;
-    padding: var(--space-lg);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-md);
-    border-top: 1px solid var(--border);
-    background-color: var(--bg-tertiary);
-  }
-
-  footer button {
-    min-width: 120px;
-    padding: 10px 20px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    border: none;
-  }
-
-  .secondary {
-    background: var(--bg-elevated);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-  }
-
-  .secondary:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-  }
-
-  .primary {
-    background: var(--accent);
-    color: white;
-  }
-
-  .primary:hover:not(:disabled) {
-    background: var(--accent-hover, #7c3aed);
-    transform: scale(1.02);
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  textarea {
-    width: 100%;
-    padding: var(--space-md);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text-primary);
-    font-size: 14px;
-    font-family: inherit;
-    line-height: 1.5;
-    resize: vertical;
-    transition: all 0.2s ease;
-  }
-
-  textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-
-  textarea:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  /* Skill generation progress styles */
-  .skill-generation-progress {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-md);
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(147, 51, 234, 0.05) 100%);
-    border: 1px solid rgba(124, 58, 237, 0.3);
-    border-radius: 12px;
-    animation: pulse-border 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse-border {
-    0%, 100% {
-      border-color: rgba(124, 58, 237, 0.3);
-      box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
-    }
-    50% {
-      border-color: rgba(124, 58, 237, 0.6);
-      box-shadow: 0 0 12px 2px rgba(124, 58, 237, 0.15);
-    }
-  }
-
-  .skill-gen-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--accent);
-  }
-
-  .skill-gen-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(124, 58, 237, 0.3);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  .skill-gen-details {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .skill-gen-count {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .skill-gen-current {
-    color: var(--text-muted);
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .skill-gen-bar {
-    height: 4px;
-    background: rgba(124, 58, 237, 0.2);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .skill-gen-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent) 0%, #9333ea 100%);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-    position: relative;
-  }
-
-  .skill-gen-bar-fill::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.3) 50%,
-      transparent 100%
-    );
-    animation: shimmer 1.5s ease-in-out infinite;
-  }
-
-  @keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
   }
 </style>

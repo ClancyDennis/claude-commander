@@ -229,11 +229,25 @@ pub struct AgentStatsEvent {
     pub stats: AgentStatistics,
 }
 
+// Image attachment for chat messages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageAttachment {
+    pub id: String,
+    pub filename: String,
+    pub mime_type: String,  // "image/png", "image/jpeg", "image/gif", "image/webp"
+    pub base64_data: String,
+    pub preview_url: String,
+    pub size_bytes: u64,
+}
+
 // Chat-related types for meta-agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String, // "user" or "assistant"
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageAttachment>,  // Optional single image attachment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     pub timestamp: i64, // Unix timestamp in milliseconds

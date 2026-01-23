@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatTimeLocale } from '$lib/utils/formatting';
+  import { getOutputTypeLabel, getOutputTypeClass, isJsonContent, extractResultText, truncateContent } from '$lib/utils/outputTypes';
   import type { AgentOutputRecord } from '$lib/types';
   import MarkdownRenderer from '../MarkdownRenderer.svelte';
 
@@ -43,60 +44,6 @@
   }
 
   let visibleItems = $derived(getVisibleItems(filteredOutputs));
-
-  // Get display label for output type
-  function getTypeLabel(type: string): string {
-    switch (type) {
-      case 'text': return 'Text';
-      case 'tool_use': return 'Tool';
-      case 'tool_result': return 'Result';
-      case 'error': return 'Error';
-      case 'result': return 'Completed';
-      case 'system': return 'System';
-      default: return type;
-    }
-  }
-
-  // Get CSS class for output type
-  function getTypeClass(type: string): string {
-    switch (type) {
-      case 'error': return 'output-error';
-      case 'tool_use': return 'output-tool';
-      case 'tool_result': return 'output-tool-result';
-      case 'result': return 'output-completed';
-      default: return '';
-    }
-  }
-
-  // Check if content is JSON
-  function isJsonContent(content: string): boolean {
-    if (!content || typeof content !== 'string') return false;
-    const trimmed = content.trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
-    try {
-      JSON.parse(content);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  // Extract meaningful text from result JSON
-  function extractResultText(content: string): string | null {
-    try {
-      const json = JSON.parse(content);
-      if (json.result && typeof json.result === 'string') {
-        return json.result;
-      }
-    } catch { /* ignore parse errors */ }
-    return null;
-  }
-
-  // Truncate long content for preview
-  function truncateContent(content: string, maxLength: number = 500): string {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
-  }
 
   // Count outputs by type
   function countByType(type: string): number {
@@ -150,9 +97,9 @@
     {:else}
       <div style="position: absolute; top: {visibleItems.startIndex * ITEM_HEIGHT}px; width: 100%;">
         {#each visibleItems.visible as output, i (visibleItems.startIndex + i)}
-          <div class="output-item {getTypeClass(output.output_type)}">
+          <div class="output-item {getOutputTypeClass(output.output_type)}">
             <div class="output-header">
-              <span class="output-type-badge">{getTypeLabel(output.output_type)}</span>
+              <span class="output-type-badge">{getOutputTypeLabel(output.output_type)}</span>
               <span class="output-time">{formatTimeLocale(output.timestamp)}</span>
             </div>
             <div class="output-content">

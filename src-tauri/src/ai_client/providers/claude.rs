@@ -44,6 +44,14 @@ impl ClaudeProvider {
                                     "type": "text",
                                     "text": text
                                 }),
+                                RichContentBlock::Image { source } => json!({
+                                    "type": "image",
+                                    "source": {
+                                        "type": source.source_type,
+                                        "media_type": source.media_type,
+                                        "data": source.data
+                                    }
+                                }),
                                 RichContentBlock::ToolUse { id, name, input } => json!({
                                     "type": "tool_use",
                                     "id": id,
