@@ -25,6 +25,9 @@ import type {
   SecurityAgentSuspendedPayload,
   SecurityPendingReviewPayload,
   SecurityReviewCompletedPayload,
+  ElevatedCommandRequestEvent,
+  ElevatedCommandStatusEvent,
+  PendingElevatedCommand,
 } from "$lib/types";
 import type { Pipeline, PhaseProgressData } from "$lib/stores/pipelines";
 import { fetchAutoPipeline } from "./pipelineHelpers";
@@ -97,6 +100,10 @@ export interface EventHandlerCallbacks {
     message: string;
     duration?: number;
   }) => void;
+
+  // Elevated command callbacks
+  onElevatedCommandRequest?: (request: PendingElevatedCommand) => void;
+  onElevatedCommandStatus?: (requestId: string, status: string, error?: string) => void;
 }
 
 // ============================================================================
@@ -535,6 +542,28 @@ async function setupToastListener(
 }
 
 // ============================================================================
+// Elevated Command Event Handlers
+// ============================================================================
+
+async function setupElevatedRequestListener(
+  onElevatedCommandRequest: EventHandlerCallbacks['onElevatedCommandRequest']
+): Promise<UnlistenFn> {
+  return listen<ElevatedCommandRequestEvent>("elevated:request", (event) => {
+    console.log("[Frontend] Elevated command request:", event.payload.request.command);
+    onElevatedCommandRequest?.(event.payload.request);
+  });
+}
+
+async function setupElevatedStatusListener(
+  onElevatedCommandStatus: EventHandlerCallbacks['onElevatedCommandStatus']
+): Promise<UnlistenFn> {
+  return listen<ElevatedCommandStatusEvent>("elevated:status", (event) => {
+    console.log("[Frontend] Elevated command status:", event.payload.requestId, event.payload.status);
+    onElevatedCommandStatus?.(event.payload.requestId, event.payload.status, event.payload.error);
+  });
+}
+
+// ============================================================================
 // Main Setup Function
 // ============================================================================
 
@@ -587,6 +616,10 @@ export async function setupEventListeners(
 
     // Toast event (1)
     setupToastListener(callbacks.onToast),
+
+    // Elevated command events (2)
+    setupElevatedRequestListener(callbacks.onElevatedCommandRequest),
+    setupElevatedStatusListener(callbacks.onElevatedCommandStatus),
   ]);
 
   // Return cleanup function

@@ -207,7 +207,7 @@ impl AgentManager {
         let settings_path = self.create_hooks_config(&agent_id)?;
 
         // Spawn claude process
-        let mut child = self.spawn_claude_process(&settings_path, &working_dir)?;
+        let mut child = self.spawn_claude_process(&settings_path, &working_dir, &agent_id)?;
 
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
@@ -374,6 +374,7 @@ impl AgentManager {
         &self,
         settings_path: &std::path::Path,
         working_dir: &str,
+        agent_id: &str,
     ) -> Result<tokio::process::Child, String> {
         let claude_path = std::env::var("CLAUDE_PATH")
             .or_else(|_| find_claude_cli())
@@ -408,18 +409,86 @@ impl AgentManager {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+        // Get elevation-bin path based on platform
+        let elevation_bin_path = self.get_elevation_bin_path();
+
         // Apply environment filtering based on mode
         if api_key_mode.to_lowercase() == "blocked" {
             // Filter out sensitive API keys so Claude Code uses OAuth authentication
-            let filtered_env: HashMap<String, String> = std::env::vars()
+            let mut filtered_env: HashMap<String, String> = std::env::vars()
                 .filter(|(key, _)| !SENSITIVE_ENV_VARS.contains(&key.as_str()))
                 .collect();
+
+            // Inject elevation-bin into PATH (prepend so our sudo wrapper is found first)
+            if let Some(elevation_path) = &elevation_bin_path {
+                let existing_path = filtered_env.get("PATH").cloned().unwrap_or_default();
+                let new_path = format!("{}:{}", elevation_path.display(), existing_path);
+                filtered_env.insert("PATH".to_string(), new_path);
+            }
+
+            // Set CLAUDE_AGENT_ID so wrapper script knows which agent is calling
+            filtered_env.insert("CLAUDE_AGENT_ID".to_string(), agent_id.to_string());
+
             cmd.env_clear().envs(&filtered_env);
+        } else {
+            // "passthrough" mode: inherit all env vars but still inject elevation
+            if let Some(elevation_path) = &elevation_bin_path {
+                let existing_path = std::env::var("PATH").unwrap_or_default();
+                let new_path = format!("{}:{}", elevation_path.display(), existing_path);
+                cmd.env("PATH", new_path);
+            }
+            cmd.env("CLAUDE_AGENT_ID", agent_id);
         }
-        // "passthrough" mode: default Command behavior, inherits all env vars
 
         cmd.spawn()
             .map_err(|e| format!("Failed to spawn claude: {}", e))
+    }
+
+    /// Get the path to the elevation-bin directory for the current platform
+    fn get_elevation_bin_path(&self) -> Option<std::path::PathBuf> {
+        // First try the app's data directory (where elevation scripts are copied on startup)
+        if let Some(data_dir) = dirs::data_local_dir() {
+            let app_elevation_dir = data_dir.join("claude-commander").join("elevation-bin");
+
+            #[cfg(target_os = "linux")]
+            let platform_dir = app_elevation_dir.join("linux");
+
+            #[cfg(target_os = "macos")]
+            let platform_dir = app_elevation_dir.join("macos");
+
+            #[cfg(target_os = "windows")]
+            let platform_dir = app_elevation_dir.join("windows");
+
+            #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+            let platform_dir = app_elevation_dir.join("linux"); // Fallback
+
+            if platform_dir.exists() {
+                return Some(platform_dir);
+            }
+        }
+
+        // Fallback: try relative to executable (development mode)
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                #[cfg(target_os = "linux")]
+                let dev_dir = exe_dir.join("elevation-bin").join("linux");
+
+                #[cfg(target_os = "macos")]
+                let dev_dir = exe_dir.join("elevation-bin").join("macos");
+
+                #[cfg(target_os = "windows")]
+                let dev_dir = exe_dir.join("elevation-bin").join("windows");
+
+                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                let dev_dir = exe_dir.join("elevation-bin").join("linux");
+
+                if dev_dir.exists() {
+                    return Some(dev_dir);
+                }
+            }
+        }
+
+        None
     }
 
     async fn record_run_in_db(

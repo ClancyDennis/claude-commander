@@ -14,6 +14,7 @@ use super::llm_analyzer::{AnalysisResult, RecommendedAction, RiskLevel, ThreatAs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThreatDetailEvent {
     pub event_id: String,
+    pub agent_id: String,
     pub threat_type: String,
     pub severity: String,
     pub confidence: f32,
@@ -26,6 +27,7 @@ impl From<&ThreatAssessment> for ThreatDetailEvent {
     fn from(threat: &ThreatAssessment) -> Self {
         Self {
             event_id: threat.event_id.clone(),
+            agent_id: threat.agent_id.clone(),
             threat_type: format!("{:?}", threat.threat_type),
             severity: format!("{:?}", threat.severity),
             confidence: threat.confidence,
@@ -40,6 +42,8 @@ impl From<&ThreatAssessment> for ThreatDetailEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityAlertEvent {
     pub alert_id: String,
+    /// Primary agent associated with this alert (first affected agent)
+    pub agent_id: String,
     pub timestamp: i64,
     pub risk_level: String,
     pub title: String,
@@ -173,22 +177,27 @@ impl ResponseHandler {
 
     /// Emit a security alert to the UI
     async fn emit_alert(&self, analysis: &AnalysisResult, requires_ack: bool) {
+        // Collect unique affected agents directly from threats
+        let affected_agents: Vec<String> = analysis
+            .threats_detected
+            .iter()
+            .filter(|t| !t.agent_id.is_empty())
+            .map(|t| t.agent_id.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        // Use first affected agent as primary, or empty string if none
+        let primary_agent_id = affected_agents.first().cloned().unwrap_or_default();
+
         let alert = SecurityAlertEvent {
             alert_id: uuid::Uuid::new_v4().to_string(),
+            agent_id: primary_agent_id,
             timestamp: chrono::Utc::now().timestamp_millis(),
             risk_level: format!("{:?}", analysis.overall_risk_level),
             title: format!("{:?} Security Threat Detected", analysis.overall_risk_level),
             description: analysis.analysis_summary.clone(),
-            affected_agents: analysis
-                .threats_detected
-                .iter()
-                .filter_map(|t| {
-                    // Extract agent_id from event_id if possible
-                    t.event_id.split('_').next().map(|s| s.to_string())
-                })
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect(),
+            affected_agents,
             recommended_actions: analysis
                 .recommended_actions
                 .iter()

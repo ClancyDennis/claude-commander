@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { SecurityAlert } from "../types";
   import { selectedAgentId } from "../stores/agents";
-  import { showAlertDetail, markAlertRead, dismissAlert } from "../stores/security";
+  import { showAlertDetail, markAlertRead, dismissAlert, closeNotificationsModal } from "../stores/security";
 
   let {
     alert,
@@ -40,12 +40,16 @@
   }
 
   function handleViewDetails() {
+    closeNotificationsModal();
     showAlertDetail(alert);
     markAlertRead(alert.alertId);
   }
 
   function handleViewAgent() {
-    selectedAgentId.set(alert.agentId);
+    closeNotificationsModal();
+    if (alert.agentId) {
+      selectedAgentId.set(alert.agentId);
+    }
     markAlertRead(alert.alertId);
   }
 
@@ -79,7 +83,7 @@
     <p class="description">{alert.description}</p>
 
     <div class="meta">
-      <span class="agent-id">Agent: {alert.agentId.slice(0, 8)}</span>
+      <span class="agent-id">Agent: {alert.agentId?.slice(0, 8) || "Unknown"}</span>
       {#if alert.threats && alert.threats.length > 0}
         <span class="threat-count">{alert.threats.length} threat{alert.threats.length > 1 ? 's' : ''}</span>
       {/if}

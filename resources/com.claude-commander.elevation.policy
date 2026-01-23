@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Claude Commander</vendor>
+  <vendor_url>https://github.com/anthropics/claude-commander</vendor_url>
+
+  <!-- Policy for running elevated commands from Claude Code agents -->
+  <action id="com.claude-commander.elevated-command">
+    <description>Run an elevated command from a Claude Code agent</description>
+    <message>Claude Commander requires authentication to run: $(command)</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <!-- Require admin authentication for all users -->
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/pkexec</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+</policyconfig>

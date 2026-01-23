@@ -5,6 +5,7 @@ pub mod auto_pipeline;
 pub mod claude_client;
 pub mod claudemd_generator;
 pub mod commands;
+pub mod elevation;
 pub mod events;
 pub mod first_run;
 pub mod github;
@@ -24,6 +25,7 @@ pub mod types;
 pub mod utils;
 pub mod verification;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
@@ -38,6 +40,7 @@ use pipeline_manager::PipelineManager;
 use pool_manager::{AgentPool, PoolConfig};
 use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
 use thread_controller::ThreadController;
+use types::PendingElevatedCommand;
 use verification::VerificationEngine;
 
 // Make AppState public so commands module can access it
@@ -53,6 +56,10 @@ pub struct AppState {
     pub agent_runs_db: Arc<AgentRunsDB>,
     pub auto_pipeline_manager: Option<Arc<Mutex<AutoPipelineManager>>>,
     pub security_monitor: Option<Arc<SecurityMonitor>>,
+    // Elevation state (shared with hook server)
+    pub pending_elevated: Arc<Mutex<HashMap<String, PendingElevatedCommand>>>,
+    pub approved_scopes: Arc<Mutex<HashMap<String, i64>>>,
+    pub app_handle: Arc<dyn events::AppEventEmitter>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -215,17 +222,28 @@ pub fn run() {
                 }
             };
 
-            // Start hook server (with security monitor if available)
+            // Create shared elevation state (used by both hook server and Tauri commands)
+            let pending_elevated: Arc<Mutex<HashMap<String, PendingElevatedCommand>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let approved_scopes: Arc<Mutex<HashMap<String, i64>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+
+            // Start hook server (with security monitor and elevation state)
             let agent_manager_clone = agent_manager.clone();
-            let app_handle = app.handle().clone();
+            let app_handle = Arc::new(app.handle().clone());
+            let app_handle_for_hook = app_handle.clone();
             let security_monitor_for_hook = security_monitor.clone();
+            let pending_elevated_for_hook = pending_elevated.clone();
+            let approved_scopes_for_hook = approved_scopes.clone();
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = hook_server::start_hook_server(
                     agent_manager_clone,
-                    Arc::new(app_handle),
+                    app_handle_for_hook,
                     hook_port,
                     security_monitor_for_hook,
+                    pending_elevated_for_hook,
+                    approved_scopes_for_hook,
                 )
                 .await
                 {
@@ -317,6 +335,9 @@ pub fn run() {
                 agent_runs_db,
                 auto_pipeline_manager,
                 security_monitor,
+                pending_elevated,
+                approved_scopes,
+                app_handle,
             });
 
             Ok(())
@@ -407,6 +428,10 @@ pub fn run() {
             commands::reject_security_action,
             commands::clear_security_reviews,
             commands::scan_agent_activity,
+            // Elevated command approval commands
+            commands::get_pending_elevated_commands,
+            commands::approve_elevated_command,
+            commands::deny_elevated_command,
             // Event persistence commands
             commands::persist_tool_call,
             commands::persist_state_change,

@@ -127,6 +127,94 @@ The security system uses a hybrid approach:
 2. **LLM semantic analysis**: Sophisticated attack detection
 3. **Session expectations**: Tracks expected vs. actual tool calls
 
+### Elevation System (Sudo Approval)
+
+The elevation system allows agents to request and execute commands with elevated privileges.
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Elevation API | `hook_server.rs` | HTTP endpoints for wrapper communication |
+| Elevation Types | `types.rs` | `PendingElevatedCommand` struct |
+| Tauri Commands | `commands/security.rs` | `approve_elevated_command`, `deny_elevated_command` |
+| First Run | `first_run.rs` | Installs wrapper scripts on startup |
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Agent runs: sudo apt install nginx                             │
+│                      │                                          │
+│                      ▼                                          │
+│  ┌───────────────────────────────────────────┐                 │
+│  │  elevation-bin/linux/sudo (wrapper)        │                 │
+│  │  - Intercepts sudo command                 │                 │
+│  │  - POSTs to /elevated/request              │                 │
+│  └───────────────────────────────────────────┘                 │
+│                      │                                          │
+│                      ▼                                          │
+│  ┌───────────────────────────────────────────┐                 │
+│  │  Hook Server (:19832)                      │                 │
+│  │  - Queues request, emits elevated:request  │                 │
+│  └───────────────────────────────────────────┘                 │
+│                      │                                          │
+│                      ▼                                          │
+│  ┌───────────────────────────────────────────┐                 │
+│  │  Frontend (ElevatedCommandModal)           │                 │
+│  │  - Shows approval dialog with risk level   │                 │
+│  │  - User clicks Approve/Deny                │                 │
+│  └───────────────────────────────────────────┘                 │
+│                      │                                          │
+│                      ▼                                          │
+│  ┌───────────────────────────────────────────┐                 │
+│  │  Wrapper polls /elevated/status/:id        │                 │
+│  │  - On approved: calls pkexec/gsudo         │                 │
+│  │  - OS shows native auth dialog             │                 │
+│  │  - Command executes with elevation         │                 │
+│  └───────────────────────────────────────────┘                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Platform-Specific Elevation
+
+| Platform | Wrapper Script | Elevation Tool | Notes |
+|----------|----------------|----------------|-------|
+| Linux | `elevation-bin/linux/sudo` | pkexec (polkit) | Uses system polkit policy |
+| macOS | `elevation-bin/macos/sudo` | osascript | File-based command passing |
+| Windows | `elevation-bin/windows/sudo` | gsudo | Runs in Git Bash environment |
+
+#### PATH Injection
+
+Agents receive a modified PATH with the elevation-bin directory prepended:
+
+```rust
+// In agent_manager.rs
+let new_path = format!("{}:{}", elevation_bin_path, existing_path);
+cmd.env("PATH", new_path);
+cmd.env("CLAUDE_AGENT_ID", agent_id);
+```
+
+This ensures our `sudo` wrapper is found before the system `sudo`.
+
+#### Risk Classification
+
+Commands are classified into risk levels:
+- **Normal**: Standard elevation (package installs, service management)
+- **Suspicious**: Warning for `curl | bash`, `bash -c`, etc.
+- **High Risk**: Extra confirmation for `rm -rf`, `dd`, `mkfs`, etc.
+
+#### Script-Scoped Approval
+
+For installer scripts with multiple sudo calls, users can approve all commands from the same parent process:
+
+```bash
+# Wrapper tracks parent process
+PARENT_PID=$PPID
+SCRIPT_HASH=$(echo "$PARENT_PID-$PARENT_CMD" | md5sum)
+
+# Check if scope is pre-approved
+curl "$COMMANDER_URL/elevated/check-scope/$SCRIPT_HASH"
+```
+
 ### Supporting Systems
 
 | Module | File | Purpose |

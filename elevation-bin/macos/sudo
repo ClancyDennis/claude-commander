@@ -1,0 +1,131 @@
+#!/bin/bash
+# Claude Commander Sudo Wrapper for macOS
+# This script intercepts sudo commands from Claude Code agents,
+# requests approval from Claude Commander, and executes via osascript if approved.
+# Uses file-based command passing to avoid quote escaping issues.
+
+set -e
+
+COMMANDER_URL="http://127.0.0.1:19832/elevated"
+COMMAND="$*"
+WORKING_DIR="$(pwd)"
+
+# Get agent ID from environment (set by Claude Commander when spawning agent)
+AGENT_ID="${CLAUDE_AGENT_ID:-unknown}"
+
+# Get parent process info for script-scoped approval
+PARENT_PID=$PPID
+PARENT_CMD=$(ps -o comm= -p $PARENT_PID 2>/dev/null || echo "unknown")
+SCRIPT_HASH=$(echo "$PARENT_PID-$PARENT_CMD-$$" | md5 -q 2>/dev/null || echo "$PARENT_PID-$PARENT_CMD-$$" | md5sum | cut -d' ' -f1)
+
+# Create temp files for command and output
+TEMP_SCRIPT=$(mktemp /tmp/claude-elevated-XXXXXX.sh)
+TEMP_OUT=$(mktemp /tmp/claude-elevated-out-XXXXXX)
+TEMP_ERR=$(mktemp /tmp/claude-elevated-err-XXXXXX)
+
+# Cleanup function
+cleanup() {
+    rm -f "$TEMP_SCRIPT" "$TEMP_OUT" "$TEMP_ERR"
+}
+trap cleanup EXIT
+
+# Write command to file (no escaping needed!)
+echo "#!/bin/bash" > "$TEMP_SCRIPT"
+echo "cd \"$WORKING_DIR\"" >> "$TEMP_SCRIPT"
+echo "$COMMAND" >> "$TEMP_SCRIPT"
+chmod +x "$TEMP_SCRIPT"
+
+# Check if this script scope is already approved
+SCOPE_CHECK=$(curl -sf "$COMMANDER_URL/check-scope/$SCRIPT_HASH" 2>/dev/null || echo '{"approved":false}')
+if echo "$SCOPE_CHECK" | grep -q '"approved":true'; then
+    # Script scope is approved, execute directly
+    osascript -e "do shell script \"$TEMP_SCRIPT > $TEMP_OUT 2> $TEMP_ERR\" with administrator privileges"
+    EXIT_CODE=$?
+    cat "$TEMP_OUT"
+    cat "$TEMP_ERR" >&2
+    exit $EXIT_CODE
+fi
+
+# Request approval from Claude Commander
+REQUEST_JSON=$(cat <<EOF
+{
+    "command": "$COMMAND",
+    "agent_id": "$AGENT_ID",
+    "working_dir": "$WORKING_DIR",
+    "script_hash": "$SCRIPT_HASH",
+    "parent_cmd": "$PARENT_CMD"
+}
+EOF
+)
+
+RESPONSE=$(curl -sf -X POST "$COMMANDER_URL/request" \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_JSON" 2>/dev/null)
+
+if [ -z "$RESPONSE" ]; then
+    echo "Error: Failed to contact Claude Commander for sudo approval" >&2
+    echo "Make sure Claude Commander is running." >&2
+    exit 1
+fi
+
+REQUEST_ID=$(echo "$RESPONSE" | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4)
+STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$REQUEST_ID" ]; then
+    echo "Error: Invalid response from Claude Commander" >&2
+    exit 1
+fi
+
+# If already approved (script scope), execute immediately
+if [ "$STATUS" = "approved" ]; then
+    osascript -e "do shell script \"$TEMP_SCRIPT > $TEMP_OUT 2> $TEMP_ERR\" with administrator privileges"
+    EXIT_CODE=$?
+    cat "$TEMP_OUT"
+    cat "$TEMP_ERR" >&2
+    exit $EXIT_CODE
+fi
+
+# Poll for approval
+echo "Waiting for approval from Claude Commander..." >&2
+TIMEOUT=300  # 5 minutes
+ELAPSED=0
+
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+
+    STATUS_RESPONSE=$(curl -sf "$COMMANDER_URL/status/$REQUEST_ID" 2>/dev/null || echo '{"status":"error"}')
+    STATUS=$(echo "$STATUS_RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+    case "$STATUS" in
+        "approved")
+            echo "Approved! Executing with elevated privileges..." >&2
+            osascript -e "do shell script \"$TEMP_SCRIPT > $TEMP_OUT 2> $TEMP_ERR\" with administrator privileges"
+            EXIT_CODE=$?
+            cat "$TEMP_OUT"
+            cat "$TEMP_ERR" >&2
+            exit $EXIT_CODE
+            ;;
+        "denied")
+            echo "Permission denied by user" >&2
+            exit 1
+            ;;
+        "expired")
+            echo "Approval request timed out" >&2
+            exit 1
+            ;;
+        "error"|"not_found")
+            echo "Error checking approval status" >&2
+            exit 1
+            ;;
+        "pending")
+            # Still waiting, continue polling
+            ;;
+        *)
+            # Unknown status, continue polling
+            ;;
+    esac
+done
+
+echo "Approval request timed out after ${TIMEOUT}s" >&2
+exit 1

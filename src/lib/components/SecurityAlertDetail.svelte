@@ -137,11 +137,11 @@
               <div class="threat-card">
                 <div class="threat-header">
                   <div class="threat-type">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: {threatTypeConfig[threat.threatType]?.color || 'var(--text-muted)'}">
-                      <path d={threatTypeConfig[threat.threatType]?.icon || threatTypeConfig.Unknown.icon} stroke-linecap="round" stroke-linejoin="round"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: {threatTypeConfig[threat.threat_type]?.color || 'var(--text-muted)'}">
+                      <path d={threatTypeConfig[threat.threat_type]?.icon || threatTypeConfig.Unknown.icon} stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    <span style="color: {threatTypeConfig[threat.threatType]?.color || 'var(--text-muted)'}">
-                      {threatTypeConfig[threat.threatType]?.label || threat.threatType}
+                    <span style="color: {threatTypeConfig[threat.threat_type]?.color || 'var(--text-muted)'}">
+                      {threatTypeConfig[threat.threat_type]?.label || threat.threat_type}
                     </span>
                   </div>
                   <span class="threat-confidence">{formatConfidence(threat.confidence)}</span>

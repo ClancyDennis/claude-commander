@@ -60,9 +60,14 @@
     addPendingReview,
     removePendingReview,
     showAlertDetail,
+    addPendingElevatedCommand,
+    updateElevatedCommandStatus,
+    showElevatedCommand,
+    pendingElevatedCount,
   } from "./lib/stores/security";
   import SecurityAlertDetail from "./lib/components/SecurityAlertDetail.svelte";
   import NotificationsModal from "./lib/components/NotificationsModal.svelte";
+  import ElevatedCommandModal from "./lib/components/ElevatedCommandModal.svelte";
   import {
     setupEventListeners,
     setupKeyboardShortcuts,
@@ -388,6 +393,34 @@
       onToast: (toast) => {
         showToast(toast);
       },
+
+      // Elevated command callbacks
+      onElevatedCommandRequest: (request) => {
+        addPendingElevatedCommand(request);
+        // Auto-show modal for the new request
+        showElevatedCommand(request);
+        // Also show a toast notification
+        const riskLabel = request.riskLevel === "high" ? "HIGH RISK" :
+                          request.riskLevel === "suspicious" ? "SUSPICIOUS" : "";
+        showToast({
+          type: request.riskLevel === "high" ? "error" : "warning",
+          message: `${riskLabel} Sudo approval needed`.trim(),
+          action: {
+            label: "Review",
+            onClick: () => showElevatedCommand(request),
+          },
+          duration: 0, // Don't auto-dismiss
+        });
+      },
+      onElevatedCommandStatus: (requestId, status, error) => {
+        updateElevatedCommandStatus(requestId, status as any);
+        if (status === "expired" || status === "failed") {
+          showToast({
+            type: "warning",
+            message: error || `Elevated command ${status}`,
+          });
+        }
+      },
     });
 
     return () => {
@@ -446,6 +479,7 @@
 <RateLimitModal />
 <SecurityAlertDetail />
 <NotificationsModal />
+<ElevatedCommandModal />
 <WelcomeModal show={showWelcomeModal} onClose={() => (showWelcomeModal = false)} />
 
 {#if showNewAgentDialog}

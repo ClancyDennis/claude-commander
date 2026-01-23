@@ -390,24 +390,40 @@ impl SecurityMonitor {
         events: &[SecurityEvent],
         pattern_matches: Vec<PatternMatch>,
     ) -> AnalysisResult {
+        // Build a map of event_id -> agent_id for quick lookup
+        let event_agent_map: std::collections::HashMap<&str, &str> = events
+            .iter()
+            .map(|e| (e.id.as_str(), e.agent_id.as_str()))
+            .collect();
+
         let threats: Vec<ThreatAssessment> = pattern_matches
             .iter()
-            .map(|pm| ThreatAssessment {
-                event_id: pm.event_id.clone().unwrap_or_default(),
-                threat_type: match pm.category {
-                    ThreatCategory::PromptInjection => ThreatType::PromptInjection,
-                    ThreatCategory::DataExfiltration => ThreatType::DataExfiltration,
-                    ThreatCategory::UnauthorizedFileAccess => ThreatType::UnauthorizedAccess,
-                    ThreatCategory::DangerousCommand => ThreatType::MaliciousCodeExecution,
-                    ThreatCategory::PrivilegeEscalation => ThreatType::PrivilegeEscalation,
-                    ThreatCategory::SystemTampering => ThreatType::SystemManipulation,
-                    ThreatCategory::NetworkAbuse => ThreatType::DataExfiltration,
-                },
-                severity: pm.severity.clone(),
-                confidence: pm.confidence,
-                explanation: format!("Pattern '{}' matched: {}", pm.rule_name, pm.matched_text),
-                evidence: vec![pm.matched_text.clone()],
-                mitigations: vec!["Review the flagged content".to_string()],
+            .map(|pm| {
+                let event_id = pm.event_id.clone().unwrap_or_default();
+                // Look up agent_id from the event, fallback to empty string
+                let agent_id = event_agent_map
+                    .get(event_id.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+
+                ThreatAssessment {
+                    event_id,
+                    agent_id,
+                    threat_type: match pm.category {
+                        ThreatCategory::PromptInjection => ThreatType::PromptInjection,
+                        ThreatCategory::DataExfiltration => ThreatType::DataExfiltration,
+                        ThreatCategory::UnauthorizedFileAccess => ThreatType::UnauthorizedAccess,
+                        ThreatCategory::DangerousCommand => ThreatType::MaliciousCodeExecution,
+                        ThreatCategory::PrivilegeEscalation => ThreatType::PrivilegeEscalation,
+                        ThreatCategory::SystemTampering => ThreatType::SystemManipulation,
+                        ThreatCategory::NetworkAbuse => ThreatType::DataExfiltration,
+                    },
+                    severity: pm.severity.clone(),
+                    confidence: pm.confidence,
+                    explanation: format!("Pattern '{}' matched: {}", pm.rule_name, pm.matched_text),
+                    evidence: vec![pm.matched_text.clone()],
+                    mitigations: vec!["Review the flagged content".to_string()],
+                }
             })
             .collect();
 

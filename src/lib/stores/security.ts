@@ -1,5 +1,5 @@
 import { writable, derived } from "svelte/store";
-import type { SecurityAlert, PendingSecurityReview } from "../types";
+import type { SecurityAlert, PendingSecurityReview, PendingElevatedCommand } from "../types";
 
 // Map of agent_id -> alerts
 export const securityAlerts = writable<Map<string, SecurityAlert[]>>(new Map());
@@ -223,4 +223,111 @@ export function openNotificationsModal() {
 // Close notifications modal
 export function closeNotificationsModal() {
   showNotificationsModal.set(false);
+}
+
+// ========== Elevated Command Approval State ==========
+
+// Map of request_id -> pending elevated command
+export const pendingElevatedCommands = writable<Map<string, PendingElevatedCommand>>(new Map());
+
+// Controls elevated command modal visibility
+export const showElevatedCommandModal = writable<boolean>(false);
+
+// Currently selected elevated command for modal display
+export const selectedElevatedCommand = writable<PendingElevatedCommand | null>(null);
+
+// Derived: Total pending elevated commands count
+export const pendingElevatedCount = derived(pendingElevatedCommands, ($commands) => {
+  let count = 0;
+  $commands.forEach((cmd) => {
+    if (cmd.status === "pending") {
+      count++;
+    }
+  });
+  return count;
+});
+
+// Derived: All pending elevated commands sorted by requested time (newest first)
+export const pendingElevatedSorted = derived(pendingElevatedCommands, ($commands) => {
+  return Array.from($commands.values())
+    .filter((cmd) => cmd.status === "pending")
+    .sort((a, b) => b.requestedAt - a.requestedAt);
+});
+
+// Add a pending elevated command
+export function addPendingElevatedCommand(cmd: PendingElevatedCommand) {
+  pendingElevatedCommands.update((map) => {
+    map.set(cmd.id, cmd);
+    return new Map(map);
+  });
+  // Auto-show modal for high-risk commands
+  if (cmd.riskLevel === "high") {
+    selectedElevatedCommand.set(cmd);
+    showElevatedCommandModal.set(true);
+  }
+}
+
+// Update elevated command status
+export function updateElevatedCommandStatus(
+  requestId: string,
+  status: PendingElevatedCommand["status"]
+) {
+  pendingElevatedCommands.update((map) => {
+    const cmd = map.get(requestId);
+    if (cmd) {
+      map.set(requestId, { ...cmd, status });
+    }
+    return new Map(map);
+  });
+
+  // Close modal if this was the selected command
+  selectedElevatedCommand.update((selected) => {
+    if (selected && selected.id === requestId) {
+      showElevatedCommandModal.set(false);
+      return null;
+    }
+    return selected;
+  });
+}
+
+// Remove an elevated command (after it's been handled)
+export function removeElevatedCommand(requestId: string) {
+  pendingElevatedCommands.update((map) => {
+    map.delete(requestId);
+    return new Map(map);
+  });
+}
+
+// Show elevated command modal for a specific command
+export function showElevatedCommand(cmd: PendingElevatedCommand) {
+  selectedElevatedCommand.set(cmd);
+  showElevatedCommandModal.set(true);
+}
+
+// Close elevated command modal
+export function closeElevatedCommandModal() {
+  showElevatedCommandModal.set(false);
+  selectedElevatedCommand.set(null);
+}
+
+// Get pending elevated command by ID
+export function getElevatedCommand(requestId: string): PendingElevatedCommand | undefined {
+  let result: PendingElevatedCommand | undefined;
+  pendingElevatedCommands.subscribe((map) => {
+    result = map.get(requestId);
+  })();
+  return result;
+}
+
+// Clean up expired elevated commands
+export function cleanupExpiredElevatedCommands() {
+  const now = Date.now();
+  pendingElevatedCommands.update((map) => {
+    map.forEach((cmd, id) => {
+      if (cmd.status === "pending" && cmd.expiresAt <= now) {
+        map.set(id, { ...cmd, status: "expired" });
+      }
+    });
+    return new Map(map);
+  });
 }

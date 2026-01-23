@@ -252,13 +252,15 @@
       >
         Overview
       </button>
-      <button
-        class="main-tab"
-        class:active={activeTab === 'activity'}
-        onclick={() => activeTab = 'activity'}
-      >
-        Activity ({toolCalls.length + stateChanges.length + decisions.length})
-      </button>
+      {#if $selectedHistoricalRun.pipeline_id}
+        <button
+          class="main-tab"
+          class:active={activeTab === 'activity'}
+          onclick={() => activeTab = 'activity'}
+        >
+          Activity ({toolCalls.length + stateChanges.length + decisions.length})
+        </button>
+      {/if}
       <button
         class="main-tab"
         class:active={activeTab === 'outputs'}
@@ -279,15 +281,40 @@
       <!-- Overview Tab -->
       {#if activeTab === 'overview'}
         <div class="overview-content">
-          {#if $selectedHistoricalRun.initial_prompt}
-            <div class="section">
-              <h3>Initial Prompt</h3>
+          <!-- First Prompt Section -->
+          <div class="section">
+            <h3>First Prompt</h3>
+            {#if $selectedHistoricalRun.initial_prompt}
               <div class="prompt-content">
                 <MarkdownRenderer content={$selectedHistoricalRun.initial_prompt} />
               </div>
-            </div>
-          {/if}
+            {:else if prompts.length > 0}
+              <div class="prompt-content">
+                <MarkdownRenderer content={prompts[0].prompt} />
+              </div>
+            {:else}
+              <div class="empty-content">
+                <p class="muted">No prompts recorded</p>
+              </div>
+            {/if}
+          </div>
 
+          <!-- Final Output/Result Section -->
+          <div class="section">
+            <h3>Final Result</h3>
+            {#if outputs.length > 0}
+              {@const finalOutput = outputs[0]}
+              <div class="result-content">
+                <MarkdownRenderer content={finalOutput.content} />
+              </div>
+            {:else}
+              <div class="empty-content">
+                <p class="muted">No outputs recorded</p>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Error Message Section (if any) -->
           {#if $selectedHistoricalRun.error_message}
             <div class="section">
               <h3>Error</h3>
@@ -297,6 +324,7 @@
             </div>
           {/if}
 
+          <!-- Resume Section -->
           {#if $selectedHistoricalRun.can_resume}
             <div class="resume-section">
               <button class="primary resume-btn">
@@ -306,13 +334,6 @@
                 Resume This Run
               </button>
               <p class="resume-hint">This run can be resumed from where it left off</p>
-            </div>
-          {/if}
-
-          {#if !$selectedHistoricalRun.initial_prompt && !$selectedHistoricalRun.error_message && !$selectedHistoricalRun.can_resume}
-            <div class="empty-state">
-              <p>No additional information available for this run.</p>
-              <p class="hint">Check the Activity, Outputs, or Prompts tabs for more details.</p>
             </div>
           {/if}
         </div>
@@ -617,7 +638,8 @@
   }
 
   .prompt-content,
-  .error-content {
+  .error-content,
+  .result-content {
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -625,9 +647,28 @@
     color: var(--text-primary);
   }
 
+  .result-content {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
   .error-content {
     border-color: var(--error);
     background-color: rgba(239, 68, 68, 0.1);
+  }
+
+  .empty-content {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: var(--space-lg);
+    text-align: center;
+  }
+
+  .empty-content .muted {
+    color: var(--text-muted);
+    margin: 0;
+    font-style: italic;
   }
 
   .resume-section {

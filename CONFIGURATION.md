@@ -147,6 +147,18 @@ Default location for instruction files:
 
 Or specify a custom path when creating agents.
 
+### Elevation Wrapper Scripts
+
+Wrapper scripts for sudo command interception are installed on startup:
+
+| Platform | Path |
+|----------|------|
+| Linux | `~/.local/share/claude-commander/elevation-bin/linux/sudo` |
+| macOS | `~/Library/Application Support/claude-commander/elevation-bin/macos/sudo` |
+| Windows | `%LOCALAPPDATA%\claude-commander\elevation-bin\windows\sudo` |
+
+These scripts are automatically injected into agent PATH environments.
+
 ---
 
 ## Keyboard Shortcuts
@@ -178,6 +190,41 @@ Security monitoring is enabled by default. Configure via the security settings:
 1. **Regex patterns**: Fast matching for known threat signatures
 2. **LLM semantic analysis**: Detects sophisticated attacks
 3. **Session expectations**: Flags unexpected tool usage
+
+---
+
+## Elevated Command Approval (Sudo)
+
+When agents need to run commands with elevated privileges, Claude Commander intercepts the request and prompts for approval.
+
+### Platform Requirements
+
+| Platform | Requirement | Installation |
+|----------|-------------|--------------|
+| Linux | polkit (pkexec) | Usually pre-installed on desktop systems |
+| macOS | None | Uses built-in osascript |
+| Windows | gsudo | `winget install gsudo` or download from [github.com/gerardog/gsudo](https://github.com/gerardog/gsudo) |
+
+### How It Works
+
+1. Agent runs a command with `sudo` (e.g., `sudo apt install nginx`)
+2. Claude Commander's wrapper script intercepts the call
+3. A dialog appears showing the command and risk level
+4. You approve or deny the request
+5. If approved, your OS prompts for password/biometrics
+6. The command executes with actual elevated privileges
+
+### Risk Levels
+
+| Level | Examples | UI Treatment |
+|-------|----------|--------------|
+| Normal | `apt install`, `systemctl restart` | Standard approval dialog |
+| Suspicious | `curl ... \| bash`, `bash -c "..."` | Warning banner displayed |
+| High Risk | `rm -rf /`, `dd if=...`, `mkfs` | Extra confirmation checkbox required |
+
+### Script-Scoped Approval
+
+For installer scripts that need multiple sudo calls (like Homebrew), you can select "Approve All for This Script" to approve all sudo commands from the same parent process without repeated prompts.
 
 ---
 

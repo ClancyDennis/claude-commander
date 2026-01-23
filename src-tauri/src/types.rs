@@ -400,3 +400,127 @@ pub struct AgentStatusUpdateEvent {
     pub last_tool: Option<String>,
     pub tool_count: u32,
 }
+
+// ============================================================================
+// Elevated Command Types (Sudo Approval System)
+// ============================================================================
+
+/// Status of an elevated command request
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ElevatedCommandStatus {
+    Pending,   // Waiting for user approval
+    Approved,  // User approved, ready to execute
+    Denied,    // User denied the request
+    Expired,   // Request timed out
+    Executing, // Currently executing
+    Completed, // Execution finished
+    Failed,    // Execution failed
+}
+
+impl ElevatedCommandStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ElevatedCommandStatus::Pending => "pending",
+            ElevatedCommandStatus::Approved => "approved",
+            ElevatedCommandStatus::Denied => "denied",
+            ElevatedCommandStatus::Expired => "expired",
+            ElevatedCommandStatus::Executing => "executing",
+            ElevatedCommandStatus::Completed => "completed",
+            ElevatedCommandStatus::Failed => "failed",
+        }
+    }
+}
+
+/// Risk level classification for commands
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CommandRiskLevel {
+    Normal,     // Standard commands like apt install, systemctl
+    Suspicious, // curl | bash, unknown sources
+    High,       // rm -rf /, dd, mkfs, etc.
+}
+
+/// A pending elevated command awaiting user approval
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingElevatedCommand {
+    pub id: String,
+    pub agent_id: String,
+    pub command: String,
+    pub working_dir: String,
+    pub requested_at: i64,
+    pub expires_at: i64,
+    pub status: ElevatedCommandStatus,
+    pub risk_level: CommandRiskLevel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_hash: Option<String>, // For script-scoped approval
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_cmd: Option<String>, // Parent process command
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inner_command: Option<String>, // Expanded command for bash -c
+    // Compound command analysis
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_commands: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_commands: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sudo_command: Option<String>,
+}
+
+/// Request from wrapper script to elevate a command
+#[derive(Debug, Clone, Deserialize)]
+pub struct ElevatedCommandRequest {
+    pub command: String,
+    pub agent_id: String,
+    #[serde(default)]
+    pub working_dir: Option<String>,
+    #[serde(default)]
+    pub script_hash: Option<String>,
+    #[serde(default)]
+    pub parent_cmd: Option<String>,
+    #[serde(default)]
+    pub inner_command: Option<String>,
+    #[serde(default)]
+    pub warnings: Option<String>, // Pipe-separated warning flags
+}
+
+/// Response to elevation request
+#[derive(Debug, Clone, Serialize)]
+pub struct ElevatedCommandRequestResponse {
+    pub request_id: String,
+    pub status: String,
+}
+
+/// Response to status poll
+#[derive(Debug, Clone, Serialize)]
+pub struct ElevatedStatusResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Response to scope check
+#[derive(Debug, Clone, Serialize)]
+pub struct ElevatedScopeCheckResponse {
+    pub approved: bool,
+}
+
+/// Event emitted when elevated command is requested
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevatedCommandRequestEvent {
+    pub request: PendingElevatedCommand,
+}
+
+/// Event emitted when elevated command status changes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevatedCommandStatusEvent {
+    pub request_id: String,
+    pub status: ElevatedCommandStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}

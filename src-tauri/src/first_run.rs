@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 // Embed files at compile time
@@ -11,6 +13,15 @@ const PLAYWRIGHT_SKILL: &str = include_str!("../../.instructions/PLAYWRIGHT_MCP_
 const GMAIL_INTEGRATION: &str = include_str!("../../.instructions/GMAIL_INTEGRATION.md");
 const GOOGLE_DRIVE_INTEGRATION: &str =
     include_str!("../../.instructions/GOOGLE_DRIVE_INTEGRATION.md");
+
+// Embed elevation wrapper scripts at compile time
+const LINUX_SUDO_WRAPPER: &str = include_str!("../../elevation-bin/linux/sudo");
+
+#[cfg(target_os = "macos")]
+const MACOS_SUDO_WRAPPER: &str = include_str!("../../elevation-bin/macos/sudo");
+
+#[cfg(target_os = "windows")]
+const WINDOWS_SUDO_WRAPPER: &str = include_str!("../../elevation-bin/windows/sudo");
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InitializationMarker {
@@ -121,6 +132,74 @@ pub fn run_if_needed() {
             eprintln!("⚠ Could not determine config directories for first-run initialization");
         }
     }
+
+    // Always ensure elevation scripts are installed (they may need updating)
+    match install_elevation_scripts() {
+        Ok(()) => println!("✓ Elevation scripts ready"),
+        Err(e) => eprintln!("⚠ Failed to install elevation scripts: {}", e),
+    }
+}
+
+/// Install elevation wrapper scripts to app data directory
+/// These scripts intercept sudo calls from Claude Code agents
+pub fn install_elevation_scripts() -> Result<(), String> {
+    let data_dir = dirs::data_local_dir()
+        .ok_or("Could not determine data directory")?
+        .join("claude-commander")
+        .join("elevation-bin");
+
+    // Install Linux scripts
+    let linux_dir = data_dir.join("linux");
+    fs::create_dir_all(&linux_dir)
+        .map_err(|e| format!("Failed to create Linux elevation dir: {}", e))?;
+
+    let linux_sudo = linux_dir.join("sudo");
+    fs::write(&linux_sudo, LINUX_SUDO_WRAPPER)
+        .map_err(|e| format!("Failed to write Linux sudo wrapper: {}", e))?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        let mut perms = fs::metadata(&linux_sudo)
+            .map_err(|e| format!("Failed to get metadata: {}", e))?
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&linux_sudo, perms)
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+    }
+
+    // Install macOS scripts
+    #[cfg(target_os = "macos")]
+    {
+        let macos_dir = data_dir.join("macos");
+        fs::create_dir_all(&macos_dir)
+            .map_err(|e| format!("Failed to create macOS elevation dir: {}", e))?;
+
+        let macos_sudo = macos_dir.join("sudo");
+        fs::write(&macos_sudo, MACOS_SUDO_WRAPPER)
+            .map_err(|e| format!("Failed to write macOS sudo wrapper: {}", e))?;
+
+        let mut perms = fs::metadata(&macos_sudo)
+            .map_err(|e| format!("Failed to get metadata: {}", e))?
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&macos_sudo, perms)
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+    }
+
+    // Install Windows scripts
+    #[cfg(target_os = "windows")]
+    {
+        let windows_dir = data_dir.join("windows");
+        fs::create_dir_all(&windows_dir)
+            .map_err(|e| format!("Failed to create Windows elevation dir: {}", e))?;
+
+        let windows_sudo = windows_dir.join("sudo");
+        fs::write(&windows_sudo, WINDOWS_SUDO_WRAPPER)
+            .map_err(|e| format!("Failed to write Windows sudo wrapper: {}", e))?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

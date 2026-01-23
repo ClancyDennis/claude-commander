@@ -27,7 +27,7 @@ Organize your cloud files. Send emails. Deploy websites. Generate images. Search
 | "Find all messages from Mom about the trip" | Searches iMessage database |
 | "Refactor this codebase to TypeScript" | Runs multiple Claude Code agents in parallel |
 
-**Anything you can do from the command line without sudo — Claude Commander can automate.**
+**Anything you can do from the command line — including commands requiring sudo — Claude Commander can automate.** (Elevated commands require your explicit approval.)
 
 ---
 
@@ -36,6 +36,7 @@ Organize your cloud files. Send emails. Deploy websites. Generate images. Search
 - **Run many Claude Code agents simultaneously** — parallelize any task across directories
 - **Guided instruction files** — walks you through connecting any service (OneDrive, Gmail, Azure, etc.)
 - **Automatic security detection** — catches prompt injection and dangerous commands before they run
+- **Sudo command approval** — agents can request elevated privileges with your explicit approval
 - **Cost tracking** — see exactly what you're spending across all agents in real-time
 - **Human-in-the-loop** — review and approve plans before execution
 - **Smart verification** — run the same task with multiple agents and automatically pick the best result
@@ -133,7 +134,7 @@ Claude Commander includes a three-layer security system to protect against malic
 | **Destructive commands** | `rm -rf /`, `mkfs`, `dd`, format commands |
 | **Reverse shells** | `bash -i >&`, `nc -e`, socket connections |
 | **Sensitive files** | `/etc/shadow`, `.ssh/`, `.aws/credentials`, private keys |
-| **Privilege escalation** | `sudo`, SUID manipulation, sudoers modification |
+| **Privilege escalation** | SUID manipulation, sudoers modification (sudo requires approval) |
 | **Data exfiltration** | Piping data to `curl`/`wget`, DNS tunneling |
 
 ### How Approvals Work
@@ -146,6 +147,29 @@ By default, **all actions require human approval** before execution:
 4. **Execution with monitoring** → Security system watches for anomalies
 
 For advanced users, auto-approval can be enabled for low-risk operations. Critical threats (like `rm -rf`) always require manual review.
+
+### Elevated Command Approval (sudo)
+
+When an agent needs to run a command with `sudo`, Claude Commander:
+
+1. **Intercepts the request** — Our wrapper script catches sudo before it runs
+2. **Shows an approval dialog** — You see exactly what command needs elevation
+3. **Triggers native authentication** — On approval, your OS prompts for password
+4. **Executes with elevation** — Command runs with actual root privileges
+
+**Risk classification:**
+- **Normal commands** — Standard approval dialog (e.g., `sudo apt install nginx`)
+- **Suspicious patterns** — Warning banner for `curl | bash` or `bash -c` commands
+- **High-risk commands** — Extra confirmation required for `rm -rf`, `dd`, `mkfs`, etc.
+
+**Script-scoped approval:** For installer scripts that need multiple sudo calls (like Homebrew), you can approve all commands from that script at once.
+
+**Platform support:**
+| Platform | Elevation Method | Requirements |
+|----------|------------------|--------------|
+| Linux | pkexec (polkit) | Usually pre-installed |
+| macOS | osascript | Built-in |
+| Windows | gsudo | Install via `winget install gsudo` |
 
 ### Detection Layers
 
@@ -313,7 +337,7 @@ No! Describe what you want in plain English. Claude Commander figures out the co
 
 **Q: What can it actually do?**
 
-Anything you can do from a terminal without admin/sudo access. That includes file management, cloud services (OneDrive, Gmail, Azure, GCP), image/audio generation, messaging apps, deployments, and more.
+Anything you can do from a terminal — including commands requiring sudo/admin access with your approval. That includes file management, cloud services (OneDrive, Gmail, Azure, GCP), image/audio generation, messaging apps, deployments, system administration, and more.
 
 **Q: How does it work with services like OneDrive or Gmail?**
 
@@ -384,6 +408,7 @@ Claude Commander builds on ideas from the AI agent community:
 - Multi-agent management with real-time output streaming
 - 4-phase pipeline system (Planning → Implementation → Testing → Review)
 - Security monitoring with prompt injection detection
+- Sudo command approval with native OS elevation (Linux/macOS/Windows)
 - Cost tracking across all agents
 - Instruction file → Skills → Sub-agents transformation
 

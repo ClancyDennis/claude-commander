@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { get } from "svelte/store";
   import {
     showNotificationsModal,
     closeNotificationsModal,
@@ -48,7 +49,11 @@
   // Get unique agent IDs from alerts
   let agentIds = $derived.by(() => {
     const ids = new Set<string>();
-    $activeAlerts.forEach((alert) => ids.add(alert.agentId));
+    $activeAlerts.forEach((alert) => {
+      if (alert.agentId) {
+        ids.add(alert.agentId);
+      }
+    });
     return Array.from(ids).sort();
   });
 
@@ -69,8 +74,10 @@
   }
 
   function getAgentName(agentId: string): string {
-    const agent = $agents.get(agentId);
-    return agent?.name || agentId.slice(0, 8);
+    if (!agentId) return "Unknown";
+    const agentsMap = get(agents);
+    const agent = agentsMap.get(agentId);
+    return agent?.title || agentId.slice(0, 8);
   }
 </script>
 

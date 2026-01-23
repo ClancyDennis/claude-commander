@@ -1,0 +1,111 @@
+#!/bin/bash
+# Claude Commander Sudo Wrapper for Windows (Git Bash)
+# This script intercepts sudo commands from Claude Code agents,
+# requests approval from Claude Commander, and executes via gsudo if approved.
+#
+# Requirements: gsudo must be installed (winget install gsudo)
+
+set -e
+
+COMMANDER_URL="http://127.0.0.1:19832/elevated"
+COMMAND="$*"
+WORKING_DIR="$(pwd)"
+
+# Get agent ID from environment (set by Claude Commander when spawning agent)
+AGENT_ID="${CLAUDE_AGENT_ID:-unknown}"
+
+# Get parent process info for script-scoped approval
+PARENT_PID=$PPID
+PARENT_CMD=$(ps -o comm= -p $PARENT_PID 2>/dev/null || echo "unknown")
+SCRIPT_HASH=$(echo "$PARENT_PID-$PARENT_CMD-$$" | md5sum | cut -d' ' -f1)
+
+# Check if gsudo is available
+if ! command -v gsudo &> /dev/null; then
+    echo "Error: gsudo is not installed." >&2
+    echo "Please install gsudo: winget install gsudo" >&2
+    echo "Or download from: https://github.com/gerardog/gsudo" >&2
+    exit 1
+fi
+
+# Check if this script scope is already approved
+SCOPE_CHECK=$(curl -sf "$COMMANDER_URL/check-scope/$SCRIPT_HASH" 2>/dev/null || echo '{"approved":false}')
+if echo "$SCOPE_CHECK" | grep -q '"approved":true'; then
+    # Script scope is approved, execute directly
+    exec gsudo "$@"
+fi
+
+# Request approval from Claude Commander
+REQUEST_JSON=$(cat <<EOF
+{
+    "command": "$COMMAND",
+    "agent_id": "$AGENT_ID",
+    "working_dir": "$WORKING_DIR",
+    "script_hash": "$SCRIPT_HASH",
+    "parent_cmd": "$PARENT_CMD"
+}
+EOF
+)
+
+RESPONSE=$(curl -sf -X POST "$COMMANDER_URL/request" \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_JSON" 2>/dev/null)
+
+if [ -z "$RESPONSE" ]; then
+    echo "Error: Failed to contact Claude Commander for sudo approval" >&2
+    echo "Make sure Claude Commander is running." >&2
+    exit 1
+fi
+
+REQUEST_ID=$(echo "$RESPONSE" | grep -o '"request_id":"[^"]*"' | cut -d'"' -f4)
+STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$REQUEST_ID" ]; then
+    echo "Error: Invalid response from Claude Commander" >&2
+    exit 1
+fi
+
+# If already approved (script scope), execute immediately
+if [ "$STATUS" = "approved" ]; then
+    exec gsudo "$@"
+fi
+
+# Poll for approval
+echo "Waiting for approval from Claude Commander..." >&2
+TIMEOUT=300  # 5 minutes
+ELAPSED=0
+
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+
+    STATUS_RESPONSE=$(curl -sf "$COMMANDER_URL/status/$REQUEST_ID" 2>/dev/null || echo '{"status":"error"}')
+    STATUS=$(echo "$STATUS_RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+    case "$STATUS" in
+        "approved")
+            echo "Approved! Executing with elevated privileges..." >&2
+            exec gsudo "$@"
+            ;;
+        "denied")
+            echo "Permission denied by user" >&2
+            exit 1
+            ;;
+        "expired")
+            echo "Approval request timed out" >&2
+            exit 1
+            ;;
+        "error"|"not_found")
+            echo "Error checking approval status" >&2
+            exit 1
+            ;;
+        "pending")
+            # Still waiting, continue polling
+            ;;
+        *)
+            # Unknown status, continue polling
+            ;;
+    esac
+done
+
+echo "Approval request timed out after ${TIMEOUT}s" >&2
+exit 1

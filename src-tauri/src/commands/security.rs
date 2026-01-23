@@ -3,6 +3,9 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::types::{
+    ElevatedCommandStatus, ElevatedCommandStatusEvent, PendingElevatedCommand,
+};
 use crate::AppState;
 
 /// Security status response
@@ -147,4 +150,105 @@ pub async fn scan_agent_activity(
         "Security scan initiated for agent {}. Results will appear in alerts.",
         agent_id
     ))
+}
+
+// ============================================================================
+// Elevated Command Approval Commands
+// ============================================================================
+
+/// Get all pending elevated commands
+#[tauri::command]
+pub async fn get_pending_elevated_commands(
+    state: State<'_, AppState>,
+) -> Result<Vec<PendingElevatedCommand>, String> {
+    let now = chrono::Utc::now().timestamp_millis();
+    let pending = state.pending_elevated.lock().await;
+
+    Ok(pending
+        .values()
+        .filter(|cmd| cmd.status == ElevatedCommandStatus::Pending && cmd.expires_at > now)
+        .cloned()
+        .collect())
+}
+
+/// Approve an elevated command request
+#[tauri::command]
+pub async fn approve_elevated_command(
+    state: State<'_, AppState>,
+    request_id: String,
+    approve_scope: bool,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let mut pending = state.pending_elevated.lock().await;
+
+    let cmd = pending
+        .get_mut(&request_id)
+        .ok_or_else(|| "Request not found".to_string())?;
+
+    if cmd.status != ElevatedCommandStatus::Pending {
+        return Err(format!("Request is not pending (status: {:?})", cmd.status));
+    }
+
+    if cmd.expires_at <= now {
+        cmd.status = ElevatedCommandStatus::Expired;
+        return Err("Request has expired".to_string());
+    }
+
+    // Approve the request
+    cmd.status = ElevatedCommandStatus::Approved;
+    let script_hash = cmd.script_hash.clone();
+
+    // If approve_scope is true and there's a script_hash, approve the whole scope
+    if approve_scope {
+        if let Some(hash) = script_hash {
+            let mut scopes = state.approved_scopes.lock().await;
+            // Scope approval lasts for 10 minutes
+            scopes.insert(hash, now + 10 * 60 * 1000);
+        }
+    }
+
+    // Emit status change event
+    let event = ElevatedCommandStatusEvent {
+        request_id: request_id.clone(),
+        status: ElevatedCommandStatus::Approved,
+        error: None,
+    };
+    let _ = state
+        .app_handle
+        .emit("elevated:status", serde_json::to_value(event).unwrap());
+
+    Ok(())
+}
+
+/// Deny an elevated command request
+#[tauri::command]
+pub async fn deny_elevated_command(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> Result<(), String> {
+    let mut pending = state.pending_elevated.lock().await;
+
+    let cmd = pending
+        .get_mut(&request_id)
+        .ok_or_else(|| "Request not found".to_string())?;
+
+    if cmd.status != ElevatedCommandStatus::Pending {
+        return Err(format!("Request is not pending (status: {:?})", cmd.status));
+    }
+
+    // Deny the request
+    cmd.status = ElevatedCommandStatus::Denied;
+
+    // Emit status change event
+    let event = ElevatedCommandStatusEvent {
+        request_id: request_id.clone(),
+        status: ElevatedCommandStatus::Denied,
+        error: None,
+    };
+    let _ = state
+        .app_handle
+        .emit("elevated:status", serde_json::to_value(event).unwrap());
+
+    Ok(())
 }

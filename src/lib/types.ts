@@ -467,8 +467,9 @@ export type ThreatType =
   | "Unknown";
 
 export interface ThreatDetail {
-  eventId: string;
-  threatType: ThreatType;
+  event_id: string;
+  agent_id: string;
+  threat_type: ThreatType;
   severity: SecurityAlertSeverity;
   confidence: number;
   explanation: string;
@@ -562,4 +563,48 @@ export interface ConfigStatus {
   available_claude_models: string[];
   available_openai_models: string[];
   config_path: string;
+}
+
+// ============================================================================
+// Elevated Command Types (Sudo Approval System)
+// ============================================================================
+
+export type ElevatedCommandStatus =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "expired"
+  | "executing"
+  | "completed"
+  | "failed";
+
+export type CommandRiskLevel = "normal" | "suspicious" | "high";
+
+export interface PendingElevatedCommand {
+  id: string;
+  agentId: string;
+  command: string;
+  workingDir: string;
+  requestedAt: number;
+  expiresAt: number;
+  status: ElevatedCommandStatus;
+  riskLevel: CommandRiskLevel;
+  warnings?: string[];
+  scriptHash?: string;
+  parentCmd?: string;
+  innerCommand?: string;
+  // Compound command analysis
+  preCommands?: string[];
+  postCommands?: string[];
+  sudoCommand?: string;
+}
+
+export interface ElevatedCommandRequestEvent {
+  request: PendingElevatedCommand;
+}
+
+export interface ElevatedCommandStatusEvent {
+  requestId: string;
+  status: ElevatedCommandStatus;
+  error?: string;
 }

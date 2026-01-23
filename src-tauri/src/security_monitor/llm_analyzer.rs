@@ -25,6 +25,8 @@ pub struct AnalysisResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThreatAssessment {
     pub event_id: String,
+    /// The agent that generated this event
+    pub agent_id: String,
     pub threat_type: ThreatType,
     pub severity: Severity,
     pub confidence: f32,
@@ -193,7 +195,23 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
             .map_err(|e| format!("LLM analysis failed: {}", e))?;
 
         // Parse response
-        self.parse_analysis_response(response, batch_id, timestamp)
+        let mut result = self.parse_analysis_response(response, batch_id, timestamp)?;
+
+        // Populate missing agent_ids in threats by looking up from events
+        let event_agent_map: std::collections::HashMap<&str, &str> = events
+            .iter()
+            .map(|e| (e.id.as_str(), e.agent_id.as_str()))
+            .collect();
+
+        for threat in &mut result.threats_detected {
+            if threat.agent_id.is_empty() {
+                if let Some(agent_id) = event_agent_map.get(threat.event_id.as_str()) {
+                    threat.agent_id = agent_id.to_string();
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Create the tool definition for structured analysis output
@@ -468,8 +486,17 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
             })
             .unwrap_or_default();
 
+        // Try to get agent_id from JSON (LLM might provide it), fallback to empty string
+        // The caller should populate this from the events if empty
+        let agent_id = value
+            .get("agent_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
         Some(ThreatAssessment {
             event_id,
+            agent_id,
             threat_type,
             severity,
             confidence,
