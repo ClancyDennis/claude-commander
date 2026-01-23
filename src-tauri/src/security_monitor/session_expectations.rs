@@ -4,8 +4,8 @@
 // (expected tools, paths, commands), then check every tool call against
 // those expectations and refine them as the session progresses.
 
-use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 use super::collector::{SecurityEvent, SecurityEventType};
 use super::llm_analyzer::LLMAnalyzer;
@@ -269,7 +269,11 @@ impl SessionExpectations {
     }
 
     /// Check event against expectations AND update observed behavior
-    pub fn check_and_update(&mut self, agent_id: &str, event: &SecurityEvent) -> ExpectationCheckResult {
+    pub fn check_and_update(
+        &mut self,
+        agent_id: &str,
+        event: &SecurityEvent,
+    ) -> ExpectationCheckResult {
         if !self.config.enabled {
             return ExpectationCheckResult::ok();
         }
@@ -283,9 +287,10 @@ impl SessionExpectations {
         };
 
         let result = match &event.event_type {
-            SecurityEventType::ToolUseRequest { tool_name, tool_input } => {
-                Self::check_tool_use_static(&forbidden_paths, state, tool_name, tool_input)
-            }
+            SecurityEventType::ToolUseRequest {
+                tool_name,
+                tool_input,
+            } => Self::check_tool_use_static(&forbidden_paths, state, tool_name, tool_input),
             _ => ExpectationCheckResult::ok(),
         };
 
@@ -330,7 +335,8 @@ impl SessionExpectations {
         let network_ok = !is_network_tool(tool_name) || state.network_allowed;
 
         // Check 5: Destructive allowed?
-        let destructive_ok = !is_destructive_tool(tool_name, tool_input) || state.destructive_allowed;
+        let destructive_ok =
+            !is_destructive_tool(tool_name, tool_input) || state.destructive_allowed;
 
         // Build result based on checks
         if !tool_ok {
@@ -397,7 +403,11 @@ impl SessionExpectations {
             return;
         };
 
-        if let SecurityEventType::ToolUseRequest { tool_name, tool_input } = &event.event_type {
+        if let SecurityEventType::ToolUseRequest {
+            tool_name,
+            tool_input,
+        } = &event.event_type
+        {
             // Track what we've seen
             state.observed_tools.insert(tool_name.clone());
 

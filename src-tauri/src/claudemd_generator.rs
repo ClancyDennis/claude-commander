@@ -8,11 +8,11 @@
 // - Project-level: `CLAUDE.md` or `.claude/CLAUDE.md` in your working directory
 // - User-level: `~/.claude/CLAUDE.md` for global instructions across all projects
 
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
 use crate::ai_client::AIClient;
 use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedClaudeMd {
@@ -231,20 +231,18 @@ pub fn get_claudemd_path(working_dir: &str) -> Option<String> {
 
 /// Read the content of the CLAUDE.md file
 pub fn get_claudemd_content(working_dir: &str) -> Result<String, String> {
-    let path = get_claudemd_path(working_dir)
-        .ok_or_else(|| "No CLAUDE.md file found".to_string())?;
+    let path =
+        get_claudemd_path(working_dir).ok_or_else(|| "No CLAUDE.md file found".to_string())?;
 
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
 }
 
 /// Delete the CLAUDE.md file
 pub fn delete_claudemd(working_dir: &str) -> Result<(), String> {
-    let path = get_claudemd_path(working_dir)
-        .ok_or_else(|| "No CLAUDE.md file found".to_string())?;
+    let path =
+        get_claudemd_path(working_dir).ok_or_else(|| "No CLAUDE.md file found".to_string())?;
 
-    fs::remove_file(&path)
-        .map_err(|e| format!("Failed to delete CLAUDE.md: {}", e))
+    fs::remove_file(&path).map_err(|e| format!("Failed to delete CLAUDE.md: {}", e))
 }
 
 /// Append content to an existing CLAUDE.md file
@@ -259,8 +257,7 @@ pub fn append_to_claudemd(working_dir: &str, new_content: &str) -> Result<String
 
             let combined = format!("{}\n\n{}", existing.trim(), new_content);
 
-            fs::write(&p, combined)
-                .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
+            fs::write(&p, combined).map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
 
             p
         }

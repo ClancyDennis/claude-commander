@@ -1,8 +1,8 @@
 // Main pipeline execution loop
 
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
@@ -72,7 +72,10 @@ pub async fn execute_pipeline(
                 Some(json!({"summary": summary})),
             );
 
-            eprintln!("[auto_pipeline] Pipeline {} completed successfully", pipeline_id);
+            eprintln!(
+                "[auto_pipeline] Pipeline {} completed successfully",
+                pipeline_id
+            );
             Ok(())
         }
         OrchestratorAction::GiveUp { reason } => {
@@ -89,11 +92,17 @@ pub async fn execute_pipeline(
                 Some(json!({"reason": reason})),
             );
 
-            eprintln!("[auto_pipeline] Pipeline {} gave up: {}", pipeline_id, reason);
+            eprintln!(
+                "[auto_pipeline] Pipeline {} gave up: {}",
+                pipeline_id, reason
+            );
             Err(format!("Orchestrator gave up: {}", reason))
         }
         _ => {
-            eprintln!("[auto_pipeline] Pipeline {} returned unexpected action", pipeline_id);
+            eprintln!(
+                "[auto_pipeline] Pipeline {} returned unexpected action",
+                pipeline_id
+            );
             Err("Orchestrator returned unexpected action".to_string())
         }
     }

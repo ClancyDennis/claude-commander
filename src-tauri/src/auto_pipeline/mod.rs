@@ -96,7 +96,12 @@ impl AutoPipelineManager {
     ) -> Result<String, String> {
         let pipeline_id = uuid::Uuid::new_v4().to_string();
         let max_iterations = self.ctx.orchestrator.max_iterations();
-        let pipeline = AutoPipeline::new(pipeline_id.clone(), user_request, working_dir, max_iterations);
+        let pipeline = AutoPipeline::new(
+            pipeline_id.clone(),
+            user_request,
+            working_dir,
+            max_iterations,
+        );
 
         let mut pipelines = self.ctx.pipelines.lock().await;
         pipelines.insert(pipeline_id.clone(), pipeline);

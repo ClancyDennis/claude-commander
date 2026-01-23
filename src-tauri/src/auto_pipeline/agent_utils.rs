@@ -15,7 +15,9 @@ pub fn extract_json_from_markdown(text: &str) -> String {
         if let Some(content_start) = text[start_idx..].find('\n') {
             let content_start = start_idx + content_start + 1;
             if let Some(end_idx) = text[content_start..].find("```") {
-                return text[content_start..content_start + end_idx].trim().to_string();
+                return text[content_start..content_start + end_idx]
+                    .trim()
+                    .to_string();
             }
         }
     }
@@ -25,7 +27,9 @@ pub fn extract_json_from_markdown(text: &str) -> String {
         if let Some(content_start) = text[start_idx..].find('\n') {
             let content_start = start_idx + content_start + 1;
             if let Some(end_idx) = text[content_start..].find("```") {
-                return text[content_start..content_start + end_idx].trim().to_string();
+                return text[content_start..content_start + end_idx]
+                    .trim()
+                    .to_string();
             }
         }
     }

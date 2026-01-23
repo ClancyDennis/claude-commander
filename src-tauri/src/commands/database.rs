@@ -1,6 +1,6 @@
 // Database/Runs related Tauri commands
 
-use crate::agent_runs_db::{AgentRun, RunQueryFilters, RunStats, RunStatus, DatabaseStats};
+use crate::agent_runs_db::{AgentRun, DatabaseStats, RunQueryFilters, RunStats, RunStatus};
 use crate::types::AgentSource;
 use crate::AppState;
 
@@ -8,7 +8,8 @@ use crate::AppState;
 pub async fn get_database_stats(
     state: tauri::State<'_, AppState>,
 ) -> Result<DatabaseStats, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_database_stats()
         .await
         .map_err(|e| e.to_string())
@@ -18,14 +19,17 @@ pub async fn get_database_stats(
 pub async fn get_cost_database_stats(
     state: tauri::State<'_, AppState>,
 ) -> Result<DatabaseStats, String> {
-    state.agent_runs_db.get_database_stats().await.map_err(|e| e.to_string())
+    state
+        .agent_runs_db
+        .get_database_stats()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_all_runs(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<AgentRun>, String> {
-    state.agent_runs_db
+pub async fn get_all_runs(state: tauri::State<'_, AppState>) -> Result<Vec<AgentRun>, String> {
+    state
+        .agent_runs_db
         .query_runs(RunQueryFilters::default())
         .await
         .map_err(|e| e.to_string())
@@ -36,7 +40,8 @@ pub async fn get_run_by_id(
     agent_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<AgentRun>, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_run(&agent_id)
         .await
         .map_err(|e| e.to_string())
@@ -79,7 +84,8 @@ pub async fn query_runs(
         offset,
     };
 
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .query_runs(filters)
         .await
         .map_err(|e| e.to_string())
@@ -89,7 +95,8 @@ pub async fn query_runs(
 pub async fn get_resumable_runs(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<AgentRun>, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_resumable_runs()
         .await
         .map_err(|e| e.to_string())
@@ -100,17 +107,17 @@ pub async fn get_run_prompts(
     agent_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<(String, i64)>, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_prompts(&agent_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_run_stats(
-    state: tauri::State<'_, AppState>,
-) -> Result<RunStats, String> {
-    state.agent_runs_db
+pub async fn get_run_stats(state: tauri::State<'_, AppState>) -> Result<RunStats, String> {
+    state
+        .agent_runs_db
         .get_stats()
         .await
         .map_err(|e| e.to_string())
@@ -121,7 +128,8 @@ pub async fn cleanup_old_runs(
     days_to_keep: i64,
     state: tauri::State<'_, AppState>,
 ) -> Result<usize, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .cleanup_old_runs(days_to_keep)
         .await
         .map_err(|e| e.to_string())

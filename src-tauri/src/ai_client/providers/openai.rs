@@ -205,9 +205,10 @@ impl OpenAIProvider {
 
         let response = check_response_status(response, "OpenAI").await?;
 
-        let openai_response: OpenAIResponse = response.json().await.map_err(|e| {
-            AIError::ParseError(format!("Failed to parse OpenAI response: {}", e))
-        })?;
+        let openai_response: OpenAIResponse = response
+            .json()
+            .await
+            .map_err(|e| AIError::ParseError(format!("Failed to parse OpenAI response: {}", e)))?;
 
         Self::convert_response(openai_response)
     }

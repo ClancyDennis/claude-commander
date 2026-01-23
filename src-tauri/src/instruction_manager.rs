@@ -1,26 +1,25 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
-use crate::utils::validation::{validate_instruction_filename, is_allowed_instruction_file};
+use crate::utils::validation::{is_allowed_instruction_file, validate_instruction_filename};
 
 /// Get the global instructions directory (~/.instructions/)
 fn get_instructions_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not determine home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     Ok(home.join(".instructions"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstructionFileInfo {
-    pub id: String,              // relative path (used as unique ID)
-    pub name: String,            // filename for display
-    pub path: String,            // full absolute path
-    pub relative_path: String,   // path relative to .instructions/
-    pub file_type: String,       // "txt" or "md"
-    pub size: u64,               // bytes
-    pub modified: String,        // ISO 8601 timestamp
+    pub id: String,            // relative path (used as unique ID)
+    pub name: String,          // filename for display
+    pub path: String,          // full absolute path
+    pub relative_path: String, // path relative to .instructions/
+    pub file_type: String,     // "txt" or "md"
+    pub size: u64,             // bytes
+    pub modified: String,      // ISO 8601 timestamp
 }
 
 /// Scan ~/.instructions/ directory for .txt and .md files
@@ -47,10 +46,10 @@ pub fn list_instruction_files(_working_dir: &str) -> Result<Vec<InstructionFileI
 fn scan_directory(
     base_dir: &Path,
     current_dir: &Path,
-    files: &mut Vec<InstructionFileInfo>
+    files: &mut Vec<InstructionFileInfo>,
 ) -> Result<(), String> {
-    let entries = fs::read_dir(current_dir)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries =
+        fs::read_dir(current_dir).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -67,13 +66,15 @@ fn scan_directory(
                 let metadata = fs::metadata(&path)
                     .map_err(|e| format!("Failed to read file metadata: {}", e))?;
 
-                let modified = metadata.modified()
+                let modified = metadata
+                    .modified()
                     .map_err(|e| format!("Failed to get modified time: {}", e))?;
 
                 // Convert to ISO 8601 string
                 let modified_iso = {
                     use std::time::UNIX_EPOCH;
-                    let duration = modified.duration_since(UNIX_EPOCH)
+                    let duration = modified
+                        .duration_since(UNIX_EPOCH)
                         .map_err(|e| format!("Invalid modified time: {}", e))?;
                     let secs = duration.as_secs();
 
@@ -84,12 +85,14 @@ fn scan_directory(
                 };
 
                 // Get relative path from .instructions/
-                let relative_path = path.strip_prefix(base_dir)
+                let relative_path = path
+                    .strip_prefix(base_dir)
                     .map_err(|e| format!("Failed to get relative path: {}", e))?
                     .to_string_lossy()
                     .to_string();
 
-                let filename = path.file_name()
+                let filename = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -112,11 +115,16 @@ fn scan_directory(
 
 /// Save instruction file content to ~/.instructions/
 /// The working_dir parameter is kept for API compatibility but is no longer used
-pub fn save_instruction_file(_working_dir: &str, filename: &str, content: &str) -> Result<(), String> {
+pub fn save_instruction_file(
+    _working_dir: &str,
+    filename: &str,
+    content: &str,
+) -> Result<(), String> {
     let instructions_dir = get_instructions_dir()?;
 
     if !instructions_dir.exists() {
-        fs::create_dir_all(&instructions_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
+        fs::create_dir_all(&instructions_dir)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
     // Validate filename using shared validation utility
@@ -147,22 +155,20 @@ pub fn get_instruction_file_content(file_path: &str) -> Result<String, String> {
     }
 
     // Read content (limit to 100KB for safety)
-    let metadata = fs::metadata(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let metadata = fs::metadata(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     if metadata.len() > 100_000 {
         return Err("File too large (max 100KB for preview)".to_string());
     }
 
-    fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file content: {}", e))
+    fs::read_to_string(path).map_err(|e| format!("Failed to read file content: {}", e))
 }
 
 /// Copy selected instruction files from ~/.instructions/ to working_dir/.claude/ directory
 /// Returns list of copied file paths for cleanup tracking
 pub fn copy_instruction_files(
     working_dir: &str,
-    selected_files: &[String]
+    selected_files: &[String],
 ) -> Result<Vec<String>, String> {
     let instructions_dir = get_instructions_dir()?;
     let claude_dir = Path::new(working_dir).join(".claude");
@@ -185,7 +191,8 @@ pub fn copy_instruction_files(
 
         // Generate safe filename with prefix
         // Example: my-instruction.md -> instruction_my-instruction.md
-        let filename = source_path.file_name()
+        let filename = source_path
+            .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| format!("Invalid filename: {}", relative_path))?;
 
@@ -205,7 +212,7 @@ pub fn copy_instruction_files(
 /// Delete instruction files from .claude/ directory
 pub fn cleanup_instruction_files(
     _working_dir: &str,
-    copied_files: &[String]
+    copied_files: &[String],
 ) -> Result<(), String> {
     for file_path in copied_files {
         let path = Path::new(file_path);

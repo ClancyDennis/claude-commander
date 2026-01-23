@@ -1,8 +1,8 @@
 // Helper functions for step execution
 
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
@@ -43,7 +43,10 @@ pub fn emit_step_completed(
     step_number: u8,
     extra: Option<serde_json::Value>,
 ) {
-    eprintln!("[emit_step_completed] Emitting step_completed for pipeline={}, step={}", pipeline_id, step_number);
+    eprintln!(
+        "[emit_step_completed] Emitting step_completed for pipeline={}, step={}",
+        pipeline_id, step_number
+    );
 
     let mut data = json!({
         "pipeline_id": pipeline_id,
@@ -118,7 +121,9 @@ where
     F: FnOnce(&AutoPipeline) -> T,
 {
     let pipelines_lock = pipelines.lock().await;
-    let pipeline = pipelines_lock.get(pipeline_id).ok_or("Pipeline not found")?;
+    let pipeline = pipelines_lock
+        .get(pipeline_id)
+        .ok_or("Pipeline not found")?;
     Ok(f(pipeline))
 }
 
@@ -132,7 +137,9 @@ where
     F: FnOnce(&mut AutoPipeline) -> T,
 {
     let mut pipelines_lock = pipelines.lock().await;
-    let pipeline = pipelines_lock.get_mut(pipeline_id).ok_or("Pipeline not found")?;
+    let pipeline = pipelines_lock
+        .get_mut(pipeline_id)
+        .ok_or("Pipeline not found")?;
     Ok(f(pipeline))
 }
 
@@ -184,10 +191,7 @@ pub async fn update_agent_context(
 }
 
 /// Stop an agent by ID
-pub async fn stop_agent(
-    agent_manager: &Arc<Mutex<AgentManager>>,
-    agent_id: &str,
-) {
+pub async fn stop_agent(agent_manager: &Arc<Mutex<AgentManager>>, agent_id: &str) {
     eprintln!("[auto_pipeline] Stopping agent {}", agent_id);
     let manager = agent_manager.lock().await;
     let _ = manager.stop_agent(agent_id).await;
@@ -236,12 +240,7 @@ pub async fn stop_all_pipeline_agents(
         let pipelines_lock = pipelines.lock().await;
         pipelines_lock
             .get(pipeline_id)
-            .map(|p| {
-                p.steps
-                    .iter()
-                    .filter_map(|s| s.agent_id.clone())
-                    .collect()
-            })
+            .map(|p| p.steps.iter().filter_map(|s| s.agent_id.clone()).collect())
             .unwrap_or_default()
     };
 

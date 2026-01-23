@@ -6,7 +6,7 @@
 // c) Decide on verification results (pass/fail/iterate/replan)
 // d) Apply custom user preferences via system prompt
 
-use crate::ai_client::{AIClient, Message, ContentBlock};
+use crate::ai_client::{AIClient, ContentBlock, Message};
 use serde::{Deserialize, Serialize};
 
 use super::prompts::{
@@ -75,7 +75,10 @@ impl Orchestrator {
     /// # Arguments
     /// * `custom_instructions` - Free-form instructions like "Don't lint. Test API endpoints. Never modify src/config/."
     /// * `max_iterations` - Maximum iterations before giving up (default 5)
-    pub fn with_instructions(custom_instructions: Option<String>, max_iterations: Option<u8>) -> Result<Self, String> {
+    pub fn with_instructions(
+        custom_instructions: Option<String>,
+        max_iterations: Option<u8>,
+    ) -> Result<Self, String> {
         let ai_client = AIClient::from_env()
             .map_err(|e| format!("Failed to create AI client for orchestrator: {}", e))?;
 
@@ -131,8 +134,12 @@ impl Orchestrator {
         let response = self.send_message(&prompt).await?;
         let json_text = extract_json_from_text(&response);
 
-        serde_json::from_str(&json_text)
-            .map_err(|e| format!("Failed to parse refined task: {}. Response: {}", e, response))
+        serde_json::from_str(&json_text).map_err(|e| {
+            format!(
+                "Failed to parse refined task: {}. Response: {}",
+                e, response
+            )
+        })
     }
 
     // =========================================================================
@@ -195,7 +202,11 @@ impl Orchestrator {
             .map(|issues| {
                 format!(
                     "\nPREVIOUS ITERATION ISSUES (for thrash detection):\n{}\n",
-                    issues.iter().map(|i| format!("- {}", i)).collect::<Vec<_>>().join("\n")
+                    issues
+                        .iter()
+                        .map(|i| format!("- {}", i))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 )
             })
             .unwrap_or_default();
@@ -224,7 +235,8 @@ impl Orchestrator {
 
     /// Send a message to the AI and extract text response
     async fn send_message(&self, prompt: &str) -> Result<String, String> {
-        let response = self.ai_client
+        let response = self
+            .ai_client
             .send_message(vec![Message {
                 role: "user".to_string(),
                 content: prompt.to_string(),
@@ -232,7 +244,8 @@ impl Orchestrator {
             .await
             .map_err(|e| format!("AI request failed: {}", e))?;
 
-        let text = response.content
+        let text = response
+            .content
             .iter()
             .filter_map(|block| {
                 if let ContentBlock::Text { text } = block {

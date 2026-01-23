@@ -8,7 +8,9 @@ use std::fs;
 use std::path::Path;
 
 use crate::ai_client::AIClient;
-use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks, sanitize_name};
+use crate::utils::generator::{
+    extract_json_from_response, extract_text_from_content_blocks, sanitize_name,
+};
 
 /// Metadata about a generated subagent
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,7 +159,10 @@ pub async fn generate_subagent_from_instruction(
     })
 }
 
-fn parse_subagent_response(ai_response: &str, fallback_name: &str) -> Result<SubagentContent, String> {
+fn parse_subagent_response(
+    ai_response: &str,
+    fallback_name: &str,
+) -> Result<SubagentContent, String> {
     // Extract JSON from response (AI might wrap it in markdown)
     let json_str = extract_json_from_response(ai_response)?;
 
@@ -183,7 +188,10 @@ fn parse_subagent_response(ai_response: &str, fallback_name: &str) -> Result<Sub
     Ok(subagent_content)
 }
 
-fn create_subagent_file(working_dir: &str, subagent_content: &SubagentContent) -> Result<String, String> {
+fn create_subagent_file(
+    working_dir: &str,
+    subagent_content: &SubagentContent,
+) -> Result<String, String> {
     let agents_dir = Path::new(working_dir).join(".claude").join("agents");
 
     // Create agents directory
@@ -245,8 +253,8 @@ pub fn list_generated_subagents(working_dir: &str) -> Result<Vec<GeneratedSubage
 
     let mut subagents = Vec::new();
 
-    let entries = fs::read_dir(&agents_dir)
-        .map_err(|e| format!("Failed to read agents directory: {}", e))?;
+    let entries =
+        fs::read_dir(&agents_dir).map_err(|e| format!("Failed to read agents directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
@@ -259,8 +267,8 @@ pub fn list_generated_subagents(working_dir: &str) -> Result<Vec<GeneratedSubage
                 .unwrap_or("unknown")
                 .to_string();
 
-            let metadata = fs::metadata(&path)
-                .map_err(|e| format!("Failed to read metadata: {}", e))?;
+            let metadata =
+                fs::metadata(&path).map_err(|e| format!("Failed to read metadata: {}", e))?;
 
             let modified = metadata
                 .modified()
@@ -292,7 +300,10 @@ pub fn list_generated_subagents(working_dir: &str) -> Result<Vec<GeneratedSubage
 }
 
 /// Get the content of a subagent by parsing the markdown file
-pub fn get_subagent_content(agent_name: &str, working_dir: &str) -> Result<SubagentContent, String> {
+pub fn get_subagent_content(
+    agent_name: &str,
+    working_dir: &str,
+) -> Result<SubagentContent, String> {
     let agent_file = Path::new(working_dir)
         .join(".claude")
         .join("agents")
@@ -432,10 +443,7 @@ mod tests {
             sanitize_name("test--multiple---dashes"),
             "test-multiple-dashes"
         );
-        assert_eq!(
-            sanitize_name("Special!@#Characters"),
-            "special-characters"
-        );
+        assert_eq!(sanitize_name("Special!@#Characters"), "special-characters");
     }
 
     #[test]
@@ -465,7 +473,14 @@ You are a senior code reviewer."#;
         let agent = result.unwrap();
         assert_eq!(agent.name, "code-reviewer");
         assert_eq!(agent.description, "Expert code reviewer");
-        assert_eq!(agent.tools, Some(vec!["Read".to_string(), "Glob".to_string(), "Grep".to_string()]));
+        assert_eq!(
+            agent.tools,
+            Some(vec![
+                "Read".to_string(),
+                "Glob".to_string(),
+                "Grep".to_string()
+            ])
+        );
         assert_eq!(agent.model, Some("sonnet".to_string()));
         assert_eq!(agent.system_prompt, "You are a senior code reviewer.");
     }

@@ -19,8 +19,8 @@ pub struct PipelineConfig {
     pub confidence_threshold: f32,
 
     // C-Thread: Checkpoints
-    pub require_plan_review: bool,          // Skip plan review checkpoint?
-    pub require_final_review: bool,         // Skip final review checkpoint?
+    pub require_plan_review: bool,  // Skip plan review checkpoint?
+    pub require_final_review: bool, // Skip final review checkpoint?
     pub auto_validation_command: String,
     pub auto_approve_on_verification: bool, // Auto-approve if verification passes?
 }

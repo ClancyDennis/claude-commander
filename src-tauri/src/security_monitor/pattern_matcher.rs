@@ -87,9 +87,8 @@ impl PatternMatcher {
                     .patterns
                     .iter()
                     .map(|p| {
-                        let regex = Regex::new(&p.pattern).map_err(|e| {
-                            format!("Invalid regex in rule {}: {}", rule.id, e)
-                        })?;
+                        let regex = Regex::new(&p.pattern)
+                            .map_err(|e| format!("Invalid regex in rule {}: {}", rule.id, e))?;
                         Ok((p.field.clone(), regex, p.negate))
                     })
                     .collect::<Result<Vec<_>, String>>()?;
@@ -159,20 +158,22 @@ impl PatternMatcher {
             },
             "command" => match &event.event_type {
                 SecurityEventType::CommandExecution { command } => command.clone(),
-                SecurityEventType::ToolUseRequest { tool_name, tool_input } if tool_name == "Bash" => {
-                    tool_input
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                }
+                SecurityEventType::ToolUseRequest {
+                    tool_name,
+                    tool_input,
+                } if tool_name == "Bash" => tool_input
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 _ => String::new(),
             },
             "path" => match &event.event_type {
                 SecurityEventType::FileOperation { path, .. } => path.clone(),
-                SecurityEventType::ToolUseRequest { tool_name, tool_input }
-                    if tool_name == "Read" || tool_name == "Write" || tool_name == "Edit" =>
-                {
+                SecurityEventType::ToolUseRequest {
+                    tool_name,
+                    tool_input,
+                } if tool_name == "Read" || tool_name == "Write" || tool_name == "Edit" => {
                     tool_input
                         .get("file_path")
                         .and_then(|v| v.as_str())
@@ -183,15 +184,14 @@ impl PatternMatcher {
             },
             "url" => match &event.event_type {
                 SecurityEventType::NetworkRequest { url } => url.clone(),
-                SecurityEventType::ToolUseRequest { tool_name, tool_input }
-                    if tool_name == "WebFetch" =>
-                {
-                    tool_input
-                        .get("url")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                }
+                SecurityEventType::ToolUseRequest {
+                    tool_name,
+                    tool_input,
+                } if tool_name == "WebFetch" => tool_input
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 _ => String::new(),
             },
             "working_dir" => event.metadata.working_dir.clone(),
@@ -224,11 +224,7 @@ impl PatternMatcher {
 
     /// Get rule categories being monitored
     pub fn get_categories(&self) -> Vec<ThreatCategory> {
-        let mut categories: Vec<_> = self
-            .rules
-            .iter()
-            .map(|r| r.rule.category.clone())
-            .collect();
+        let mut categories: Vec<_> = self.rules.iter().map(|r| r.rule.category.clone()).collect();
         categories.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
         categories.dedup();
         categories
@@ -240,7 +236,12 @@ mod tests {
     use super::*;
     use crate::security_monitor::collector::SecurityEvent;
 
-    fn create_test_rule(id: &str, pattern: &str, field: &str, category: ThreatCategory) -> DetectionRule {
+    fn create_test_rule(
+        id: &str,
+        pattern: &str,
+        field: &str,
+        category: ThreatCategory,
+    ) -> DetectionRule {
         DetectionRule {
             id: id.to_string(),
             name: format!("Test Rule {}", id),
@@ -302,13 +303,8 @@ mod tests {
 
         let matcher = PatternMatcher::new(rules).unwrap();
 
-        let event = SecurityEvent::new_command_execution(
-            "agent-1",
-            None,
-            "rm -rf /",
-            "/home",
-            "ui",
-        );
+        let event =
+            SecurityEvent::new_command_execution("agent-1", None, "rm -rf /", "/home", "ui");
         let matches = matcher.check(&event);
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].severity, Severity::High);

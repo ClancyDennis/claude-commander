@@ -42,7 +42,8 @@ pub async fn get_security_status(state: State<'_, AppState>) -> Result<SecurityS
                 auto_suspend_on_high: response_config.auto_suspend_on_high,
                 alert_on_medium: response_config.alert_on_medium,
                 log_all_events: response_config.log_all_events,
-                human_review_required_for_actions: response_config.human_review_required_for_actions,
+                human_review_required_for_actions: response_config
+                    .human_review_required_for_actions,
             },
             rule_count: config.batch_size, // This is a simplification
             categories: vec![
@@ -60,10 +61,7 @@ pub async fn get_security_status(state: State<'_, AppState>) -> Result<SecurityS
 
 /// Enable or disable security monitor
 #[tauri::command]
-pub async fn set_security_enabled(
-    state: State<'_, AppState>,
-    enabled: bool,
-) -> Result<(), String> {
+pub async fn set_security_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     if let Some(monitor) = &state.security_monitor {
         monitor.set_enabled(enabled).await;
         Ok(())

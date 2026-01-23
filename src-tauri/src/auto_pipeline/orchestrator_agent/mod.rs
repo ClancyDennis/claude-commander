@@ -176,7 +176,12 @@ impl OrchestratorAgent {
             .unwrap_or_default();
 
         let system_context = build_system_context();
-        let initial_prompt = build_initial_prompt(&instruction_list, &custom_section, &user_request, &system_context);
+        let initial_prompt = build_initial_prompt(
+            &instruction_list,
+            &custom_section,
+            &user_request,
+            &system_context,
+        );
 
         let messages = vec![ConversationMessage {
             role: "user".to_string(),
@@ -297,12 +302,17 @@ impl OrchestratorAgent {
         // Filter out replan if max replans reached during planning phase
         let is_planning_phase = matches!(
             self.current_state,
-            PipelineState::Planning | PipelineState::PlanReady | PipelineState::PlanRevisionRequired
+            PipelineState::Planning
+                | PipelineState::PlanReady
+                | PipelineState::PlanRevisionRequired
         );
         let replan_limit_reached = self.max_planning_replans > 0
             && self.planning_replan_count >= self.max_planning_replans;
         let tool_defs: Vec<_> = if is_planning_phase && replan_limit_reached {
-            tool_defs.into_iter().filter(|t| t.name != "replan").collect()
+            tool_defs
+                .into_iter()
+                .filter(|t| t.name != "replan")
+                .collect()
         } else {
             tool_defs
         };

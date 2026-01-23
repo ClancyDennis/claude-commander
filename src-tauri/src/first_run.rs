@@ -9,7 +9,8 @@ use std::path::PathBuf;
 const ENV_EXAMPLE: &str = include_str!("../../.env.example");
 const PLAYWRIGHT_SKILL: &str = include_str!("../../.instructions/PLAYWRIGHT_MCP_SKILL.md");
 const GMAIL_INTEGRATION: &str = include_str!("../../.instructions/GMAIL_INTEGRATION.md");
-const GOOGLE_DRIVE_INTEGRATION: &str = include_str!("../../.instructions/GOOGLE_DRIVE_INTEGRATION.md");
+const GOOGLE_DRIVE_INTEGRATION: &str =
+    include_str!("../../.instructions/GOOGLE_DRIVE_INTEGRATION.md");
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InitializationMarker {
@@ -162,9 +163,18 @@ mod tests {
         // Check files were created
         assert!(config.config_dir.join("env.example").exists());
         assert!(config.config_dir.join(".initialized").exists());
-        assert!(config.instructions_dir.join("PLAYWRIGHT_MCP_SKILL.md").exists());
-        assert!(config.instructions_dir.join("GMAIL_INTEGRATION.md").exists());
-        assert!(config.instructions_dir.join("GOOGLE_DRIVE_INTEGRATION.md").exists());
+        assert!(config
+            .instructions_dir
+            .join("PLAYWRIGHT_MCP_SKILL.md")
+            .exists());
+        assert!(config
+            .instructions_dir
+            .join("GMAIL_INTEGRATION.md")
+            .exists());
+        assert!(config
+            .instructions_dir
+            .join("GOOGLE_DRIVE_INTEGRATION.md")
+            .exists());
     }
 
     #[test]
@@ -192,10 +202,8 @@ mod tests {
         initialize(&config).unwrap();
 
         // Custom content should be preserved
-        let content = fs::read_to_string(
-            config.instructions_dir.join("PLAYWRIGHT_MCP_SKILL.md"),
-        )
-        .unwrap();
+        let content =
+            fs::read_to_string(config.instructions_dir.join("PLAYWRIGHT_MCP_SKILL.md")).unwrap();
         assert_eq!(content, custom_content);
     }
 }

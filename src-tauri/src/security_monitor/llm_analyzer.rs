@@ -1,7 +1,7 @@
 //! LLM-based semantic analysis for sophisticated threat detection.
 
-use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::ai_client::{AIClient, ContentBlock, Message, Tool};
 
@@ -177,12 +177,10 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
             events_json
         );
 
-        let messages = vec![
-            Message {
-                role: "user".to_string(),
-                content: format!("{}\n\n{}", self.system_prompt, user_message),
-            },
-        ];
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: format!("{}\n\n{}", self.system_prompt, user_message),
+        }];
 
         // Create the analysis tool
         let analysis_tool = self.create_analysis_tool();
@@ -202,7 +200,9 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
     fn create_analysis_tool(&self) -> Tool {
         Tool {
             name: "report_threat_analysis".to_string(),
-            description: "Report the results of security threat analysis for a batch of agent events".to_string(),
+            description:
+                "Report the results of security threat analysis for a batch of agent events"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "required": ["threats_detected", "overall_risk_level", "recommended_actions", "analysis_summary", "confidence"],
@@ -409,8 +409,10 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
     fn parse_threat_assessment(&self, value: &serde_json::Value) -> Option<ThreatAssessment> {
         let event_id = value.get("event_id")?.as_str()?.to_string();
 
-        let threat_type = value.get("threat_type").and_then(|v| v.as_str()).map(|s| {
-            match s {
+        let threat_type = value
+            .get("threat_type")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
                 "PromptInjection" => ThreatType::PromptInjection,
                 "JailbreakAttempt" => ThreatType::JailbreakAttempt,
                 "DataExfiltration" => ThreatType::DataExfiltration,
@@ -421,18 +423,18 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
                 "SocialEngineering" => ThreatType::SocialEngineering,
                 "ChainedAttack" => ThreatType::ChainedAttack,
                 _ => ThreatType::Unknown,
-            }
-        })?;
+            })?;
 
-        let severity = value.get("severity").and_then(|v| v.as_str()).map(|s| {
-            match s {
+        let severity = value
+            .get("severity")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
                 "Critical" => Severity::Critical,
                 "High" => Severity::High,
                 "Medium" => Severity::Medium,
                 "Low" => Severity::Low,
                 _ => Severity::Info,
-            }
-        })?;
+            })?;
 
         let confidence = value
             .get("confidence")
@@ -560,12 +562,10 @@ You MUST respond by calling the `generate_expectations` tool."#;
             working_dir, prompt
         );
 
-        let messages = vec![
-            Message {
-                role: "user".to_string(),
-                content: format!("{}\n\n{}", system_prompt, user_message),
-            },
-        ];
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: format!("{}\n\n{}", system_prompt, user_message),
+        }];
 
         // Create the expectations tool
         let expectations_tool = self.create_expectations_tool();
@@ -585,7 +585,8 @@ You MUST respond by calling the `generate_expectations` tool."#;
     fn create_expectations_tool(&self) -> Tool {
         Tool {
             name: "generate_expectations".to_string(),
-            description: "Report the expected tools, paths, and behaviors for a user task".to_string(),
+            description: "Report the expected tools, paths, and behaviors for a user task"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "required": ["expected_tools", "expected_path_patterns", "network_likely", "destructive_likely", "confidence", "reasoning"],
@@ -733,12 +734,17 @@ You MUST respond by calling the `generate_expectations` tool."#;
         }
 
         let mut section = String::from("\n## Expectation Anomalies Detected\n");
-        section.push_str("These events deviated from expected behavior based on the user's prompt:\n\n");
+        section.push_str(
+            "These events deviated from expected behavior based on the user's prompt:\n\n",
+        );
 
         for (event, anomaly) in anomalies {
             // Get event summary based on type
             let event_summary = match &event.event_type {
-                SecurityEventType::ToolUseRequest { tool_name, tool_input } => {
+                SecurityEventType::ToolUseRequest {
+                    tool_name,
+                    tool_input,
+                } => {
                     let input_preview = serde_json::to_string(tool_input)
                         .unwrap_or_default()
                         .chars()
@@ -749,7 +755,9 @@ You MUST respond by calling the `generate_expectations` tool."#;
                 _ => event.content.chars().take(100).collect::<String>(),
             };
 
-            let anomaly_type = anomaly.anomaly_type.as_ref()
+            let anomaly_type = anomaly
+                .anomaly_type
+                .as_ref()
                 .map(|t| format!("{:?}", t))
                 .unwrap_or_else(|| "Unknown".to_string());
 

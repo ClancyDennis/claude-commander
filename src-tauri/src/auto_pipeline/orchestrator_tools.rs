@@ -48,14 +48,11 @@ pub fn get_orchestrator_tools() -> Vec<ToolDefinition> {
         // Phase A: Skill Synthesis Tools
         tool_read_instruction_file(),
         tool_create_skill(),
-
         // Phase B: Planning Tools
         tool_start_planning(),
         tool_approve_plan(),
-
         // Phase C: Execution Tools
         tool_start_execution(),
-
         // Phase D: Verification & Decision Tools
         tool_start_verification(),
         tool_complete(),
@@ -87,52 +84,35 @@ pub fn get_tools_for_state(state: &PipelineState) -> Vec<ToolDefinition> {
         // Phase B: Planning - after plan is generated, can approve, replan, or re-run planning
         // approve_plan transitions to ReadyForExecution
         // start_planning allows spawning a new planning agent after replan
-        PipelineState::Planning | PipelineState::PlanReady | PipelineState::PlanRevisionRequired => {
-            vec![
-                tool_start_planning(),
-                tool_approve_plan(),
-                tool_replan(),
-            ]
+        PipelineState::Planning
+        | PipelineState::PlanReady
+        | PipelineState::PlanRevisionRequired => {
+            vec![tool_start_planning(), tool_approve_plan(), tool_replan()]
         }
 
         // Phase C: Ready for Execution - must start execution
         PipelineState::ReadyForExecution => {
-            vec![
-                tool_start_execution(),
-            ]
+            vec![tool_start_execution()]
         }
 
         // During/after execution - must verify
         PipelineState::Executing => {
-            vec![
-                tool_start_verification(),
-            ]
+            vec![tool_start_verification()]
         }
 
         // Phase D: Verification - decide outcome
         PipelineState::Verifying => {
-            vec![
-                tool_complete(),
-                tool_iterate(),
-                tool_replan(),
-            ]
+            vec![tool_complete(), tool_iterate(), tool_replan()]
         }
 
         // Verification passed - complete or iterate
         PipelineState::VerificationPassed => {
-            vec![
-                tool_complete(),
-                tool_iterate(),
-            ]
+            vec![tool_complete(), tool_iterate()]
         }
 
         // Verification failed - iterate or replan (give_up only here after repeated failures)
         PipelineState::VerificationFailed => {
-            vec![
-                tool_iterate(),
-                tool_replan(),
-                tool_give_up(),
-            ]
+            vec![tool_iterate(), tool_replan(), tool_give_up()]
         }
 
         // Terminal states - no tools
@@ -272,7 +252,8 @@ fn tool_approve_plan() -> ToolDefinition {
 fn tool_start_execution() -> ToolDefinition {
     ToolDefinition {
         name: "start_execution".to_string(),
-        description: "Start the execution phase. A build agent will implement the approved plan.".to_string(),
+        description: "Start the execution phase. A build agent will implement the approved plan."
+            .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -293,7 +274,9 @@ fn tool_start_execution() -> ToolDefinition {
 fn tool_start_verification() -> ToolDefinition {
     ToolDefinition {
         name: "start_verification".to_string(),
-        description: "Start the verification phase. A verification agent will review the implementation.".to_string(),
+        description:
+            "Start the verification phase. A verification agent will review the implementation."
+                .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -497,9 +480,8 @@ mod tests {
 
     #[test]
     fn test_parse_read_instruction_file_input() {
-        let input: ReadInstructionFileInput = serde_json::from_str(
-            r#"{"file_path": "api-guidelines.md"}"#
-        ).unwrap();
+        let input: ReadInstructionFileInput =
+            serde_json::from_str(r#"{"file_path": "api-guidelines.md"}"#).unwrap();
         assert_eq!(input.file_path, "api-guidelines.md");
     }
 

@@ -117,7 +117,8 @@ pub async fn update_from_result(
         let total_tokens = input_tokens + output_tokens;
 
         if total_tokens > 0 {
-            stats.total_tokens_used = Some(stats.total_tokens_used.unwrap_or(0) + total_tokens as u32);
+            stats.total_tokens_used =
+                Some(stats.total_tokens_used.unwrap_or(0) + total_tokens as u32);
         }
     }
 

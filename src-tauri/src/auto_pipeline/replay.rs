@@ -41,11 +41,7 @@ pub struct ReplayFile {
 
 impl ReplayFile {
     /// Create a new replay file with basic info
-    pub fn new(
-        pipeline_id: String,
-        original_request: String,
-        working_dir: String,
-    ) -> Self {
+    pub fn new(pipeline_id: String, original_request: String, working_dir: String) -> Self {
         Self {
             pipeline_id,
             original_request,
@@ -69,7 +65,10 @@ impl ReplayFile {
         let mut output = String::new();
 
         output.push_str("## Previous Run Context (Replay)\n\n");
-        output.push_str(&format!("**Original Request:** {}\n\n", self.original_request));
+        output.push_str(&format!(
+            "**Original Request:** {}\n\n",
+            self.original_request
+        ));
 
         if let Some(ref refined) = self.refined_request {
             output.push_str(&format!("**Refined Request:** {}\n\n", refined));
@@ -88,7 +87,10 @@ impl ReplayFile {
         }
 
         output.push_str(&format!("**Failure Analysis:**\n"));
-        output.push_str(&format!("- Primary Cause: {}\n", self.failure_analysis.primary_cause));
+        output.push_str(&format!(
+            "- Primary Cause: {}\n",
+            self.failure_analysis.primary_cause
+        ));
         for factor in &self.failure_analysis.contributing_factors {
             output.push_str(&format!("- Contributing Factor: {}\n", factor));
         }
@@ -106,10 +108,16 @@ impl ReplayFile {
         }
 
         if !self.orchestrator_notes.is_empty() {
-            output.push_str(&format!("**Orchestrator Notes:** {}\n\n", self.orchestrator_notes));
+            output.push_str(&format!(
+                "**Orchestrator Notes:** {}\n\n",
+                self.orchestrator_notes
+            ));
         }
 
-        output.push_str(&format!("**Iterations Completed:** {}\n", self.iterations_completed));
+        output.push_str(&format!(
+            "**Iterations Completed:** {}\n",
+            self.iterations_completed
+        ));
 
         output
     }

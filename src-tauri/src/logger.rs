@@ -102,7 +102,13 @@ impl Logger {
         Ok(db.last_insert_rowid())
     }
 
-    pub async fn debug(&self, component: &str, message: &str, agent_id: Option<String>, metadata: Option<String>) -> SqliteResult<i64> {
+    pub async fn debug(
+        &self,
+        component: &str,
+        message: &str,
+        agent_id: Option<String>,
+        metadata: Option<String>,
+    ) -> SqliteResult<i64> {
         self.log(LogEntry {
             id: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -112,10 +118,17 @@ impl Logger {
             session_id: None,
             message: message.to_string(),
             metadata,
-        }).await
+        })
+        .await
     }
 
-    pub async fn info(&self, component: &str, message: &str, agent_id: Option<String>, metadata: Option<String>) -> SqliteResult<i64> {
+    pub async fn info(
+        &self,
+        component: &str,
+        message: &str,
+        agent_id: Option<String>,
+        metadata: Option<String>,
+    ) -> SqliteResult<i64> {
         self.log(LogEntry {
             id: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -125,10 +138,17 @@ impl Logger {
             session_id: None,
             message: message.to_string(),
             metadata,
-        }).await
+        })
+        .await
     }
 
-    pub async fn warning(&self, component: &str, message: &str, agent_id: Option<String>, metadata: Option<String>) -> SqliteResult<i64> {
+    pub async fn warning(
+        &self,
+        component: &str,
+        message: &str,
+        agent_id: Option<String>,
+        metadata: Option<String>,
+    ) -> SqliteResult<i64> {
         self.log(LogEntry {
             id: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -138,10 +158,17 @@ impl Logger {
             session_id: None,
             message: message.to_string(),
             metadata,
-        }).await
+        })
+        .await
     }
 
-    pub async fn error(&self, component: &str, message: &str, agent_id: Option<String>, metadata: Option<String>) -> SqliteResult<i64> {
+    pub async fn error(
+        &self,
+        component: &str,
+        message: &str,
+        agent_id: Option<String>,
+        metadata: Option<String>,
+    ) -> SqliteResult<i64> {
         self.log(LogEntry {
             id: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -151,7 +178,8 @@ impl Logger {
             session_id: None,
             message: message.to_string(),
             metadata,
-        }).await
+        })
+        .await
     }
 
     /// Query logs with filters
@@ -234,7 +262,8 @@ impl Logger {
     /// Clear old logs (older than days_to_keep)
     pub async fn cleanup(&self, days_to_keep: i64) -> SqliteResult<usize> {
         let db = self.db.lock().await;
-        let cutoff_timestamp = chrono::Utc::now().timestamp_millis() - (days_to_keep * 24 * 60 * 60 * 1000);
+        let cutoff_timestamp =
+            chrono::Utc::now().timestamp_millis() - (days_to_keep * 24 * 60 * 60 * 1000);
 
         db.execute(
             "DELETE FROM logs WHERE timestamp < ?1",
@@ -246,11 +275,7 @@ impl Logger {
     pub async fn stats(&self) -> SqliteResult<LogStats> {
         let db = self.db.lock().await;
 
-        let total: i64 = db.query_row(
-            "SELECT COUNT(*) FROM logs",
-            [],
-            |row| row.get(0),
-        )?;
+        let total: i64 = db.query_row("SELECT COUNT(*) FROM logs", [], |row| row.get(0))?;
 
         let by_level: Vec<(String, i64)> = {
             let mut stmt = db.prepare("SELECT level, COUNT(*) FROM logs GROUP BY level")?;
@@ -289,7 +314,9 @@ macro_rules! log_debug {
     };
     ($logger:expr, $component:expr, $msg:expr, $agent_id:expr) => {
         if let Some(logger) = $logger.as_ref() {
-            let _ = logger.debug($component, $msg, Some($agent_id.to_string()), None).await;
+            let _ = logger
+                .debug($component, $msg, Some($agent_id.to_string()), None)
+                .await;
         }
     };
 }
@@ -303,7 +330,9 @@ macro_rules! log_info {
     };
     ($logger:expr, $component:expr, $msg:expr, $agent_id:expr) => {
         if let Some(logger) = $logger.as_ref() {
-            let _ = logger.info($component, $msg, Some($agent_id.to_string()), None).await;
+            let _ = logger
+                .info($component, $msg, Some($agent_id.to_string()), None)
+                .await;
         }
     };
 }
@@ -317,7 +346,9 @@ macro_rules! log_error {
     };
     ($logger:expr, $component:expr, $msg:expr, $agent_id:expr) => {
         if let Some(logger) = $logger.as_ref() {
-            let _ = logger.error($component, $msg, Some($agent_id.to_string()), None).await;
+            let _ = logger
+                .error($component, $msg, Some($agent_id.to_string()), None)
+                .await;
         }
     };
 }

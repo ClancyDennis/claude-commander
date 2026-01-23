@@ -12,14 +12,26 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub use models::{
-    AgentRun, CostSummary, DailyCost, DatabaseStats, DateRangeCostSummary, ModelCostBreakdown,
-    RunQueryFilters, RunStats, RunStatus, SessionCostRecord,
-    // Orchestrator event records
-    OrchestratorToolCallRecord, OrchestratorStateChangeRecord, OrchestratorDecisionRecord,
-    AgentOutputRecord, EventQueryFilters, PipelineHistoryBundle,
-};
 use models::format_bytes;
+pub use models::{
+    AgentOutputRecord,
+    AgentRun,
+    CostSummary,
+    DailyCost,
+    DatabaseStats,
+    DateRangeCostSummary,
+    EventQueryFilters,
+    ModelCostBreakdown,
+    OrchestratorDecisionRecord,
+    OrchestratorStateChangeRecord,
+    // Orchestrator event records
+    OrchestratorToolCallRecord,
+    PipelineHistoryBundle,
+    RunQueryFilters,
+    RunStats,
+    RunStatus,
+    SessionCostRecord,
+};
 
 use cost::CostOperations;
 
@@ -452,19 +464,16 @@ impl AgentRunsDB {
     pub async fn get_stats(&self) -> SqliteResult<RunStats> {
         let db = self.db.lock().await;
 
-        let total: i64 =
-            db.query_row("SELECT COUNT(*) FROM agent_runs", [], |row| row.get(0))?;
+        let total: i64 = db.query_row("SELECT COUNT(*) FROM agent_runs", [], |row| row.get(0))?;
 
         let by_status: Vec<(String, i64)> = {
-            let mut stmt =
-                db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
+            let mut stmt = db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
 
         let by_source: Vec<(String, i64)> = {
-            let mut stmt =
-                db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
+            let mut stmt = db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
@@ -508,16 +517,14 @@ impl AgentRunsDB {
 
         // Get runs by status
         let runs_by_status: Vec<(String, i64)> = {
-            let mut stmt =
-                db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
+            let mut stmt = db.prepare("SELECT status, COUNT(*) FROM agent_runs GROUP BY status")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
 
         // Get runs by source
         let runs_by_source: Vec<(String, i64)> = {
-            let mut stmt =
-                db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
+            let mut stmt = db.prepare("SELECT source, COUNT(*) FROM agent_runs GROUP BY source")?;
             let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
             rows.collect::<SqliteResult<Vec<_>>>()?
         };
@@ -544,7 +551,9 @@ impl AgentRunsDB {
 
     /// Get cost summary aggregated by working directory
     pub async fn get_cost_by_working_dir(&self) -> SqliteResult<Vec<(String, f64)>> {
-        CostOperations::new(&self.db).get_cost_by_working_dir().await
+        CostOperations::new(&self.db)
+            .get_cost_by_working_dir()
+            .await
     }
 
     /// Get daily cost breakdown
@@ -614,7 +623,10 @@ impl AgentRunsDB {
     }
 
     /// Insert a single orchestrator state change record
-    pub async fn insert_state_change(&self, record: &OrchestratorStateChangeRecord) -> SqliteResult<i64> {
+    pub async fn insert_state_change(
+        &self,
+        record: &OrchestratorStateChangeRecord,
+    ) -> SqliteResult<i64> {
         let db = self.db.lock().await;
 
         db.execute(
@@ -641,8 +653,10 @@ impl AgentRunsDB {
     pub async fn insert_decision(&self, record: &OrchestratorDecisionRecord) -> SqliteResult<i64> {
         let db = self.db.lock().await;
 
-        let issues_json = serde_json::to_string(&record.issues).unwrap_or_else(|_| "[]".to_string());
-        let suggestions_json = serde_json::to_string(&record.suggestions).unwrap_or_else(|_| "[]".to_string());
+        let issues_json =
+            serde_json::to_string(&record.issues).unwrap_or_else(|_| "[]".to_string());
+        let suggestions_json =
+            serde_json::to_string(&record.suggestions).unwrap_or_else(|_| "[]".to_string());
 
         db.execute(
             "INSERT INTO orchestrator_decisions
@@ -687,12 +701,16 @@ impl AgentRunsDB {
     // ========================================================================
 
     /// Query orchestrator tool calls with filters
-    pub async fn query_tool_calls(&self, filters: EventQueryFilters) -> SqliteResult<Vec<OrchestratorToolCallRecord>> {
+    pub async fn query_tool_calls(
+        &self,
+        filters: EventQueryFilters,
+    ) -> SqliteResult<Vec<OrchestratorToolCallRecord>> {
         let db = self.db.lock().await;
 
         let mut query = "SELECT id, pipeline_id, agent_id, tool_name, tool_input, is_error,
                                 summary, current_state, iteration, step_number, timestamp
-                         FROM orchestrator_tool_calls WHERE 1=1".to_string();
+                         FROM orchestrator_tool_calls WHERE 1=1"
+            .to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(ref pipeline_id) = filters.pipeline_id {
@@ -745,12 +763,16 @@ impl AgentRunsDB {
     }
 
     /// Query orchestrator state changes with filters
-    pub async fn query_state_changes(&self, filters: EventQueryFilters) -> SqliteResult<Vec<OrchestratorStateChangeRecord>> {
+    pub async fn query_state_changes(
+        &self,
+        filters: EventQueryFilters,
+    ) -> SqliteResult<Vec<OrchestratorStateChangeRecord>> {
         let db = self.db.lock().await;
 
         let mut query = "SELECT id, pipeline_id, old_state, new_state, iteration,
                                 generated_skills, generated_subagents, claudemd_generated, timestamp
-                         FROM orchestrator_state_changes WHERE 1=1".to_string();
+                         FROM orchestrator_state_changes WHERE 1=1"
+            .to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(ref pipeline_id) = filters.pipeline_id {
@@ -797,11 +819,16 @@ impl AgentRunsDB {
     }
 
     /// Query orchestrator decisions with filters
-    pub async fn query_decisions(&self, filters: EventQueryFilters) -> SqliteResult<Vec<OrchestratorDecisionRecord>> {
+    pub async fn query_decisions(
+        &self,
+        filters: EventQueryFilters,
+    ) -> SqliteResult<Vec<OrchestratorDecisionRecord>> {
         let db = self.db.lock().await;
 
-        let mut query = "SELECT id, pipeline_id, decision, reasoning, issues, suggestions, timestamp
-                         FROM orchestrator_decisions WHERE 1=1".to_string();
+        let mut query =
+            "SELECT id, pipeline_id, decision, reasoning, issues, suggestions, timestamp
+                         FROM orchestrator_decisions WHERE 1=1"
+                .to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(ref pipeline_id) = filters.pipeline_id {
@@ -833,7 +860,8 @@ impl AgentRunsDB {
             let issues_json: String = row.get(4)?;
             let suggestions_json: String = row.get(5)?;
             let issues: Vec<String> = serde_json::from_str(&issues_json).unwrap_or_default();
-            let suggestions: Vec<String> = serde_json::from_str(&suggestions_json).unwrap_or_default();
+            let suggestions: Vec<String> =
+                serde_json::from_str(&suggestions_json).unwrap_or_default();
 
             Ok(OrchestratorDecisionRecord {
                 id: Some(row.get(0)?),
@@ -850,11 +878,16 @@ impl AgentRunsDB {
     }
 
     /// Query agent outputs with filters
-    pub async fn query_agent_outputs(&self, filters: EventQueryFilters) -> SqliteResult<Vec<AgentOutputRecord>> {
+    pub async fn query_agent_outputs(
+        &self,
+        filters: EventQueryFilters,
+    ) -> SqliteResult<Vec<AgentOutputRecord>> {
         let db = self.db.lock().await;
 
-        let mut query = "SELECT id, agent_id, pipeline_id, output_type, content, metadata, timestamp
-                         FROM agent_outputs WHERE 1=1".to_string();
+        let mut query =
+            "SELECT id, agent_id, pipeline_id, output_type, content, metadata, timestamp
+                         FROM agent_outputs WHERE 1=1"
+                .to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(ref pipeline_id) = filters.pipeline_id {
@@ -902,7 +935,10 @@ impl AgentRunsDB {
     }
 
     /// Get all history for a pipeline (for restoring UI state after reload)
-    pub async fn get_pipeline_history(&self, pipeline_id: &str) -> SqliteResult<PipelineHistoryBundle> {
+    pub async fn get_pipeline_history(
+        &self,
+        pipeline_id: &str,
+    ) -> SqliteResult<PipelineHistoryBundle> {
         let filters = EventQueryFilters {
             pipeline_id: Some(pipeline_id.to_string()),
             ..Default::default()

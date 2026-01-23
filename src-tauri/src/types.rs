@@ -35,11 +35,11 @@ impl fmt::Display for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentSource {
-    UI,           // Created via NewAgentDialog
-    Meta,         // Created by meta agent
-    Pipeline,     // Created by orchestration pipeline
-    Pool,         // Created by pool (legacy)
-    Manual,       // Created via API/command
+    UI,       // Created via NewAgentDialog
+    Meta,     // Created by meta agent
+    Pipeline, // Created by orchestration pipeline
+    Pool,     // Created by pool (legacy)
+    Manual,   // Created via API/command
 }
 
 impl AgentSource {
@@ -84,11 +84,11 @@ pub struct AgentInfo {
     pub pending_input: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_context: Option<GitHubContext>,
-    pub source: AgentSource,  // Track origin of agent
+    pub source: AgentSource, // Track origin of agent
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pooled: Option<bool>,  // Whether tracked by pool
+    pub pooled: Option<bool>, // Whether tracked by pool
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,  // Optional display title (e.g., pipeline stage)
+    pub title: Option<String>, // Optional display title (e.g., pipeline stage)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,11 +232,11 @@ pub struct AgentStatsEvent {
 // Chat-related types for meta-agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
-    pub role: String,  // "user" or "assistant"
+    pub role: String, // "user" or "assistant"
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
-    pub timestamp: i64,  // Unix timestamp in milliseconds
+    pub timestamp: i64, // Unix timestamp in milliseconds
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,9 +316,9 @@ pub struct CommanderAction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentResultStatus {
-    Pending,      // Waiting in queue
-    Processing,   // Currently being analyzed
-    Processed,    // Done
+    Pending,    // Waiting in queue
+    Processing, // Currently being analyzed
+    Processed,  // Done
 }
 
 /// A queued agent result waiting to be processed
@@ -372,8 +372,8 @@ pub struct ResultQueueUpdatedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivityDetailEvent {
     pub agent_id: String,
-    pub activity: String,           // Human-readable activity: "Reading src/main.rs..."
-    pub tool_name: String,          // The tool being used
+    pub activity: String,  // Human-readable activity: "Reading src/main.rs..."
+    pub tool_name: String, // The tool being used
     pub timestamp: i64,
 }
 
@@ -381,8 +381,8 @@ pub struct AgentActivityDetailEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentProgress {
-    pub stage: String,              // "planning", "executing", "verifying"
-    pub message: String,            // Human-readable status
+    pub stage: String,   // "planning", "executing", "verifying"
+    pub message: String, // Human-readable status
 }
 
 /// Enhanced status update with activity details

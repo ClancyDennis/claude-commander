@@ -1,18 +1,18 @@
+use crate::pool_manager::AgentPool;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
-use serde::{Serialize, Deserialize};
-use crate::pool_manager::AgentPool;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum AgentRole {
-    Planner,      // Analyzes requirements, creates plans
-    Executor,     // Implements code, writes files
-    Tester,       // Runs tests, validates output
-    Reviewer,     // Reviews code, suggests improvements
-    Monitor,      // Watches long-running tasks
-    General,      // General-purpose worker
+    Planner,  // Analyzes requirements, creates plans
+    Executor, // Implements code, writes files
+    Tester,   // Runs tests, validates output
+    Reviewer, // Reviews code, suggests improvements
+    Monitor,  // Watches long-running tasks
+    General,  // General-purpose worker
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -21,7 +21,7 @@ pub enum TaskStatus {
     Running,
     Completed,
     Failed,
-    Blocked,      // Waiting for dependencies
+    Blocked, // Waiting for dependencies
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -29,16 +29,16 @@ pub struct WorkflowTask {
     pub id: String,
     pub description: String,
     pub role: AgentRole,
-    pub prompt: String,              // Prompt to send to agent
-    pub dependencies: Vec<String>,   // Task IDs that must complete first
+    pub prompt: String,            // Prompt to send to agent
+    pub dependencies: Vec<String>, // Task IDs that must complete first
     pub status: TaskStatus,
-    pub agent_id: Option<String>,    // Assigned agent (when running)
-    pub result: Option<String>,      // Output when completed
+    pub agent_id: Option<String>, // Assigned agent (when running)
+    pub result: Option<String>,   // Output when completed
     pub working_dir: String,
     pub retry_count: usize,
-    pub max_retries: usize,          // default: 3
+    pub max_retries: usize, // default: 3
     pub error_message: Option<String>,
-    pub allow_failure: bool,         // continue even if this fails
+    pub allow_failure: bool, // continue even if this fails
 }
 
 #[derive(Clone, Serialize)]
@@ -67,9 +67,7 @@ pub struct TaskOrchestrator {
 }
 
 impl TaskOrchestrator {
-    pub fn new(
-        agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    ) -> Self {
+    pub fn new(agent_pool: Option<Arc<Mutex<AgentPool>>>) -> Self {
         Self {
             workflows: Arc::new(Mutex::new(HashMap::new())),
             agent_pool,
@@ -102,7 +100,10 @@ impl TaskOrchestrator {
             completed_at: None,
         };
 
-        self.workflows.lock().await.insert(workflow_id.clone(), workflow);
+        self.workflows
+            .lock()
+            .await
+            .insert(workflow_id.clone(), workflow);
         Ok(workflow_id)
     }
 
@@ -190,8 +191,12 @@ impl TaskOrchestrator {
                 } else if task.allow_failure {
                     // Mark as completed with warning
                     task.status = TaskStatus::Completed;
-                    task.result = Some(format!("Task failed but marked as completed (allow_failure=true). Error: {}",
-                        task.error_message.as_ref().unwrap_or(&"Unknown error".to_string())));
+                    task.result = Some(format!(
+                        "Task failed but marked as completed (allow_failure=true). Error: {}",
+                        task.error_message
+                            .as_ref()
+                            .unwrap_or(&"Unknown error".to_string())
+                    ));
                 } else {
                     // Fail entire workflow
                     workflow.status = WorkflowStatus::Failed;
@@ -220,14 +225,20 @@ impl TaskOrchestrator {
                     .all(|t| t.status == TaskStatus::Completed || t.status == TaskStatus::Failed);
 
                 if all_complete {
-                    let any_failed = workflow.tasks.values().any(|t| t.status == TaskStatus::Failed);
+                    let any_failed = workflow
+                        .tasks
+                        .values()
+                        .any(|t| t.status == TaskStatus::Failed);
                     workflow.status = if any_failed {
                         WorkflowStatus::PartiallyCompleted
                     } else {
                         WorkflowStatus::Completed
                     };
                     workflow.completed_at = Some(SystemTime::now());
-                    eprintln!("Workflow {} completed with status {:?}", workflow_id, workflow.status);
+                    eprintln!(
+                        "Workflow {} completed with status {:?}",
+                        workflow_id, workflow.status
+                    );
                     return;
                 }
 
@@ -264,8 +275,10 @@ impl TaskOrchestrator {
                                 if let Some(workflow) = workflows.get_mut(&workflow_id_clone) {
                                     if let Some(task) = workflow.tasks.get_mut(&task_id_clone) {
                                         task.status = TaskStatus::Completed;
-                                        task.result =
-                                            Some(format!("Task {} completed successfully", task_id_clone));
+                                        task.result = Some(format!(
+                                            "Task {} completed successfully",
+                                            task_id_clone
+                                        ));
                                     }
                                 }
 

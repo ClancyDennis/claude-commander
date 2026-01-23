@@ -125,7 +125,12 @@ pub async fn create_chained_agent(
             // Send the prompt to the new agent
             // Note: No security_monitor for meta-agent automated prompts
             if let Err(e) = manager
-                .send_prompt(&new_agent_id, &full_prompt, Some(Arc::new(app_handle)), None)
+                .send_prompt(
+                    &new_agent_id,
+                    &full_prompt,
+                    Some(Arc::new(app_handle)),
+                    None,
+                )
                 .await
             {
                 return json!({

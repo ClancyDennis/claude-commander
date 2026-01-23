@@ -52,10 +52,7 @@ pub async fn quick_action(
 }
 
 /// Stop all running agents
-async fn stop_all_agents(
-    agent_manager: Arc<Mutex<AgentManager>>,
-    app_handle: AppHandle,
-) -> Value {
+async fn stop_all_agents(agent_manager: Arc<Mutex<AgentManager>>, app_handle: AppHandle) -> Value {
     let manager = agent_manager.lock().await;
     let agents = manager.list_agents().await;
     let mut stopped = 0;

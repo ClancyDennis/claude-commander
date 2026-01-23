@@ -10,9 +10,7 @@ pub async fn list_instruction_files(
 }
 
 #[tauri::command]
-pub async fn get_instruction_file_content(
-    file_path: String,
-) -> Result<String, String> {
+pub async fn get_instruction_file_content(file_path: String) -> Result<String, String> {
     instruction_manager::get_instruction_file_content(&file_path)
 }
 

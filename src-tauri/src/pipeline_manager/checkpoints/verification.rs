@@ -48,11 +48,9 @@ pub async fn run_best_of_n(
                 "verification_time": result.verification_time,
             }))
         }
-        Err(e) => {
-            CheckpointResult::failure(format!("Best-of-{} verification error: {}", n, e))
-                .with_details(serde_json::json!({
-                    "error": e,
-                }))
-        }
+        Err(e) => CheckpointResult::failure(format!("Best-of-{} verification error: {}", n, e))
+            .with_details(serde_json::json!({
+                "error": e,
+            })),
     }
 }

@@ -97,7 +97,8 @@ impl OrchestratorAgent {
 
         ToolResult::success(
             "".to_string(),
-            "Replanning. Create a new plan with start_planning, then approve_plan when ready.".to_string(),
+            "Replanning. Create a new plan with start_planning, then approve_plan when ready."
+                .to_string(),
         )
     }
 }

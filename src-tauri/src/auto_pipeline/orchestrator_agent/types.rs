@@ -21,9 +21,16 @@ pub enum OrchestratorAction {
     /// Pipeline completed successfully
     Complete { summary: String },
     /// Iterate on execution (fix issues)
-    Iterate { issues: Vec<String>, suggestions: Vec<String> },
+    Iterate {
+        issues: Vec<String>,
+        suggestions: Vec<String>,
+    },
     /// Go back to planning
-    Replan { reason: String, issues: Vec<String>, suggestions: Vec<String> },
+    Replan {
+        reason: String,
+        issues: Vec<String>,
+        suggestions: Vec<String>,
+    },
     /// Give up on the pipeline
     GiveUp { reason: String },
 }
@@ -50,7 +57,11 @@ pub enum ContentBlockValue {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String, input: Value },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,

@@ -1,12 +1,10 @@
 // Cost tracking related Tauri commands
 
-use crate::agent_runs_db::{CostSummary, DateRangeCostSummary, DailyCost};
+use crate::agent_runs_db::{CostSummary, DailyCost, DateRangeCostSummary};
 use crate::AppState;
 
 #[tauri::command]
-pub async fn get_cost_summary(
-    state: tauri::State<'_, AppState>,
-) -> Result<CostSummary, String> {
+pub async fn get_cost_summary(state: tauri::State<'_, AppState>) -> Result<CostSummary, String> {
     state.agent_runs_db.get_cost_summary().await
 }
 
@@ -30,23 +28,17 @@ pub async fn get_cost_by_date_range(
 }
 
 #[tauri::command]
-pub async fn get_current_month_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
+pub async fn get_current_month_cost(state: tauri::State<'_, AppState>) -> Result<f64, String> {
     state.agent_runs_db.get_current_month_cost().await
 }
 
 #[tauri::command]
-pub async fn get_today_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
+pub async fn get_today_cost(state: tauri::State<'_, AppState>) -> Result<f64, String> {
     state.agent_runs_db.get_today_cost().await
 }
 
 #[tauri::command]
-pub async fn clear_cost_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn clear_cost_history(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.agent_runs_db.clear_cost_history().await
 }
 
@@ -54,7 +46,8 @@ pub async fn clear_cost_history(
 pub async fn get_cost_by_working_dir(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<(String, f64)>, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_cost_by_working_dir()
         .await
         .map_err(|e| e.to_string())
@@ -65,27 +58,26 @@ pub async fn get_daily_costs(
     days: i64,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<DailyCost>, String> {
-    state.agent_runs_db
+    state
+        .agent_runs_db
         .get_daily_costs(days)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_runs_current_month_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
-    state.agent_runs_db
+pub async fn get_runs_current_month_cost(state: tauri::State<'_, AppState>) -> Result<f64, String> {
+    state
+        .agent_runs_db
         .get_current_month_cost()
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_runs_today_cost(
-    state: tauri::State<'_, AppState>,
-) -> Result<f64, String> {
-    state.agent_runs_db
+pub async fn get_runs_today_cost(state: tauri::State<'_, AppState>) -> Result<f64, String> {
+    state
+        .agent_runs_db
         .get_today_cost()
         .await
         .map_err(|e| e.to_string())

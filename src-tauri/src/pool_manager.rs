@@ -1,24 +1,24 @@
+use crate::agent_manager::AgentManager;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tokio::sync::Mutex;
-use serde::{Serialize, Deserialize};
-use serde_json::json;
 use tauri::Emitter;
-use crate::agent_manager::AgentManager;
+use tokio::sync::Mutex;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PoolConfig {
-    pub min_size: usize,              // Minimum agents to keep alive (default: 3)
-    pub max_size: usize,              // Maximum agents allowed (default: 10)
-    pub default_size: usize,          // Initial pool size (default: 5)
-    pub auto_scale: bool,             // Enable auto-scaling (default: true)
-    pub scale_up_threshold: f32,      // Trigger scale-up at X% utilization (default: 0.8)
-    pub scale_down_threshold: f32,    // Trigger scale-down at X% utilization (default: 0.2)
-    pub idle_timeout: Duration,       // Remove idle agents after X (default: 5 min)
-    pub default_working_dir: String,  // Default dir for pool agents
-    pub queue_timeout: Duration,      // Max wait time for agent (default: 30s)
-    pub max_queue_size: usize,        // Max pending requests (default: 50)
+    pub min_size: usize,             // Minimum agents to keep alive (default: 3)
+    pub max_size: usize,             // Maximum agents allowed (default: 10)
+    pub default_size: usize,         // Initial pool size (default: 5)
+    pub auto_scale: bool,            // Enable auto-scaling (default: true)
+    pub scale_up_threshold: f32,     // Trigger scale-up at X% utilization (default: 0.8)
+    pub scale_down_threshold: f32,   // Trigger scale-down at X% utilization (default: 0.2)
+    pub idle_timeout: Duration,      // Remove idle agents after X (default: 5 min)
+    pub default_working_dir: String, // Default dir for pool agents
+    pub queue_timeout: Duration,     // Max wait time for agent (default: 30s)
+    pub max_queue_size: usize,       // Max pending requests (default: 50)
 }
 
 impl Default for PoolConfig {
@@ -47,15 +47,15 @@ pub struct TaskAssignment {
 
 #[derive(Clone, Serialize, Default)]
 pub struct PoolStats {
-    pub total_agents: usize,           // ALL agents in system
-    pub idle_agents: usize,            // Idle in pool
-    pub busy_agents: usize,            // Busy from pool
-    pub utilization: f32,              // busy / total
+    pub total_agents: usize, // ALL agents in system
+    pub idle_agents: usize,  // Idle in pool
+    pub busy_agents: usize,  // Busy from pool
+    pub utilization: f32,    // busy / total
     pub tasks_completed: u64,
-    pub average_task_time: f32,        // seconds
+    pub average_task_time: f32, // seconds
     pub uptime: Duration,
-    pub by_source: HashMap<String, usize>,  // Agent counts by source
-    pub pooled_count: usize,           // Total tracked by pool
+    pub by_source: HashMap<String, usize>, // Agent counts by source
+    pub pooled_count: usize,               // Total tracked by pool
 }
 
 #[derive(Debug)]
@@ -85,7 +85,7 @@ impl std::error::Error for PoolError {}
 
 pub struct AgentPool {
     config: PoolConfig,
-    idle_agents: VecDeque<String>,              // Queue of available agent IDs
+    idle_agents: VecDeque<String>, // Queue of available agent IDs
     busy_agents: HashMap<String, TaskAssignment>, // agent_id -> task info
     agent_manager: Arc<Mutex<AgentManager>>,
     stats: Arc<Mutex<PoolStats>>,
@@ -146,7 +146,7 @@ impl AgentPool {
             busy_agents: HashMap::new(),
             agent_manager,
             stats: Arc::new(Mutex::new(PoolStats::default())),
-            auto_scaler: None,  // No auto-scaler in tracking mode
+            auto_scaler: None, // No auto-scaler in tracking mode
             waiting_queue: VecDeque::new(),
             start_time: Instant::now(),
             app_handle,
@@ -207,10 +207,14 @@ impl AgentPool {
 
         // Emit event
         if let Some(app) = &self.app_handle {
-            app.emit("pool:agent_registered", json!({
-                "agent_id": agent_id,
-                "source": source,
-            })).ok();
+            app.emit(
+                "pool:agent_registered",
+                json!({
+                    "agent_id": agent_id,
+                    "source": source,
+                }),
+            )
+            .ok();
         }
 
         Ok(())
@@ -222,7 +226,15 @@ impl AgentPool {
         let manager = self.agent_manager.lock().await;
 
         let agent_id = if let Some(app_handle) = &self.app_handle {
-            manager.create_agent(working_dir, None, None, crate::types::AgentSource::Pool, Arc::new(app_handle.clone())).await?
+            manager
+                .create_agent(
+                    working_dir,
+                    None,
+                    None,
+                    crate::types::AgentSource::Pool,
+                    Arc::new(app_handle.clone()),
+                )
+                .await?
         } else {
             return Err("Pool requires app_handle to spawn agents".to_string());
         };
@@ -290,7 +302,11 @@ impl AgentPool {
         stats.total_agents = total;
         stats.busy_agents = busy;
         stats.idle_agents = idle;
-        stats.utilization = if total > 0 { busy as f32 / total as f32 } else { 0.0 };
+        stats.utilization = if total > 0 {
+            busy as f32 / total as f32
+        } else {
+            0.0
+        };
         stats.uptime = self.start_time.elapsed();
     }
 
@@ -350,7 +366,9 @@ impl AgentPool {
         }
 
         // Stop all agents
-        let all_agents: Vec<String> = self.idle_agents.iter()
+        let all_agents: Vec<String> = self
+            .idle_agents
+            .iter()
             .chain(self.busy_agents.keys())
             .cloned()
             .collect();

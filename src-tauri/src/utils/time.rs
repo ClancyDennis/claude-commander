@@ -1,5 +1,5 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Returns the current time in milliseconds since UNIX epoch
 pub fn now_millis() -> i64 {
@@ -19,14 +19,14 @@ pub fn start_of_day(timestamp: i64) -> i64 {
 
 /// Returns the timestamp for the start of the month (first day, 00:00:00 UTC) for a given timestamp
 pub fn start_of_month(timestamp: i64) -> i64 {
-    let datetime = DateTime::from_timestamp(timestamp / 1000, 0)
-        .unwrap_or_else(|| Utc::now());
+    let datetime = DateTime::from_timestamp(timestamp / 1000, 0).unwrap_or_else(|| Utc::now());
 
     let year = datetime.year();
     let month = datetime.month();
 
     // Create first day of month at midnight UTC
-    let first_of_month = Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+    let first_of_month = Utc
+        .with_ymd_and_hms(year, month, 1, 0, 0, 0)
         .single()
         .unwrap_or(datetime);
 

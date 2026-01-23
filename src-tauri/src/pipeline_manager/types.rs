@@ -6,16 +6,16 @@ use crate::orchestrator::WorkflowStatus;
 /// Fusion strategy for Best-of-N verification
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum FusionStrategy {
-    MajorityVote,       // Most common result wins
-    WeightedConsensus,  // Weighted by confidence/quality scores
-    MetaAgentReview,    // Meta-agent picks best
-    FirstCorrect,       // First agent that passes validation
+    MajorityVote,      // Most common result wins
+    WeightedConsensus, // Weighted by confidence/quality scores
+    MetaAgentReview,   // Meta-agent picks best
+    FirstCorrect,      // First agent that passes validation
 }
 
 /// Checkpoint types for phase gates
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum CheckpointType {
-    None, // No checkpoint, proceed immediately
+    None,        // No checkpoint, proceed immediately
     HumanReview, // Wait for user approval
     AutomaticValidation {
         command: String, // e.g., "cargo test", "npm run lint"

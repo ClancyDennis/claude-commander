@@ -6,9 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::models::{
-    CostSummary, DailyCost, DateRangeCostSummary, SessionCostRecord,
-};
+use super::models::{CostSummary, DailyCost, DateRangeCostSummary, SessionCostRecord};
 
 /// Cost operations extension for AgentRunsDB
 pub struct CostOperations<'a> {
@@ -46,8 +44,7 @@ impl<'a> CostOperations<'a> {
     pub async fn get_daily_costs(&self, days: i64) -> SqliteResult<Vec<DailyCost>> {
         let db = self.db.lock().await;
 
-        let cutoff_timestamp =
-            chrono::Utc::now().timestamp_millis() - (days * 24 * 60 * 60 * 1000);
+        let cutoff_timestamp = chrono::Utc::now().timestamp_millis() - (days * 24 * 60 * 60 * 1000);
 
         let mut stmt = db.prepare(
             "SELECT DATE(started_at / 1000, 'unixepoch') as date,
@@ -81,12 +78,13 @@ impl<'a> CostOperations<'a> {
 
         let now = chrono::Utc::now();
         let naive_now = now.naive_utc();
-        let start_of_month = chrono::NaiveDate::from_ymd_opt(naive_now.year(), naive_now.month(), 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp_millis();
+        let start_of_month =
+            chrono::NaiveDate::from_ymd_opt(naive_now.year(), naive_now.month(), 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp_millis();
 
         let cost: f64 = db
             .query_row(
@@ -146,9 +144,9 @@ impl<'a> CostOperations<'a> {
 
                 Ok(SessionCostRecord {
                     agent_id: row.get(0)?,
-                    session_id: row
-                        .get::<_, Option<String>>(1)?
-                        .unwrap_or_else(|| format!("session_{}", row.get::<_, String>(0).unwrap_or_default())),
+                    session_id: row.get::<_, Option<String>>(1)?.unwrap_or_else(|| {
+                        format!("session_{}", row.get::<_, String>(0).unwrap_or_default())
+                    }),
                     working_dir: row.get(2)?,
                     started_at: {
                         let ts: i64 = row.get(3)?;
@@ -241,8 +239,10 @@ impl<'a> CostOperations<'a> {
             .prepare(&query)
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-        let param_refs: Vec<&dyn rusqlite::ToSql> =
-            params_vec.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec
+            .iter()
+            .map(|p| p as &dyn rusqlite::ToSql)
+            .collect();
 
         let results = stmt
             .query_map(param_refs.as_slice(), |row| {

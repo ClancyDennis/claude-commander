@@ -230,7 +230,7 @@ Respond ONLY with valid JSON matching this schema (no markdown code blocks, just
   ],
   "improvedContent": "full improved version of the instruction"
 }"#
-        .to_string()
+    .to_string()
 }
 
 fn build_analysis_user_prompt(content: &str, context: Option<&str>) -> String {
@@ -270,14 +270,13 @@ fn parse_analysis_response(content: &[ContentBlock]) -> Result<InstructionAnalys
     // Handle potential markdown code blocks
     let json_str = extract_json(&text);
 
-    let ai_response: AIAnalysisResponse =
-        serde_json::from_str(json_str.trim()).map_err(|e| {
-            format!(
-                "Failed to parse AI response as JSON: {}. Response was: {}",
-                e,
-                &text[..text.len().min(500)]
-            )
-        })?;
+    let ai_response: AIAnalysisResponse = serde_json::from_str(json_str.trim()).map_err(|e| {
+        format!(
+            "Failed to parse AI response as JSON: {}. Response was: {}",
+            e,
+            &text[..text.len().min(500)]
+        )
+    })?;
 
     // Convert to our result type with generated IDs
     Ok(InstructionAnalysisResult {

@@ -50,9 +50,7 @@ pub struct Tool {
 #[serde(tag = "type")]
 pub enum ContentBlock {
     #[serde(rename = "text")]
-    Text {
-        text: String,
-    },
+    Text { text: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -114,16 +112,20 @@ impl ClaudeClient {
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(ClaudeError::ApiError(format!(
                 "API returned error: {}",
                 error_text
             )));
         }
 
-        let claude_response: ClaudeResponse = response.json().await.map_err(|e| {
-            ClaudeError::ParseError(format!("Failed to parse response: {}", e))
-        })?;
+        let claude_response: ClaudeResponse = response
+            .json()
+            .await
+            .map_err(|e| ClaudeError::ParseError(format!("Failed to parse response: {}", e)))?;
 
         Ok(claude_response)
     }
@@ -148,16 +150,20 @@ impl ClaudeClient {
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(ClaudeError::ApiError(format!(
                 "API returned error: {}",
                 error_text
             )));
         }
 
-        let claude_response: ClaudeResponse = response.json().await.map_err(|e| {
-            ClaudeError::ParseError(format!("Failed to parse response: {}", e))
-        })?;
+        let claude_response: ClaudeResponse = response
+            .json()
+            .await
+            .map_err(|e| ClaudeError::ParseError(format!("Failed to parse response: {}", e)))?;
 
         Ok(claude_response)
     }

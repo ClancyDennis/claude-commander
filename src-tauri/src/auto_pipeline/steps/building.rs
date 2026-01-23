@@ -1,8 +1,8 @@
 // Building step execution
 
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
@@ -128,7 +128,8 @@ pub async fn execute_building_step(
 
     eprintln!(
         "[auto_pipeline] Building complete. Outputs: {}, Agent: {:?}",
-        building_outputs.len(), building_agent_id
+        building_outputs.len(),
+        building_agent_id
     );
 
     // Store agent back for verification step
@@ -138,7 +139,8 @@ pub async fn execute_building_step(
     if let Some(agent_id) = building_agent_id {
         with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
             pipeline.steps[1].agent_id = Some(agent_id);
-        }).await?;
+        })
+        .await?;
     }
 
     // Update pipeline

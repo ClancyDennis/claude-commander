@@ -9,9 +9,7 @@ pub mod phases;
 pub mod types;
 
 pub use config::PipelineConfig;
-pub use types::{
-    CheckpointResult, CheckpointType, FusionStrategy, Phase, PhaseStatus, Pipeline,
-};
+pub use types::{CheckpointResult, CheckpointType, FusionStrategy, Phase, PhaseStatus, Pipeline};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -222,11 +220,8 @@ impl PipelineManager {
 
                     match phase_id.as_str() {
                         "planning" => {
-                            if let Err(e) = execute_planning_phase(
-                                &pipeline_id,
-                                pipelines.clone(),
-                            )
-                            .await
+                            if let Err(e) =
+                                execute_planning_phase(&pipeline_id, pipelines.clone()).await
                             {
                                 let mut pl = pipelines.lock().await;
                                 if let Some(p) = pl.get_mut(&pipeline_id) {

@@ -1,44 +1,44 @@
 pub mod agent_manager;
-pub mod hook_server;
-pub mod types;
-pub mod meta_agent;
-pub mod tool_registry;
-pub mod claude_client;
-pub mod ai_client;
-pub mod github;
-pub mod logger;
-pub mod pool_manager;
-pub mod orchestrator;
-pub mod thread_controller;
-pub mod pipeline_manager;
-pub mod verification;
-pub mod instruction_manager;
-pub mod skill_generator;
-pub mod subagent_generator;
-pub mod claudemd_generator;
 pub mod agent_runs_db;
+pub mod ai_client;
 pub mod auto_pipeline;
-pub mod utils;
+pub mod claude_client;
+pub mod claudemd_generator;
 pub mod commands;
 pub mod events;
-pub mod security_monitor;
 pub mod first_run;
+pub mod github;
+pub mod hook_server;
+pub mod instruction_manager;
+pub mod logger;
+pub mod meta_agent;
+pub mod orchestrator;
+pub mod pipeline_manager;
+pub mod pool_manager;
+pub mod security_monitor;
+pub mod skill_generator;
+pub mod subagent_generator;
+pub mod thread_controller;
+pub mod tool_registry;
+pub mod types;
+pub mod utils;
+pub mod verification;
 
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
 use agent_manager::AgentManager;
-use meta_agent::MetaAgent;
-use logger::Logger;
-use pool_manager::{AgentPool, PoolConfig};
-use orchestrator::TaskOrchestrator;
-use thread_controller::ThreadController;
-use pipeline_manager::PipelineManager;
-use verification::VerificationEngine;
 use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
-use security_monitor::{SecurityConfig, SecurityMonitor, ResponseConfig};
+use logger::Logger;
+use meta_agent::MetaAgent;
+use orchestrator::TaskOrchestrator;
+use pipeline_manager::PipelineManager;
+use pool_manager::{AgentPool, PoolConfig};
+use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
+use thread_controller::ThreadController;
+use verification::VerificationEngine;
 
 // Make AppState public so commands module can access it
 pub struct AppState {
@@ -107,7 +107,9 @@ pub fn run() {
                             println!("✓ Logger initialized at temp location: {:?}", temp_log);
                             Arc::new(logger)
                         }
-                        Err(e2) => panic!("Failed to initialize logger even in temp directory: {}", e2),
+                        Err(e2) => {
+                            panic!("Failed to initialize logger even in temp directory: {}", e2)
+                        }
                     }
                 }
             };
@@ -134,15 +136,25 @@ pub fn run() {
                     let temp_db = std::env::temp_dir().join("cc_agent_runs.db");
                     match AgentRunsDB::new(temp_db.clone()) {
                         Ok(db) => {
-                            println!("✓ Agent runs database initialized at temp location: {:?}", temp_db);
+                            println!(
+                                "✓ Agent runs database initialized at temp location: {:?}",
+                                temp_db
+                            );
                             Arc::new(db)
                         }
-                        Err(e2) => panic!("Failed to initialize agent runs database even in temp directory: {}", e2),
+                        Err(e2) => panic!(
+                            "Failed to initialize agent runs database even in temp directory: {}",
+                            e2
+                        ),
                     }
                 }
             };
 
-            let agent_manager = Arc::new(Mutex::new(AgentManager::with_logger_and_db(hook_port, logger.clone(), agent_runs_db.clone())));
+            let agent_manager = Arc::new(Mutex::new(AgentManager::with_logger_and_db(
+                hook_port,
+                logger.clone(),
+                agent_runs_db.clone(),
+            )));
 
             // Initialize meta-agent - tries ANTHROPIC_API_KEY first, then OPENAI_API_KEY
             let meta_agent = match MetaAgent::new() {
@@ -153,13 +165,16 @@ pub fn run() {
                             .unwrap_or_else(|_| "claude-sonnet-4-5-20250929".to_string());
                         format!("Claude ({})", model)
                     } else if std::env::var("OPENAI_API_KEY").is_ok() {
-                        let model = std::env::var("OPENAI_MODEL")
-                            .unwrap_or_else(|_| "gpt-4o".to_string());
+                        let model =
+                            std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
                         format!("OpenAI ({})", model)
                     } else {
                         "Unknown".to_string()
                     };
-                    println!("✓ Meta-agent initialized successfully using {}", provider_info);
+                    println!(
+                        "✓ Meta-agent initialized successfully using {}",
+                        provider_info
+                    );
                     Arc::new(Mutex::new(agent))
                 }
                 Err(e) => {
@@ -170,7 +185,7 @@ pub fn run() {
                         ai_client::AIClient::new(ai_client::Provider::Claude {
                             api_key: String::new(),
                             model: "claude-sonnet-4-20250514".to_string(),
-                        })
+                        }),
                     )))
                 }
             };
@@ -206,13 +221,13 @@ pub fn run() {
             let security_monitor_for_hook = security_monitor.clone();
 
             tauri::async_runtime::spawn(async move {
-                if let Err(e) =
-                    hook_server::start_hook_server(
-                        agent_manager_clone,
-                        Arc::new(app_handle),
-                        hook_port,
-                        security_monitor_for_hook,
-                    ).await
+                if let Err(e) = hook_server::start_hook_server(
+                    agent_manager_clone,
+                    Arc::new(app_handle),
+                    hook_port,
+                    security_monitor_for_hook,
+                )
+                .await
                 {
                     eprintln!("Hook server error: {}", e);
                 }
@@ -224,7 +239,7 @@ pub fn run() {
             let agent_pool = Some(AgentPool::new_tracking_only(
                 pool_config,
                 agent_manager.clone(),
-                Some(app_handle_for_pool)
+                Some(app_handle_for_pool),
             ));
             println!("✓ Agent pool initialized in tracking mode");
 
@@ -245,9 +260,7 @@ pub fn run() {
             }
 
             // Initialize orchestrator
-            let orchestrator = Arc::new(Mutex::new(TaskOrchestrator::new(
-                agent_pool.clone(),
-            )));
+            let orchestrator = Arc::new(Mutex::new(TaskOrchestrator::new(agent_pool.clone())));
             println!("✓ Task orchestrator initialized");
 
             // Initialize thread controller
@@ -268,9 +281,8 @@ pub fn run() {
             });
 
             // Initialize verification engine first
-            let verification_engine = Arc::new(Mutex::new(VerificationEngine::new(
-                agent_pool.clone(),
-            )));
+            let verification_engine =
+                Arc::new(Mutex::new(VerificationEngine::new(agent_pool.clone())));
             println!("✓ Verification engine initialized");
 
             // Initialize pipeline manager with verification engine

@@ -107,9 +107,10 @@ impl ClaudeProvider {
 
         let response = check_response_status(response, "Claude").await?;
 
-        let claude_response: ClaudeAPIResponse = response.json().await.map_err(|e| {
-            AIError::ParseError(format!("Failed to parse Claude response: {}", e))
-        })?;
+        let claude_response: ClaudeAPIResponse = response
+            .json()
+            .await
+            .map_err(|e| AIError::ParseError(format!("Failed to parse Claude response: {}", e)))?;
 
         Ok(Self::convert_response(claude_response))
     }

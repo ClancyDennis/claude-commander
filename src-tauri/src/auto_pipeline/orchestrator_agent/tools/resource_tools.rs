@@ -63,7 +63,8 @@ impl OrchestratorAgent {
 
         // Find the instruction file
         let file_info = self.instruction_files.iter().find(|f| {
-            f.relative_path == parsed.instruction_file_path || f.name == parsed.instruction_file_path
+            f.relative_path == parsed.instruction_file_path
+                || f.name == parsed.instruction_file_path
         });
 
         let file_path = match file_info {
@@ -113,7 +114,8 @@ impl OrchestratorAgent {
 
         // Find the instruction file
         let file_info = self.instruction_files.iter().find(|f| {
-            f.relative_path == parsed.instruction_file_path || f.name == parsed.instruction_file_path
+            f.relative_path == parsed.instruction_file_path
+                || f.name == parsed.instruction_file_path
         });
 
         let file_path = match file_info {
@@ -192,8 +194,12 @@ impl OrchestratorAgent {
         }
 
         // Generate the CLAUDE.md
-        match generate_claudemd_from_instructions(&resolved_paths, &self.working_dir, &self.ai_client)
-            .await
+        match generate_claudemd_from_instructions(
+            &resolved_paths,
+            &self.working_dir,
+            &self.ai_client,
+        )
+        .await
         {
             Ok(result) => {
                 self.claudemd_generated = true;
@@ -207,9 +213,10 @@ impl OrchestratorAgent {
                     ),
                 )
             }
-            Err(e) => {
-                ToolResult::error("".to_string(), format!("Failed to generate CLAUDE.md: {}", e))
-            }
+            Err(e) => ToolResult::error(
+                "".to_string(),
+                format!("Failed to generate CLAUDE.md: {}", e),
+            ),
         }
     }
 }

@@ -1,8 +1,10 @@
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
 use crate::ai_client::AIClient;
-use crate::utils::generator::{extract_json_from_response, extract_text_from_content_blocks, sanitize_name};
+use crate::utils::generator::{
+    extract_json_from_response, extract_text_from_content_blocks, sanitize_name,
+};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedSkill {
@@ -180,11 +182,16 @@ pub async fn generate_skill_from_instruction(
             }
             Err(e) => {
                 // Check if this is a JSON parsing error that might be recoverable
-                if e.contains("Failed to parse AI response as JSON") ||
-                   e.contains("No JSON found") ||
-                   e.contains("Could not find") {
+                if e.contains("Failed to parse AI response as JSON")
+                    || e.contains("No JSON found")
+                    || e.contains("Could not find")
+                {
                     if attempt < MAX_JSON_RETRIES {
-                        eprintln!("  JSON parsing failed (attempt {}/{}), retrying...", attempt + 1, MAX_JSON_RETRIES + 1);
+                        eprintln!(
+                            "  JSON parsing failed (attempt {}/{}), retrying...",
+                            attempt + 1,
+                            MAX_JSON_RETRIES + 1
+                        );
                         last_error = Some(e);
                         last_response = Some(ai_response);
                         continue;
@@ -228,7 +235,10 @@ fn parse_skill_response(ai_response: &str, fallback_name: &str) -> Result<SkillC
     Ok(skill_content)
 }
 
-fn create_skill_directory(working_dir: &str, skill_content: &SkillContent) -> Result<String, String> {
+fn create_skill_directory(
+    working_dir: &str,
+    skill_content: &SkillContent,
+) -> Result<String, String> {
     let skills_dir = Path::new(working_dir).join(".claude").join("skills");
     let skill_dir = skills_dir.join(&skill_content.skill_name);
 
@@ -298,8 +308,8 @@ pub fn list_generated_skills(working_dir: &str) -> Result<Vec<GeneratedSkill>, S
 
     let mut skills = Vec::new();
 
-    let entries = fs::read_dir(&skills_dir)
-        .map_err(|e| format!("Failed to read skills directory: {}", e))?;
+    let entries =
+        fs::read_dir(&skills_dir).map_err(|e| format!("Failed to read skills directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
@@ -308,7 +318,8 @@ pub fn list_generated_skills(working_dir: &str) -> Result<Vec<GeneratedSkill>, S
         if path.is_dir() {
             let skill_md_path = path.join("SKILL.md");
             if skill_md_path.exists() {
-                let skill_name = path.file_name()
+                let skill_name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -317,12 +328,14 @@ pub fn list_generated_skills(working_dir: &str) -> Result<Vec<GeneratedSkill>, S
                 let metadata = fs::metadata(&skill_md_path)
                     .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
-                let modified = metadata.modified()
+                let modified = metadata
+                    .modified()
                     .map_err(|e| format!("Failed to get modified time: {}", e))?;
 
                 let generated_at = {
                     use std::time::UNIX_EPOCH;
-                    let duration = modified.duration_since(UNIX_EPOCH)
+                    let duration = modified
+                        .duration_since(UNIX_EPOCH)
                         .map_err(|e| format!("Invalid modified time: {}", e))?;
                     let secs = duration.as_secs();
                     let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
@@ -356,8 +369,7 @@ pub fn delete_generated_skill(skill_name: &str, working_dir: &str) -> Result<(),
         return Err(format!("Skill '{}' not found", skill_name));
     }
 
-    fs::remove_dir_all(&skill_dir)
-        .map_err(|e| format!("Failed to delete skill: {}", e))?;
+    fs::remove_dir_all(&skill_dir).map_err(|e| format!("Failed to delete skill: {}", e))?;
 
     Ok(())
 }
@@ -376,13 +388,17 @@ pub fn get_skill_content(skill_name: &str, working_dir: &str) -> Result<SkillCon
     let skill_md = fs::read_to_string(skill_dir.join("SKILL.md"))
         .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
 
-    let reference_md = skill_dir.join("reference.md").exists().then(|| {
-        fs::read_to_string(skill_dir.join("reference.md")).ok()
-    }).flatten();
+    let reference_md = skill_dir
+        .join("reference.md")
+        .exists()
+        .then(|| fs::read_to_string(skill_dir.join("reference.md")).ok())
+        .flatten();
 
-    let examples_md = skill_dir.join("examples.md").exists().then(|| {
-        fs::read_to_string(skill_dir.join("examples.md")).ok()
-    }).flatten();
+    let examples_md = skill_dir
+        .join("examples.md")
+        .exists()
+        .then(|| fs::read_to_string(skill_dir.join("examples.md")).ok())
+        .flatten();
 
     let scripts = Vec::new(); // TODO: Read scripts if needed
 
@@ -464,7 +480,10 @@ pub fn is_auth_error(error: &str) -> bool {
 
 /// Check if a skill already exists for a given instruction file
 /// Returns the skill name if it exists, None otherwise
-pub fn find_existing_skill_for_instruction(instruction_file: &str, working_dir: &str) -> Option<String> {
+pub fn find_existing_skill_for_instruction(
+    instruction_file: &str,
+    working_dir: &str,
+) -> Option<String> {
     use crate::utils::generator::sanitize_name;
 
     // Get the expected skill name from the instruction file name
@@ -495,7 +514,10 @@ mod tests {
     fn test_sanitize_name() {
         assert_eq!(sanitize_name("API Guidelines"), "api-guidelines");
         assert_eq!(sanitize_name("my_cool_skill"), "my-cool-skill");
-        assert_eq!(sanitize_name("test--multiple---dashes"), "test-multiple-dashes");
+        assert_eq!(
+            sanitize_name("test--multiple---dashes"),
+            "test-multiple-dashes"
+        );
         assert_eq!(sanitize_name("Special!@#Characters"), "special-characters");
     }
 

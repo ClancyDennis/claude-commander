@@ -1,8 +1,8 @@
 // Agent runs database models
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 use crate::types::AgentSource;
 
@@ -51,9 +51,9 @@ pub struct AgentRun {
     pub github_context: Option<String>, // JSON serialized
     pub source: String,
     pub status: RunStatus,
-    pub started_at: i64,         // Unix timestamp in milliseconds
-    pub ended_at: Option<i64>,   // Unix timestamp in milliseconds
-    pub last_activity: i64,      // Unix timestamp in milliseconds
+    pub started_at: i64,       // Unix timestamp in milliseconds
+    pub ended_at: Option<i64>, // Unix timestamp in milliseconds
+    pub last_activity: i64,    // Unix timestamp in milliseconds
     pub initial_prompt: Option<String>,
     pub error_message: Option<String>,
 
@@ -191,13 +191,13 @@ pub struct OrchestratorToolCallRecord {
     pub pipeline_id: String,
     pub agent_id: Option<String>,
     pub tool_name: String,
-    pub tool_input: Option<String>,  // JSON serialized
+    pub tool_input: Option<String>, // JSON serialized
     pub is_error: bool,
     pub summary: Option<String>,
     pub current_state: String,
     pub iteration: u32,
-    pub step_number: Option<u32>,    // 1=Planning, 2=Building, 3=Verifying
-    pub timestamp: i64,              // Unix timestamp in milliseconds
+    pub step_number: Option<u32>, // 1=Planning, 2=Building, 3=Verifying
+    pub timestamp: i64,           // Unix timestamp in milliseconds
 }
 
 /// Record of an orchestrator state change - persisted to SQLite
@@ -219,7 +219,7 @@ pub struct OrchestratorStateChangeRecord {
 pub struct OrchestratorDecisionRecord {
     pub id: Option<i64>,
     pub pipeline_id: String,
-    pub decision: String,           // 'Complete', 'Iterate', 'Replan', 'GiveUp'
+    pub decision: String, // 'Complete', 'Iterate', 'Replan', 'GiveUp'
     pub reasoning: Option<String>,
     pub issues: Vec<String>,
     pub suggestions: Vec<String>,
@@ -232,9 +232,9 @@ pub struct AgentOutputRecord {
     pub id: Option<i64>,
     pub agent_id: String,
     pub pipeline_id: Option<String>,
-    pub output_type: String,        // 'text', 'tool_use', 'tool_result', 'error', 'system', 'result'
+    pub output_type: String, // 'text', 'tool_use', 'tool_result', 'error', 'system', 'result'
     pub content: String,
-    pub metadata: Option<String>,   // JSON serialized
+    pub metadata: Option<String>, // JSON serialized
     pub timestamp: i64,
 }
 

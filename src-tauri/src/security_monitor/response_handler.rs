@@ -282,12 +282,14 @@ impl ResponseHandler {
             let (action_str, agent_id) = match action {
                 RecommendedAction::Continue => continue, // Don't queue "Continue" actions
                 RecommendedAction::Alert { message } => (format!("Alert: {}", message), None),
-                RecommendedAction::SuspendAgent { agent_id } => {
-                    (format!("Suspend agent {}", agent_id), Some(agent_id.clone()))
-                }
-                RecommendedAction::TerminateAgent { agent_id } => {
-                    (format!("Terminate agent {}", agent_id), Some(agent_id.clone()))
-                }
+                RecommendedAction::SuspendAgent { agent_id } => (
+                    format!("Suspend agent {}", agent_id),
+                    Some(agent_id.clone()),
+                ),
+                RecommendedAction::TerminateAgent { agent_id } => (
+                    format!("Terminate agent {}", agent_id),
+                    Some(agent_id.clone()),
+                ),
                 RecommendedAction::BlockOperation { event_id, reason } => {
                     (format!("Block {}: {}", event_id, reason), None)
                 }

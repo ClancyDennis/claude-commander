@@ -114,7 +114,12 @@ impl OutputEventBuilder {
 /// Extract common fields from a Claude JSON message
 pub fn extract_common_fields(
     json: &serde_json::Value,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let session_id = json
         .get("session_id")
         .and_then(|v| v.as_str())

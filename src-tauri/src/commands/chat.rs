@@ -24,9 +24,7 @@ pub async fn get_chat_history(
 }
 
 #[tauri::command]
-pub async fn clear_chat_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn clear_chat_history(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut meta_agent = state.meta_agent.lock().await;
     meta_agent.clear_conversation_history();
     Ok(())
@@ -45,7 +43,9 @@ pub async fn process_agent_results(
     // Get agent info
     let agents = manager.list_agents().await;
     let agent_info = agents.iter().find(|a| a.id == agent_id);
-    let agent_name = agent_info.map(|a| a.working_dir.clone()).unwrap_or_else(|| agent_id.clone());
+    let agent_name = agent_info
+        .map(|a| a.working_dir.clone())
+        .unwrap_or_else(|| agent_id.clone());
 
     // Format outputs
     let mut formatted_output = format!("Results from agent in {}:\n\n", agent_name);
@@ -80,9 +80,16 @@ pub async fn process_agent_results(
                         formatted_output.push_str(&format!("Cost: ${:.4}\n", cost));
                     }
                     if let Some(usage) = parsed.get("usage") {
-                        if let Some(input_tokens) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
-                            if let Some(output_tokens) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
-                                formatted_output.push_str(&format!("Tokens: {} input, {} output\n", input_tokens, output_tokens));
+                        if let Some(input_tokens) =
+                            usage.get("input_tokens").and_then(|v| v.as_u64())
+                        {
+                            if let Some(output_tokens) =
+                                usage.get("output_tokens").and_then(|v| v.as_u64())
+                            {
+                                formatted_output.push_str(&format!(
+                                    "Tokens: {} input, {} output\n",
+                                    input_tokens, output_tokens
+                                ));
                             }
                         }
                     }
@@ -97,11 +104,9 @@ pub async fn process_agent_results(
 
     // Process the formatted output as a user message through the meta agent
     let mut meta_agent = state.meta_agent.lock().await;
-    let response = meta_agent.process_user_message(
-        formatted_output,
-        state.agent_manager.clone(),
-        app_handle
-    ).await?;
+    let response = meta_agent
+        .process_user_message(formatted_output, state.agent_manager.clone(), app_handle)
+        .await?;
 
     Ok(response)
 }

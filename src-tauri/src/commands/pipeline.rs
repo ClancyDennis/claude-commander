@@ -30,14 +30,14 @@ pub async fn get_pipeline(
     state: tauri::State<'_, AppState>,
 ) -> Result<Pipeline, String> {
     let manager = state.pipeline_manager.lock().await;
-    manager.get_pipeline(&pipeline_id).await
+    manager
+        .get_pipeline(&pipeline_id)
+        .await
         .ok_or_else(|| "Pipeline not found".to_string())
 }
 
 #[tauri::command]
-pub async fn list_pipelines(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<Pipeline>, String> {
+pub async fn list_pipelines(state: tauri::State<'_, AppState>) -> Result<Vec<Pipeline>, String> {
     let manager = state.pipeline_manager.lock().await;
     Ok(manager.list_pipelines().await)
 }
@@ -51,7 +51,9 @@ pub async fn approve_pipeline_checkpoint(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let manager = state.pipeline_manager.lock().await;
-    manager.approve_checkpoint(&pipeline_id, phase_index, approved, comment).await
+    manager
+        .approve_checkpoint(&pipeline_id, phase_index, approved, comment)
+        .await
 }
 
 #[tauri::command]

@@ -1,6 +1,6 @@
-use std::process::Command;
-use regex::Regex;
 use crate::types::GitHubContext;
+use regex::Regex;
+use std::process::Command;
 
 /// Parse a GitHub URL to extract owner and repo
 /// Supports formats:
@@ -131,21 +131,24 @@ mod tests {
 
     #[test]
     fn test_parse_github_url_https() {
-        let (owner, repo) = parse_github_url("https://github.com/anthropics/anthropic-sdk-python").unwrap();
+        let (owner, repo) =
+            parse_github_url("https://github.com/anthropics/anthropic-sdk-python").unwrap();
         assert_eq!(owner, "anthropics");
         assert_eq!(repo, "anthropic-sdk-python");
     }
 
     #[test]
     fn test_parse_github_url_https_with_git() {
-        let (owner, repo) = parse_github_url("https://github.com/anthropics/anthropic-sdk-python.git").unwrap();
+        let (owner, repo) =
+            parse_github_url("https://github.com/anthropics/anthropic-sdk-python.git").unwrap();
         assert_eq!(owner, "anthropics");
         assert_eq!(repo, "anthropic-sdk-python");
     }
 
     #[test]
     fn test_parse_github_url_ssh() {
-        let (owner, repo) = parse_github_url("git@github.com:anthropics/anthropic-sdk-python.git").unwrap();
+        let (owner, repo) =
+            parse_github_url("git@github.com:anthropics/anthropic-sdk-python.git").unwrap();
         assert_eq!(owner, "anthropics");
         assert_eq!(repo, "anthropic-sdk-python");
     }

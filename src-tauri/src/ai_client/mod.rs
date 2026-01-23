@@ -45,8 +45,7 @@ impl AIClient {
 
         // Try OpenAI second
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            let model =
-                std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
+            let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
             return Ok(Self::new(Provider::OpenAI { api_key, model }));
         }
 

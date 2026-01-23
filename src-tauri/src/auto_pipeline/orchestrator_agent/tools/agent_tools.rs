@@ -13,7 +13,9 @@ use crate::types::AgentSource;
 
 use super::super::context_builders::{build_full_skills_section, build_full_subagents_section};
 use super::super::OrchestratorAgent;
-use crate::auto_pipeline::prompts::{build_builder_prompt, build_planning_prompt, build_verification_prompt};
+use crate::auto_pipeline::prompts::{
+    build_builder_prompt, build_planning_prompt, build_verification_prompt,
+};
 
 impl OrchestratorAgent {
     /// Start planning tool - spawns a Claude Code planning agent
@@ -86,7 +88,12 @@ impl OrchestratorAgent {
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &planning_prompt, Some(event_emitter.clone()), None)
+                .send_prompt(
+                    &agent_id,
+                    &planning_prompt,
+                    Some(event_emitter.clone()),
+                    None,
+                )
                 .await
             {
                 return ToolResult::error(
@@ -205,7 +212,12 @@ impl OrchestratorAgent {
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &builder_prompt, Some(event_emitter.clone()), None)
+                .send_prompt(
+                    &agent_id,
+                    &builder_prompt,
+                    Some(event_emitter.clone()),
+                    None,
+                )
                 .await
             {
                 return ToolResult::error(
@@ -254,8 +266,8 @@ impl OrchestratorAgent {
             );
         }
 
-        let parsed: StartVerificationInput = serde_json::from_value(input.clone())
-            .unwrap_or(StartVerificationInput {
+        let parsed: StartVerificationInput =
+            serde_json::from_value(input.clone()).unwrap_or(StartVerificationInput {
                 focus_areas: Vec::new(),
             });
 
@@ -334,7 +346,12 @@ impl OrchestratorAgent {
         {
             let manager = agent_manager.lock().await;
             if let Err(e) = manager
-                .send_prompt(&agent_id, &verification_prompt, Some(event_emitter.clone()), None)
+                .send_prompt(
+                    &agent_id,
+                    &verification_prompt,
+                    Some(event_emitter.clone()),
+                    None,
+                )
                 .await
             {
                 return ToolResult::error(
@@ -346,10 +363,7 @@ impl OrchestratorAgent {
 
         // Wait for completion
         if let Err(e) = wait_for_agent_completion(&agent_id, agent_manager.clone()).await {
-            return ToolResult::error(
-                "".to_string(),
-                format!("Verification agent failed: {}", e),
-            );
+            return ToolResult::error("".to_string(), format!("Verification agent failed: {}", e));
         }
 
         // Extract output

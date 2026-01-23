@@ -49,7 +49,12 @@ pub async fn create_worker_agent(
             if let Some(initial_prompt) = input["initial_prompt"].as_str() {
                 let manager = agent_manager.lock().await;
                 if let Err(e) = manager
-                    .send_prompt(&agent_id, initial_prompt, Some(Arc::new(app_handle.clone())), None)
+                    .send_prompt(
+                        &agent_id,
+                        initial_prompt,
+                        Some(Arc::new(app_handle.clone())),
+                        None,
+                    )
                     .await
                 {
                     return json!({
@@ -204,7 +209,8 @@ fn format_agent_outputs(outputs: &[crate::types::AgentOutputEvent]) -> String {
                         formatted.push_str(&format!("Cost: ${:.4}\n", cost));
                     }
                     if let Some(usage) = parsed.get("usage") {
-                        if let Some(input_tokens) = usage.get("input_tokens").and_then(|v| v.as_u64())
+                        if let Some(input_tokens) =
+                            usage.get("input_tokens").and_then(|v| v.as_u64())
                         {
                             if let Some(output_tokens) =
                                 usage.get("output_tokens").and_then(|v| v.as_u64())

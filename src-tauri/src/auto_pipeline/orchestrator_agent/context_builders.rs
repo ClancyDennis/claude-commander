@@ -4,7 +4,9 @@
 
 use chrono::Local;
 
-use crate::ai_client::{AIClient, ContentBlock, RichContentBlock, RichMessage, RichMessageContent, Tool};
+use crate::ai_client::{
+    AIClient, ContentBlock, RichContentBlock, RichMessage, RichMessageContent, Tool,
+};
 use crate::skill_generator::get_skill_content;
 use crate::subagent_generator::get_subagent_content;
 
@@ -146,13 +148,15 @@ pub async fn send_to_ai(
                                     input: input.clone(),
                                 }
                             }
-                            ContentBlockValue::ToolResult { tool_use_id, content, is_error } => {
-                                RichContentBlock::ToolResult {
-                                    tool_use_id: tool_use_id.clone(),
-                                    content: content.clone(),
-                                    is_error: *is_error,
-                                }
-                            }
+                            ContentBlockValue::ToolResult {
+                                tool_use_id,
+                                content,
+                                is_error,
+                            } => RichContentBlock::ToolResult {
+                                tool_use_id: tool_use_id.clone(),
+                                content: content.clone(),
+                                is_error: *is_error,
+                            },
                         })
                         .collect();
                     RichMessageContent::Blocks(rich_blocks)

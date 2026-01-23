@@ -13,11 +13,11 @@ use tokio::sync::Mutex;
 use crate::agent_manager::AgentManager;
 use crate::ai_client::{AIClient, ContentBlock, Message};
 use crate::tool_registry::ToolRegistry;
-use system_prompt::META_AGENT_SYSTEM_PROMPT;
 use crate::types::{
     AgentResultStatus, ChatMessage, ChatResponse, ChatUsage, MetaAgentThinkingEvent,
     MetaAgentToolCallEvent, QueueStatus, QueuedAgentResult, ToolCall,
 };
+use system_prompt::META_AGENT_SYSTEM_PROMPT;
 
 use result_queue::ResultQueue;
 
@@ -42,8 +42,8 @@ impl MetaAgent {
     }
 
     pub fn new() -> Result<Self, String> {
-        let ai_client = AIClient::from_env()
-            .map_err(|e| format!("Failed to initialize AI client: {}", e))?;
+        let ai_client =
+            AIClient::from_env().map_err(|e| format!("Failed to initialize AI client: {}", e))?;
         Ok(Self::new_with_client(ai_client))
     }
 

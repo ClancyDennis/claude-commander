@@ -1,7 +1,7 @@
 // Configuration status Tauri commands
 
-use serde::Serialize;
 use crate::ai_client::models;
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub struct ModelConfig {
@@ -33,7 +33,7 @@ fn mask_api_key(key: &str) -> String {
         return "****".to_string();
     }
     let prefix = &key[..4];
-    let suffix = &key[key.len()-4..];
+    let suffix = &key[key.len() - 4..];
     format!("{}...{}", prefix, suffix)
 }
 
@@ -135,8 +135,7 @@ pub async fn get_config_status() -> Result<ConfigStatus, String> {
     };
 
     // Determine config path (where .env should be placed)
-    let config_dir = dirs::config_dir()
-        .map(|d| d.join("claude-commander"));
+    let config_dir = dirs::config_dir().map(|d| d.join("claude-commander"));
 
     let config_path = config_dir
         .as_ref()

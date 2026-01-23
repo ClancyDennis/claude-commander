@@ -16,17 +16,12 @@ pub async fn generate_skill_from_instruction(
 }
 
 #[tauri::command]
-pub async fn list_generated_skills(
-    working_dir: String,
-) -> Result<Vec<GeneratedSkill>, String> {
+pub async fn list_generated_skills(working_dir: String) -> Result<Vec<GeneratedSkill>, String> {
     skill_generator::list_generated_skills(&working_dir)
 }
 
 #[tauri::command]
-pub async fn delete_generated_skill(
-    skill_name: String,
-    working_dir: String,
-) -> Result<(), String> {
+pub async fn delete_generated_skill(skill_name: String, working_dir: String) -> Result<(), String> {
     skill_generator::delete_generated_skill(&skill_name, &working_dir)
 }
 

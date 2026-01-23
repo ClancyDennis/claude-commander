@@ -1,17 +1,17 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
-use serde::{Serialize, Deserialize};
 
-use crate::pool_manager::AgentPool;
 use crate::pipeline_manager::FusionStrategy;
+use crate::pool_manager::AgentPool;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct VerificationConfig {
-    pub n: usize,                      // Number of agents (default: 3)
+    pub n: usize, // Number of agents (default: 3)
     pub fusion_strategy: FusionStrategy,
-    pub confidence_threshold: f32,     // Minimum confidence (0.0-1.0, default: 0.8)
-    pub timeout: std::time::Duration,  // Max time to wait for all agents
+    pub confidence_threshold: f32, // Minimum confidence (0.0-1.0, default: 0.8)
+    pub timeout: std::time::Duration, // Max time to wait for all agents
 }
 
 impl Default for VerificationConfig {
@@ -30,7 +30,7 @@ pub struct AgentResult {
     pub agent_id: String,
     pub output: String,
     pub confidence: Option<f32>,
-    pub execution_time: f32,          // seconds
+    pub execution_time: f32, // seconds
     pub validation_passed: bool,
 }
 
@@ -40,7 +40,7 @@ pub struct VerificationResult {
     pub confidence: f32,
     pub all_results: Vec<AgentResult>,
     pub fusion_reasoning: String,
-    pub verification_time: f32,       // total seconds
+    pub verification_time: f32, // total seconds
 }
 
 pub struct VerificationEngine {
@@ -48,9 +48,7 @@ pub struct VerificationEngine {
 }
 
 impl VerificationEngine {
-    pub fn new(
-        agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    ) -> Self {
+    pub fn new(agent_pool: Option<Arc<Mutex<AgentPool>>>) -> Self {
         Self { agent_pool }
     }
 
@@ -58,12 +56,14 @@ impl VerificationEngine {
     pub async fn best_of_n(
         &self,
         prompt: &str,
-        config: VerificationConfig
+        config: VerificationConfig,
     ) -> Result<VerificationResult, String> {
         let start_time = Instant::now();
 
         // Check if agent pool is available
-        let pool = self.agent_pool.as_ref()
+        let pool = self
+            .agent_pool
+            .as_ref()
             .ok_or("Agent pool not initialized")?;
 
         // Acquire N agents from pool
@@ -115,17 +115,13 @@ impl VerificationEngine {
         }
 
         // Wait for all agents to complete (with timeout)
-        let timeout = tokio::time::timeout(
-            config.timeout,
-            futures::future::join_all(handles)
-        );
+        let timeout = tokio::time::timeout(config.timeout, futures::future::join_all(handles));
 
         let results = match timeout.await {
-            Ok(results) => {
-                results.into_iter()
-                    .filter_map(|r| r.ok())
-                    .collect::<Vec<_>>()
-            }
+            Ok(results) => results
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .collect::<Vec<_>>(),
             Err(_) => {
                 return Err("Verification timeout".to_string());
             }
@@ -155,7 +151,7 @@ impl VerificationEngine {
     fn fuse_results(
         &self,
         results: &[AgentResult],
-        config: &VerificationConfig
+        config: &VerificationConfig,
     ) -> Result<AgentResult, String> {
         if results.is_empty() {
             return Err("No results to fuse".to_string());
@@ -169,12 +165,14 @@ impl VerificationEngine {
                     *counts.entry(&result.output).or_insert(0) += 1;
                 }
 
-                let most_common = counts.into_iter()
+                let most_common = counts
+                    .into_iter()
                     .max_by_key(|(_, count)| *count)
                     .map(|(output, _)| output)
                     .unwrap();
 
-                Ok(results.iter()
+                Ok(results
+                    .iter()
                     .find(|r| &r.output == most_common)
                     .unwrap()
                     .clone())
@@ -182,9 +180,11 @@ impl VerificationEngine {
 
             FusionStrategy::WeightedConsensus => {
                 // Pick result with highest confidence
-                results.iter()
+                results
+                    .iter()
                     .max_by(|a, b| {
-                        a.confidence.unwrap_or(0.0)
+                        a.confidence
+                            .unwrap_or(0.0)
                             .partial_cmp(&b.confidence.unwrap_or(0.0))
                             .unwrap()
                     })
@@ -195,10 +195,14 @@ impl VerificationEngine {
             FusionStrategy::MetaAgentReview => {
                 // MetaAgentReview is not supported - fall back to WeightedConsensus
                 // MetaAgent should not be called from verification engine
-                eprintln!("MetaAgentReview strategy not supported, falling back to WeightedConsensus");
-                results.iter()
+                eprintln!(
+                    "MetaAgentReview strategy not supported, falling back to WeightedConsensus"
+                );
+                results
+                    .iter()
                     .max_by(|a, b| {
-                        a.confidence.unwrap_or(0.0)
+                        a.confidence
+                            .unwrap_or(0.0)
                             .partial_cmp(&b.confidence.unwrap_or(0.0))
                             .unwrap()
                     })
@@ -208,7 +212,8 @@ impl VerificationEngine {
 
             FusionStrategy::FirstCorrect => {
                 // Return first result that passed validation
-                results.iter()
+                results
+                    .iter()
                     .find(|r| r.validation_passed)
                     .cloned()
                     .ok_or_else(|| "No results passed validation".to_string())
@@ -220,10 +225,12 @@ impl VerificationEngine {
     pub async fn spawn_verification_agent(
         &self,
         target_agent_id: &str,
-        _verification_prompt: &str
+        _verification_prompt: &str,
     ) -> Result<VerificationReport, String> {
         // Check if agent pool is available
-        let pool = self.agent_pool.as_ref()
+        let pool = self
+            .agent_pool
+            .as_ref()
             .ok_or("Agent pool not initialized")?;
 
         // Acquire verification agent from pool

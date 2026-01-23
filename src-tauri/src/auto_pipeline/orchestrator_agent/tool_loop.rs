@@ -9,7 +9,9 @@ use crate::auto_pipeline::orchestrator_tools::{
 };
 
 use super::context_builders::send_to_ai;
-use super::types::{ContentBlockValue, ConversationContent, ConversationMessage, OrchestratorAction};
+use super::types::{
+    ContentBlockValue, ConversationContent, ConversationMessage, OrchestratorAction,
+};
 use super::OrchestratorAgent;
 
 impl OrchestratorAgent {
@@ -232,12 +234,18 @@ impl OrchestratorAgent {
 
                 // Terminal failure
                 OrchestratorAction::GiveUp { reason } => {
-                    eprintln!("[ORCHESTRATOR] run_to_completion: Pipeline gave up: {}", reason);
+                    eprintln!(
+                        "[ORCHESTRATOR] run_to_completion: Pipeline gave up: {}",
+                        reason
+                    );
                     return Ok(OrchestratorAction::GiveUp { reason });
                 }
 
                 // Iteration - reset and continue
-                OrchestratorAction::Iterate { issues: _, suggestions: _ } => {
+                OrchestratorAction::Iterate {
+                    issues: _,
+                    suggestions: _,
+                } => {
                     iteration_count += 1;
                     eprintln!(
                         "[ORCHESTRATOR] run_to_completion: Iteration {} of {} requested",
@@ -259,7 +267,11 @@ impl OrchestratorAgent {
                 }
 
                 // Replan - reset and continue
-                OrchestratorAction::Replan { reason, issues: _, suggestions: _ } => {
+                OrchestratorAction::Replan {
+                    reason,
+                    issues: _,
+                    suggestions: _,
+                } => {
                     iteration_count += 1;
                     eprintln!(
                         "[ORCHESTRATOR] run_to_completion: Replan {} of {} requested: {}",
@@ -267,7 +279,10 @@ impl OrchestratorAgent {
                     );
 
                     if iteration_count >= max_iterations {
-                        let reason = format!("Maximum iterations ({}) reached during replan", max_iterations);
+                        let reason = format!(
+                            "Maximum iterations ({}) reached during replan",
+                            max_iterations
+                        );
                         eprintln!("[ORCHESTRATOR] run_to_completion: {}", reason);
                         return Ok(OrchestratorAction::GiveUp { reason });
                     }
@@ -282,7 +297,10 @@ impl OrchestratorAgent {
 
                 // Should not reach here - these are internal actions handled by run_until_action
                 _ => {
-                    eprintln!("[ORCHESTRATOR] run_to_completion: Unexpected action: {:?}", action);
+                    eprintln!(
+                        "[ORCHESTRATOR] run_to_completion: Unexpected action: {:?}",
+                        action
+                    );
                     return Err(format!("Unexpected action from orchestrator: {:?}", action));
                 }
             }

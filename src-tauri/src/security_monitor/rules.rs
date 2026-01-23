@@ -347,7 +347,8 @@ fn privilege_escalation_rules() -> Vec<DetectionRule> {
             enabled: true,
             patterns: vec![PatternSpec {
                 field: "command".to_string(),
-                pattern: r"(?i)(useradd|usermod|groupadd|adduser|passwd\s+root|chpasswd)".to_string(),
+                pattern: r"(?i)(useradd|usermod|groupadd|adduser|passwd\s+root|chpasswd)"
+                    .to_string(),
                 negate: false,
             }],
         },
@@ -360,7 +361,9 @@ fn privilege_escalation_rules() -> Vec<DetectionRule> {
             enabled: true,
             patterns: vec![PatternSpec {
                 field: "command".to_string(),
-                pattern: r"(?i)(visudo|echo.*>>?\s*/etc/sudoers|tee.*(/etc/sudoers|/etc/sudoers\.d/))".to_string(),
+                pattern:
+                    r"(?i)(visudo|echo.*>>?\s*/etc/sudoers|tee.*(/etc/sudoers|/etc/sudoers\.d/))"
+                        .to_string(),
                 negate: false,
             }],
         },
@@ -422,8 +425,16 @@ mod tests {
         for rule in rules {
             assert!(!rule.id.is_empty(), "Rule has empty id");
             assert!(!rule.name.is_empty(), "Rule {} has empty name", rule.id);
-            assert!(!rule.description.is_empty(), "Rule {} has empty description", rule.id);
-            assert!(!rule.patterns.is_empty(), "Rule {} has no patterns", rule.id);
+            assert!(
+                !rule.description.is_empty(),
+                "Rule {} has empty description",
+                rule.id
+            );
+            assert!(
+                !rule.patterns.is_empty(),
+                "Rule {} has no patterns",
+                rule.id
+            );
         }
     }
 }

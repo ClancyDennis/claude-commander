@@ -1,8 +1,8 @@
 // Planning step execution
 
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
@@ -11,8 +11,8 @@ use crate::auto_pipeline::orchestrator_agent::{OrchestratorAction, OrchestratorA
 use crate::auto_pipeline::types::{AutoPipeline, StepOutput, StepStatus};
 
 use super::helpers::{
-    emit_pipeline_completed, emit_step_completed, store_orchestrator_agent,
-    update_step_status, with_pipeline, with_pipeline_mut,
+    emit_pipeline_completed, emit_step_completed, store_orchestrator_agent, update_step_status,
+    with_pipeline, with_pipeline_mut,
 };
 
 /// Execute the planning step using the OrchestratorAgent
@@ -69,19 +69,31 @@ pub async fn execute_planning_step(
             ));
         }
 
-        eprintln!("[execute_planning_step] Loop iteration {}, current state={:?}", loop_count, orchestrator_agent.current_state);
+        eprintln!(
+            "[execute_planning_step] Loop iteration {}, current state={:?}",
+            loop_count, orchestrator_agent.current_state
+        );
 
         // Check if we've transitioned to ReadyForExecution - that means planning is done
-        if matches!(orchestrator_agent.current_state, crate::auto_pipeline::state_machine::PipelineState::ReadyForExecution) {
+        if matches!(
+            orchestrator_agent.current_state,
+            crate::auto_pipeline::state_machine::PipelineState::ReadyForExecution
+        ) {
             eprintln!("[execute_planning_step] Orchestrator reached ReadyForExecution state, planning complete");
             break;
         }
 
         let action = orchestrator_agent.run_until_action().await?;
-        eprintln!("[execute_planning_step] Received action: {:?}, current state after action: {:?}", action, orchestrator_agent.current_state);
+        eprintln!(
+            "[execute_planning_step] Received action: {:?}, current state after action: {:?}",
+            action, orchestrator_agent.current_state
+        );
 
         // Check state again after run_until_action returns, as it may have transitioned
-        if matches!(orchestrator_agent.current_state, crate::auto_pipeline::state_machine::PipelineState::ReadyForExecution) {
+        if matches!(
+            orchestrator_agent.current_state,
+            crate::auto_pipeline::state_machine::PipelineState::ReadyForExecution
+        ) {
             eprintln!("[execute_planning_step] Orchestrator reached ReadyForExecution state after action, planning complete");
             break;
         }
@@ -110,15 +122,24 @@ pub async fn execute_planning_step(
                     // Store agent IDs in each step
                     if let Some(ref agent_id) = planning_agent_id {
                         pipeline.steps[0].agent_id = Some(agent_id.clone());
-                        eprintln!("[execute_planning_step] Stored planning agent_id={}", agent_id);
+                        eprintln!(
+                            "[execute_planning_step] Stored planning agent_id={}",
+                            agent_id
+                        );
                     }
                     if let Some(ref agent_id) = building_agent_id {
                         pipeline.steps[1].agent_id = Some(agent_id.clone());
-                        eprintln!("[execute_planning_step] Stored building agent_id={}", agent_id);
+                        eprintln!(
+                            "[execute_planning_step] Stored building agent_id={}",
+                            agent_id
+                        );
                     }
                     if let Some(ref agent_id) = verification_agent_id {
                         pipeline.steps[2].agent_id = Some(agent_id.clone());
-                        eprintln!("[execute_planning_step] Stored verification agent_id={}", agent_id);
+                        eprintln!(
+                            "[execute_planning_step] Stored verification agent_id={}",
+                            agent_id
+                        );
                     }
 
                     // Mark all steps as completed
@@ -199,10 +220,14 @@ pub async fn execute_planning_step(
 
     // Store the spawned agent ID in the pipeline step for later cleanup
     if let Some(ref agent_id) = planning_agent_id {
-        eprintln!("[execute_planning_step] Storing agent_id={} in pipeline step", agent_id);
+        eprintln!(
+            "[execute_planning_step] Storing agent_id={} in pipeline step",
+            agent_id
+        );
         with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
             pipeline.steps[0].agent_id = Some(agent_id.clone());
-        }).await?;
+        })
+        .await?;
     } else {
         eprintln!("[execute_planning_step] WARNING: No planning_agent_id to store!");
     }

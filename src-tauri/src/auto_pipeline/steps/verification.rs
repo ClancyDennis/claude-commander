@@ -90,7 +90,8 @@ pub async fn execute_verification_step(
 
     eprintln!(
         "[auto_pipeline] Verification complete. Outputs: {}, Agent: {:?}",
-        verification_outputs.len(), verification_agent_id
+        verification_outputs.len(),
+        verification_agent_id
     );
 
     // Store agent back for potential replan/iterate iterations
@@ -100,7 +101,8 @@ pub async fn execute_verification_step(
     if let Some(agent_id) = verification_agent_id {
         with_pipeline_mut(&pipelines, pipeline_id, |pipeline| {
             pipeline.steps[2].agent_id = Some(agent_id);
-        }).await?;
+        })
+        .await?;
     }
 
     // Update pipeline

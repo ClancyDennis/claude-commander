@@ -54,14 +54,20 @@ async fn persist_output(ctx: &StreamContext, output_type: &str, content: &str) {
         // Write synchronously to avoid race conditions
         match runs_db.insert_agent_output(&record).await {
             Ok(id) => {
-                eprintln!("[persist_output] Successfully inserted output with id={}", id);
+                eprintln!(
+                    "[persist_output] Successfully inserted output with id={}",
+                    id
+                );
             }
             Err(e) => {
                 eprintln!("[persist_output] ERROR inserting output: {}", e);
             }
         }
     } else {
-        eprintln!("[persist_output] WARNING: No runs_db available for agent_id={}", ctx.agent_id);
+        eprintln!(
+            "[persist_output] WARNING: No runs_db available for agent_id={}",
+            ctx.agent_id
+        );
     }
 }
 
@@ -78,7 +84,8 @@ async fn handle_stdout_stream(stdout: ChildStdout, ctx: StreamContext) {
     let mut lines = reader.lines();
 
     // Helper to store output in buffer (keeps last 100 outputs)
-    let store_in_buffer = |output_event: AgentOutputEvent, buffer: Arc<Mutex<Vec<AgentOutputEvent>>>| {
+    let store_in_buffer = |output_event: AgentOutputEvent,
+                           buffer: Arc<Mutex<Vec<AgentOutputEvent>>>| {
         tokio::spawn(async move {
             let mut buffer = buffer.lock().await;
             buffer.push(output_event);
@@ -157,13 +164,19 @@ async fn handle_system_message<F>(
         message.to_string()
     } else if let Some(init) = json.get("init") {
         // Handle init messages - extract model/tools info
-        let model = init.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let model = init
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let tools_count = init
             .get("tools")
             .and_then(|v| v.as_array())
             .map(|arr| arr.len())
             .unwrap_or(0);
-        format!("Session initialized with {} ({} tools available)", model, tools_count)
+        format!(
+            "Session initialized with {} ({} tools available)",
+            model, tools_count
+        )
     } else if let Some(subtype_str) = &subtype {
         format!("System: {}", subtype_str)
     } else {
@@ -181,7 +194,9 @@ async fn handle_system_message<F>(
         .with_size_from_content()
         .build();
 
-    let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+    let _ = ctx
+        .app_handle
+        .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
     // Persist to database
     persist_output(ctx, "system", &content).await;
@@ -223,7 +238,10 @@ async fn handle_assistant_message<F>(
                                     .build();
 
                                 store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
-                                let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+                                let _ = ctx.app_handle.emit(
+                                    "agent:output",
+                                    serde_json::to_value(output_event).unwrap(),
+                                );
 
                                 // Persist to database
                                 persist_output(ctx, "text", text).await;
@@ -263,7 +281,9 @@ async fn handle_assistant_message<F>(
                                 .build();
 
                             store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
-                            let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+                            let _ = ctx
+                                .app_handle
+                                .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
                             // Persist to database
                             persist_output(ctx, "tool_use", &content).await;
@@ -302,7 +322,8 @@ async fn handle_assistant_message<F>(
             serde_json::to_value(AgentInputRequiredEvent {
                 agent_id: ctx.agent_id.clone(),
                 last_output: last_text_output,
-            }).unwrap(),
+            })
+            .unwrap(),
         );
     } else if has_tool_use {
         *ctx.pending_input.lock().await = false;
@@ -312,11 +333,8 @@ async fn handle_assistant_message<F>(
     }
 }
 
-async fn handle_user_message<F>(
-    ctx: &StreamContext,
-    json: &serde_json::Value,
-    store_in_buffer: &F,
-) where
+async fn handle_user_message<F>(ctx: &StreamContext, json: &serde_json::Value, store_in_buffer: &F)
+where
     F: Fn(AgentOutputEvent, Arc<Mutex<Vec<AgentOutputEvent>>>),
 {
     let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(json);
@@ -359,7 +377,9 @@ async fn handle_user_message<F>(
                                 .build();
 
                             store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
-                            let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+                            let _ = ctx
+                                .app_handle
+                                .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
                             // Persist to database
                             persist_output(ctx, output_type, &result_text).await;
@@ -416,7 +436,7 @@ async fn handle_result_message<F>(
         match subtype.as_deref() {
             Some("success") => "Task completed successfully".to_string(),
             Some("error") => "Task failed".to_string(),
-            _ => "Result".to_string()
+            _ => "Result".to_string(),
         }
     };
 
@@ -432,7 +452,8 @@ async fn handle_result_message<F>(
         serde_json::to_value(AgentStatsEvent {
             agent_id: ctx.agent_id.clone(),
             stats: stats_snapshot,
-        }).unwrap(),
+        })
+        .unwrap(),
     );
 
     let output_event = OutputEventBuilder::new(ctx.agent_id.clone())
@@ -444,7 +465,9 @@ async fn handle_result_message<F>(
         .build();
 
     store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
-    let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+    let _ = ctx
+        .app_handle
+        .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
     // Persist to database
     persist_output(ctx, "result", &content).await;
@@ -469,7 +492,8 @@ async fn handle_result_message<F>(
             serde_json::to_value(AgentInputRequiredEvent {
                 agent_id: ctx.agent_id.clone(),
                 last_output: String::new(),
-            }).unwrap(),
+            })
+            .unwrap(),
         );
     }
 }
@@ -478,7 +502,10 @@ async fn handle_stream_event(ctx: &StreamContext, json: &serde_json::Value, _lin
     let (session_id, uuid, parent_tool_use_id, subtype) = extract_common_fields(json);
 
     // Extract meaningful content from stream event instead of full JSON
-    let event_type = json.get("event").and_then(|v| v.as_str()).unwrap_or("stream");
+    let event_type = json
+        .get("event")
+        .and_then(|v| v.as_str())
+        .unwrap_or("stream");
     let content = if let Some(data) = json.get("data") {
         if let Some(text) = data.as_str() {
             text.to_string()
@@ -503,7 +530,9 @@ async fn handle_stream_event(ctx: &StreamContext, json: &serde_json::Value, _lin
         .with_size_from_content()
         .build();
 
-    let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+    let _ = ctx
+        .app_handle
+        .emit("agent:output", serde_json::to_value(output_event).unwrap());
 }
 
 async fn handle_unknown_message(
@@ -524,7 +553,9 @@ async fn handle_unknown_message(
         .with_size_from_content()
         .build();
 
-    let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+    let _ = ctx
+        .app_handle
+        .emit("agent:output", serde_json::to_value(output_event).unwrap());
 }
 
 async fn handle_plain_text(ctx: &StreamContext, line: &str) {
@@ -538,7 +569,9 @@ async fn handle_plain_text(ctx: &StreamContext, line: &str) {
         .with_size_from_content()
         .build();
 
-    let _ = ctx.app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
+    let _ = ctx
+        .app_handle
+        .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
     // Persist to database
     persist_output(ctx, "text", line).await;
@@ -607,7 +640,8 @@ async fn handle_process_end(ctx: &StreamContext) {
             agent_id: ctx.agent_id.clone(),
             status,
             info: None,
-        }).unwrap(),
+        })
+        .unwrap(),
     );
 }
 

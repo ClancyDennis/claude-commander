@@ -76,7 +76,11 @@ pub fn format_action_description(tool_name: &str, input: &Value, result: &Value)
         "ShipDataToAgent" => {
             let source = input["source_agent_id"].as_str().unwrap_or("?");
             let target = input["target_agent_id"].as_str().unwrap_or("?");
-            format!("Shipped data {} → {}", shorten_id(source), shorten_id(target))
+            format!(
+                "Shipped data {} → {}",
+                shorten_id(source),
+                shorten_id(target)
+            )
         }
         "CreateChainedAgent" => {
             let source = input["source_agent_id"].as_str().unwrap_or("?");

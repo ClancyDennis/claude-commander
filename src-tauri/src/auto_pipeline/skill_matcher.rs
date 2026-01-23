@@ -4,10 +4,10 @@
 // to a task analysis. It reads instruction file content and uses AI to
 // determine which instructions are most relevant.
 
-use serde::{Deserialize, Serialize};
-use crate::ai_client::{AIClient, Message, ContentBlock};
-use crate::instruction_manager::{InstructionFileInfo, get_instruction_file_content};
 use super::task_analyzer::TaskAnalysis;
+use crate::ai_client::{AIClient, ContentBlock, Message};
+use crate::instruction_manager::{get_instruction_file_content, InstructionFileInfo};
+use serde::{Deserialize, Serialize};
 
 /// Result of matching an instruction file to a task
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,9 +94,7 @@ pub async fn match_instructions(
 
         instruction_summaries.push_str(&format!(
             "\n---\nFILE: {}\nPATH: {}\nCONTENT PREVIEW:\n{}\n",
-            instruction.name,
-            instruction.relative_path,
-            preview
+            instruction.name, instruction.relative_path, preview
         ));
     }
 
@@ -137,13 +135,18 @@ pub async fn match_instructions(
 
     // Filter by threshold and limit count
     matches.retain(|m| m.relevance_score >= RELEVANCE_THRESHOLD);
-    matches.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+    matches.sort_by(|a, b| {
+        b.relevance_score
+            .partial_cmp(&a.relevance_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     matches.truncate(MAX_INSTRUCTIONS);
 
     // Resolve relative paths to absolute paths
     for m in &mut matches {
         // Find the matching instruction to get absolute path
-        if let Some(instruction) = available_instructions.iter()
+        if let Some(instruction) = available_instructions
+            .iter()
             .find(|i| i.relative_path == m.instruction_path || i.name == m.instruction_path)
         {
             m.instruction_path = instruction.path.clone();
@@ -208,7 +211,11 @@ pub fn match_instructions_simple(
     }
 
     // Sort by relevance
-    matches.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+    matches.sort_by(|a, b| {
+        b.relevance_score
+            .partial_cmp(&a.relevance_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     matches.truncate(MAX_INSTRUCTIONS);
 
     Ok(matches)

@@ -15,8 +15,13 @@ pub mod response_handler;
 pub mod rules;
 pub mod session_expectations;
 
-pub use collector::{SecurityEvent, SecurityEventCollector, SecurityEventMetadata, SecurityEventType};
-pub use llm_analyzer::{AnalysisContext, AnalysisResult, LLMAnalyzer, RecommendedAction, RiskLevel, ThreatAssessment, ThreatType};
+pub use collector::{
+    SecurityEvent, SecurityEventCollector, SecurityEventMetadata, SecurityEventType,
+};
+pub use llm_analyzer::{
+    AnalysisContext, AnalysisResult, LLMAnalyzer, RecommendedAction, RiskLevel, ThreatAssessment,
+    ThreatType,
+};
 pub use pattern_matcher::{DetectionRule, PatternMatch, PatternMatcher, Severity, ThreatCategory};
 pub use response_handler::{ResponseConfig, ResponseHandler, SecurityAlertEvent};
 pub use session_expectations::{ExpectationCheckResult, InitialExpectations, SessionExpectations};
@@ -79,16 +84,16 @@ impl MonitoringProvider {
     pub fn create_client(&self) -> Result<AIClient, String> {
         match self {
             MonitoringProvider::ClaudeHaiku => {
-                let api_key = std::env::var("ANTHROPIC_API_KEY")
-                    .map_err(|_| "ANTHROPIC_API_KEY not set")?;
+                let api_key =
+                    std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set")?;
                 Ok(AIClient::new(crate::ai_client::Provider::Claude {
                     api_key,
                     model: "claude-3-5-haiku-latest".to_string(),
                 }))
             }
             MonitoringProvider::GPT4oMini => {
-                let api_key = std::env::var("OPENAI_API_KEY")
-                    .map_err(|_| "OPENAI_API_KEY not set")?;
+                let api_key =
+                    std::env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY not set")?;
                 Ok(AIClient::new(crate::ai_client::Provider::OpenAI {
                     api_key,
                     model: "gpt-4o-mini".to_string(),
@@ -165,7 +170,8 @@ impl SecurityMonitor {
             }
         };
 
-        let response_handler = ResponseHandler::new(agent_manager, logger, app_handle, response_config);
+        let response_handler =
+            ResponseHandler::new(agent_manager, logger, app_handle, response_config);
 
         // Initialize session expectations tracker
         let session_expectations = Arc::new(Mutex::new(SessionExpectations::new()));
@@ -194,7 +200,10 @@ impl SecurityMonitor {
 
         // Try LLM-based expectation seeding if available
         if let Some(ref llm) = self.llm_analyzer {
-            match expectations.seed_from_prompt(agent_id, working_dir, prompt, llm).await {
+            match expectations
+                .seed_from_prompt(agent_id, working_dir, prompt, llm)
+                .await
+            {
                 Ok(()) => {
                     println!(
                         "Security: Seeded expectations for agent {} from prompt",
@@ -364,7 +373,8 @@ impl SecurityMonitor {
                         }
                     } else if has_suspicious_patterns {
                         // Pattern-only analysis (no LLM)
-                        let analysis = self.create_pattern_only_analysis(&events, all_pattern_matches);
+                        let analysis =
+                            self.create_pattern_only_analysis(&events, all_pattern_matches);
                         if let Err(e) = self.response_handler.handle_analysis(analysis).await {
                             eprintln!("Security monitor: Failed to handle analysis: {}", e);
                         }
@@ -395,10 +405,7 @@ impl SecurityMonitor {
                 },
                 severity: pm.severity.clone(),
                 confidence: pm.confidence,
-                explanation: format!(
-                    "Pattern '{}' matched: {}",
-                    pm.rule_name, pm.matched_text
-                ),
+                explanation: format!("Pattern '{}' matched: {}", pm.rule_name, pm.matched_text),
                 evidence: vec![pm.matched_text.clone()],
                 mitigations: vec!["Review the flagged content".to_string()],
             })
@@ -420,10 +427,7 @@ impl SecurityMonitor {
 
         let recommended_actions = if overall_risk >= RiskLevel::High {
             vec![RecommendedAction::Alert {
-                message: format!(
-                    "{} suspicious patterns detected",
-                    pattern_matches.len()
-                ),
+                message: format!("{} suspicious patterns detected", pattern_matches.len()),
             }]
         } else {
             vec![RecommendedAction::Continue]

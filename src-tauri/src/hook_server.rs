@@ -1,15 +1,12 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::security_monitor::{SecurityEvent, SecurityEventMetadata, SecurityEventType, SecurityMonitor};
+use crate::security_monitor::{
+    SecurityEvent, SecurityEventMetadata, SecurityEventType, SecurityMonitor,
+};
 use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
 
 #[derive(Debug, Clone)]
@@ -71,21 +68,19 @@ async fn handle_hook(
         let now = chrono::Utc::now().timestamp_millis();
 
         // Generate a unique ID for this tool call (agent_id + session_id + tool_name + timestamp)
-        let tool_call_id = format!("{}_{}_{}_{}",
-            agent_id,
-            input.session_id,
-            tool_name,
-            now
-        );
+        let tool_call_id = format!("{}_{}_{}_{}", agent_id, input.session_id, tool_name, now);
 
         if input.hook_event_name == "PreToolUse" {
             // Store the pending tool call
             let mut pending = state.pending_tools.lock().await;
-            pending.insert(tool_call_id.clone(), PendingToolCall {
-                tool_name: tool_name.clone(),
-                tool_input: input.tool_input.clone().unwrap_or(serde_json::Value::Null),
-                start_time: now,
-            });
+            pending.insert(
+                tool_call_id.clone(),
+                PendingToolCall {
+                    tool_name: tool_name.clone(),
+                    tool_input: input.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                    start_time: now,
+                },
+            );
             drop(pending);
 
             // Clone tool_input for use in multiple places
@@ -106,7 +101,9 @@ async fn handle_hook(
                 timestamp: now,
             };
 
-            let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
+            let _ = state
+                .app_handle
+                .emit("agent:tool", serde_json::to_value(event).unwrap());
 
             // Emit enhanced activity event for UI status display
             let activity = format_agent_activity(tool_name, &Some(tool_input_value));
@@ -116,27 +113,45 @@ async fn handle_hook(
                 tool_name: tool_name.clone(),
                 timestamp: now,
             };
-            let _ = state.app_handle.emit("agent:activity", serde_json::to_value(activity_event).unwrap());
+            let _ = state.app_handle.emit(
+                "agent:activity",
+                serde_json::to_value(activity_event).unwrap(),
+            );
         } else if input.hook_event_name == "PostToolUse" {
             // Try to find the matching PreToolUse
             let mut pending = state.pending_tools.lock().await;
 
             // Find the most recent matching pending call for this tool
-            let matching_key = pending.iter()
-                .filter(|(k, v)| k.starts_with(&format!("{}_{}", agent_id, input.session_id))
-                    && v.tool_name == *tool_name)
+            let matching_key = pending
+                .iter()
+                .filter(|(k, v)| {
+                    k.starts_with(&format!("{}_{}", agent_id, input.session_id))
+                        && v.tool_name == *tool_name
+                })
                 .map(|(k, _)| k.clone())
                 .max(); // Get the most recent one
 
             let (execution_time_ms, start_time, stored_input) = if let Some(key) = &matching_key {
                 if let Some(pending_call) = pending.remove(key) {
                     let exec_time = (now - pending_call.start_time) as u64;
-                    (Some(exec_time), pending_call.start_time, pending_call.tool_input)
+                    (
+                        Some(exec_time),
+                        pending_call.start_time,
+                        pending_call.tool_input,
+                    )
                 } else {
-                    (None, now, input.tool_input.clone().unwrap_or(serde_json::Value::Null))
+                    (
+                        None,
+                        now,
+                        input.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                    )
                 }
             } else {
-                (None, now, input.tool_input.clone().unwrap_or(serde_json::Value::Null))
+                (
+                    None,
+                    now,
+                    input.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                )
             };
             drop(pending);
 
@@ -146,9 +161,10 @@ async fn handle_hook(
                 if response.get("error").is_some() {
                     (
                         "failed".to_string(),
-                        response.get("error")
+                        response
+                            .get("error")
                             .and_then(|e| e.as_str())
-                            .map(|s| s.to_string())
+                            .map(|s| s.to_string()),
                     )
                 } else {
                     ("success".to_string(), None)
@@ -172,7 +188,9 @@ async fn handle_hook(
                 timestamp: start_time,
             };
 
-            let _ = state.app_handle.emit("agent:tool", serde_json::to_value(event).unwrap());
+            let _ = state
+                .app_handle
+                .emit("agent:tool", serde_json::to_value(event).unwrap());
         }
     }
 
@@ -255,7 +273,7 @@ fn format_agent_activity(tool_name: &str, tool_input: &Option<serde_json::Value>
                 .unwrap_or("file");
             // Shorten long paths
             let short_path = if file_path.len() > 40 {
-                format!("...{}", &file_path[file_path.len()-37..])
+                format!("...{}", &file_path[file_path.len() - 37..])
             } else {
                 file_path.to_string()
             };
@@ -267,7 +285,7 @@ fn format_agent_activity(tool_name: &str, tool_input: &Option<serde_json::Value>
                 .and_then(|p| p.as_str())
                 .unwrap_or("file");
             let short_path = if file_path.len() > 40 {
-                format!("...{}", &file_path[file_path.len()-37..])
+                format!("...{}", &file_path[file_path.len() - 37..])
             } else {
                 file_path.to_string()
             };
@@ -279,7 +297,7 @@ fn format_agent_activity(tool_name: &str, tool_input: &Option<serde_json::Value>
                 .and_then(|p| p.as_str())
                 .unwrap_or("file");
             let short_path = if file_path.len() > 40 {
-                format!("...{}", &file_path[file_path.len()-37..])
+                format!("...{}", &file_path[file_path.len() - 37..])
             } else {
                 file_path.to_string()
             };
@@ -325,7 +343,8 @@ fn format_agent_activity(tool_name: &str, tool_input: &Option<serde_json::Value>
                 .and_then(|u| u.as_str())
                 .unwrap_or("URL");
             // Extract domain from URL
-            let domain = url.split("//")
+            let domain = url
+                .split("//")
                 .nth(1)
                 .and_then(|s| s.split('/').next())
                 .unwrap_or(url);

@@ -4,8 +4,8 @@
 // technologies, and actions are involved. This information is then used
 // to automatically select relevant instruction files.
 
+use crate::ai_client::{AIClient, ContentBlock, Message};
 use serde::{Deserialize, Serialize};
-use crate::ai_client::{AIClient, Message, ContentBlock};
 
 /// Structured analysis of a user's task request
 #[derive(Debug, Clone, Serialize, Deserialize)]
