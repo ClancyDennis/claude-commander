@@ -292,9 +292,8 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
 fn create_analysis_tool() -> Tool {
     Tool {
         name: "report_threat_analysis".to_string(),
-        description:
-            "Report the results of security threat analysis for a batch of agent events"
-                .to_string(),
+        description: "Report the results of security threat analysis for a batch of agent events"
+            .to_string(),
         input_schema: serde_json::json!({
             "type": "object",
             "required": ["threats_detected", "overall_risk_level", "recommended_actions", "analysis_summary", "confidence"],

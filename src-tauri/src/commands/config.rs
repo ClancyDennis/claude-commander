@@ -262,10 +262,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
 ];
 
 /// Keys that require app restart to take full effect
-const RESTART_REQUIRED_KEYS: &[&str] = &[
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-];
+const RESTART_REQUIRED_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
 
 /// Parse .env file content into a vector of lines, preserving comments and blank lines
 fn parse_env_content(content: &str) -> Vec<(Option<String>, String)> {
@@ -302,8 +299,7 @@ fn write_env_file(path: &Path, lines: &[(Option<String>, String)]) -> Result<(),
         format!("{}\n", content)
     };
 
-    std::fs::write(path, &content)
-        .map_err(|e| format!("Failed to write .env file: {}", e))?;
+    std::fs::write(path, &content).map_err(|e| format!("Failed to write .env file: {}", e))?;
 
     // Set file permissions to 0600 on Unix (owner read/write only)
     #[cfg(unix)]
@@ -384,7 +380,8 @@ pub async fn update_config_value(key: String, value: String) -> Result<ConfigUpd
     Ok(ConfigUpdateResult {
         success: true,
         message: if requires_restart {
-            "Configuration saved. Restart the app for API key changes to take full effect.".to_string()
+            "Configuration saved. Restart the app for API key changes to take full effect."
+                .to_string()
         } else {
             "Configuration saved successfully.".to_string()
         },
@@ -397,7 +394,10 @@ pub async fn update_config_batch(updates: Vec<ConfigUpdate>) -> Result<ConfigUpd
     // Validate all keys first
     for update in &updates {
         if !ALLOWED_CONFIG_KEYS.contains(&update.key.as_str()) {
-            return Err(format!("Configuration key '{}' is not editable", update.key));
+            return Err(format!(
+                "Configuration key '{}' is not editable",
+                update.key
+            ));
         }
     }
 
@@ -437,7 +437,9 @@ pub async fn update_config_batch(updates: Vec<ConfigUpdate>) -> Result<ConfigUpd
         }
 
         // Find if key already exists
-        let existing_idx = lines.iter().position(|(k, _)| k.as_deref() == Some(key.as_str()));
+        let existing_idx = lines
+            .iter()
+            .position(|(k, _)| k.as_deref() == Some(key.as_str()));
 
         if value_trimmed.is_empty() {
             // Remove the key if value is empty
@@ -464,7 +466,8 @@ pub async fn update_config_batch(updates: Vec<ConfigUpdate>) -> Result<ConfigUpd
     Ok(ConfigUpdateResult {
         success: true,
         message: if any_restart_required {
-            "Configuration saved. Restart the app for API key changes to take full effect.".to_string()
+            "Configuration saved. Restart the app for API key changes to take full effect."
+                .to_string()
         } else {
             "Configuration saved successfully.".to_string()
         },
@@ -480,7 +483,10 @@ pub struct ApiKeyValidationResult {
 
 /// Validate an API key by making a lightweight API call
 #[tauri::command]
-pub async fn validate_api_key(provider: String, api_key: String) -> Result<ApiKeyValidationResult, String> {
+pub async fn validate_api_key(
+    provider: String,
+    api_key: String,
+) -> Result<ApiKeyValidationResult, String> {
     let api_key = api_key.trim();
 
     if api_key.is_empty() {

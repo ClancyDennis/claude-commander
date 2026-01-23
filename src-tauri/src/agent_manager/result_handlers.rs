@@ -4,9 +4,7 @@
 // unknown message types, plain text output, and process end handling.
 
 use crate::agent_runs_db::RunStatus;
-use crate::types::{
-    AgentInputRequiredEvent, AgentStatsEvent, AgentStatus, AgentStatusEvent,
-};
+use crate::types::{AgentInputRequiredEvent, AgentStatsEvent, AgentStatus, AgentStatusEvent};
 use crate::utils::time::now_millis;
 
 use super::event_handlers::StreamContext;

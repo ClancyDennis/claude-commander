@@ -19,6 +19,7 @@ pub mod response_handler;
 pub mod rules;
 pub mod session_expectations;
 
+pub use anomaly_detection::ExpectationCheckResult;
 pub use collector::{
     SecurityEvent, SecurityEventCollector, SecurityEventMetadata, SecurityEventType,
 };
@@ -28,7 +29,6 @@ pub use llm_analyzer::{
 };
 pub use pattern_matcher::{DetectionRule, PatternMatch, PatternMatcher, Severity, ThreatCategory};
 pub use response_handler::{ResponseConfig, ResponseHandler, SecurityAlertEvent};
-pub use anomaly_detection::ExpectationCheckResult;
 pub use session_expectations::{InitialExpectations, SessionExpectations};
 
 use std::sync::Arc;

@@ -13,7 +13,9 @@ use super::anomaly_detection::{
 };
 use super::collector::{SecurityEvent, SecurityEventType};
 use super::llm_analyzer::LLMAnalyzer;
-use super::path_matching::{extract_path_from_input, truncate_string, ForbiddenPathConfig, PathScope};
+use super::path_matching::{
+    extract_path_from_input, truncate_string, ForbiddenPathConfig, PathScope,
+};
 
 /// Tracks expected behavior patterns for each agent session
 pub struct SessionExpectations {
@@ -366,7 +368,6 @@ impl SessionExpectations {
         self.sessions.get(agent_id)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

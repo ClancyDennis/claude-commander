@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use super::pattern_matcher::PatternMatch;
 use super::anomaly_detection::ExpectationCheckResult;
+use super::pattern_matcher::PatternMatch;
 
 /// Security-relevant event extracted from agent activity
 #[derive(Debug, Clone, Serialize, Deserialize)]

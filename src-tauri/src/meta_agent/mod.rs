@@ -11,12 +11,14 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::ai_client::{AIClient, ContentBlock, Message, RichContentBlock, RichMessage, RichMessageContent};
 use crate::ai_client::types::ImageSource;
+use crate::ai_client::{
+    AIClient, ContentBlock, Message, RichContentBlock, RichMessage, RichMessageContent,
+};
 use crate::tool_registry::ToolRegistry;
 use crate::types::{
-    AgentResultStatus, ChatMessage, ChatResponse, ChatUsage, ImageAttachment, MetaAgentThinkingEvent,
-    MetaAgentToolCallEvent, QueueStatus, QueuedAgentResult, ToolCall,
+    AgentResultStatus, ChatMessage, ChatResponse, ChatUsage, ImageAttachment,
+    MetaAgentThinkingEvent, MetaAgentToolCallEvent, QueueStatus, QueuedAgentResult, ToolCall,
 };
 use system_prompt::META_AGENT_SYSTEM_PROMPT;
 
@@ -268,7 +270,9 @@ impl MetaAgent {
     ) -> Result<ChatResponse, String> {
         // If no image, use the regular method
         if image.is_none() {
-            return self.process_user_message(user_message, agent_manager, app_handle).await;
+            return self
+                .process_user_message(user_message, agent_manager, app_handle)
+                .await;
         }
 
         let image = image.unwrap();
@@ -282,15 +286,13 @@ impl MetaAgent {
             .map_err(|e| format!("Failed to emit thinking event: {}", e))?;
 
         // Build rich content blocks with image first (recommended by Claude)
-        let mut content_blocks = vec![
-            RichContentBlock::Image {
-                source: ImageSource {
-                    source_type: "base64".to_string(),
-                    media_type: image.mime_type.clone(),
-                    data: image.base64_data.clone(),
-                },
+        let mut content_blocks = vec![RichContentBlock::Image {
+            source: ImageSource {
+                source_type: "base64".to_string(),
+                media_type: image.mime_type.clone(),
+                data: image.base64_data.clone(),
             },
-        ];
+        }];
 
         // Add text if not empty
         if !user_message.is_empty() {
@@ -300,7 +302,8 @@ impl MetaAgent {
         }
 
         // Build conversation history as rich messages
-        let mut rich_messages: Vec<RichMessage> = self.conversation_history
+        let mut rich_messages: Vec<RichMessage> = self
+            .conversation_history
             .iter()
             .map(|msg| RichMessage {
                 role: msg.role.clone(),
@@ -339,13 +342,18 @@ impl MetaAgent {
                 // Prepend system prompt as first message
                 let mut messages_with_system = vec![RichMessage {
                     role: "user".to_string(),
-                    content: RichMessageContent::Text(format!("System instructions (follow these for all interactions):\n\n{}", system_prompt::META_AGENT_SYSTEM_PROMPT)),
+                    content: RichMessageContent::Text(format!(
+                        "System instructions (follow these for all interactions):\n\n{}",
+                        system_prompt::META_AGENT_SYSTEM_PROMPT
+                    )),
                 }];
 
                 // Add assistant acknowledgment
                 messages_with_system.push(RichMessage {
                     role: "assistant".to_string(),
-                    content: RichMessageContent::Text("I understand and will follow these instructions.".to_string()),
+                    content: RichMessageContent::Text(
+                        "I understand and will follow these instructions.".to_string(),
+                    ),
                 });
 
                 // Add the rest of the conversation

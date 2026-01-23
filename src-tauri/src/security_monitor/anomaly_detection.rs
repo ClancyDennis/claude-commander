@@ -211,18 +211,39 @@ mod tests {
     fn test_categorize_tool_risk() {
         let high_risk = vec!["CustomDanger".to_string()];
 
-        assert_eq!(categorize_tool_risk("CustomDanger", &high_risk), AnomalySeverity::High);
-        assert_eq!(categorize_tool_risk("Bash", &high_risk), AnomalySeverity::High);
-        assert_eq!(categorize_tool_risk("WebFetch", &high_risk), AnomalySeverity::Medium);
-        assert_eq!(categorize_tool_risk("Read", &high_risk), AnomalySeverity::Low);
+        assert_eq!(
+            categorize_tool_risk("CustomDanger", &high_risk),
+            AnomalySeverity::High
+        );
+        assert_eq!(
+            categorize_tool_risk("Bash", &high_risk),
+            AnomalySeverity::High
+        );
+        assert_eq!(
+            categorize_tool_risk("WebFetch", &high_risk),
+            AnomalySeverity::Medium
+        );
+        assert_eq!(
+            categorize_tool_risk("Read", &high_risk),
+            AnomalySeverity::Low
+        );
     }
 
     #[test]
     fn test_categorize_tool_risk_default() {
         assert_eq!(categorize_tool_risk_default("Bash"), AnomalySeverity::High);
-        assert_eq!(categorize_tool_risk_default("WebFetch"), AnomalySeverity::Medium);
-        assert_eq!(categorize_tool_risk_default("WebSearch"), AnomalySeverity::Medium);
-        assert_eq!(categorize_tool_risk_default("Write"), AnomalySeverity::Medium);
+        assert_eq!(
+            categorize_tool_risk_default("WebFetch"),
+            AnomalySeverity::Medium
+        );
+        assert_eq!(
+            categorize_tool_risk_default("WebSearch"),
+            AnomalySeverity::Medium
+        );
+        assert_eq!(
+            categorize_tool_risk_default("Write"),
+            AnomalySeverity::Medium
+        );
         assert_eq!(categorize_tool_risk_default("Read"), AnomalySeverity::Low);
         assert_eq!(categorize_tool_risk_default("Glob"), AnomalySeverity::Low);
     }

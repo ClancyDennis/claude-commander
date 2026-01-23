@@ -25,8 +25,7 @@ use crate::github;
 use crate::logger::Logger;
 use crate::security_monitor::SecurityMonitor;
 use crate::types::{
-    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus,
-    AgentStatusEvent,
+    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus, AgentStatusEvent,
 };
 use crate::utils::time::now_millis;
 

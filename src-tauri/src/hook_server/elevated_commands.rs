@@ -161,9 +161,8 @@ pub(crate) async fn handle_elevated_status(
     // Clean up expired requests first
     {
         let mut pending = state.pending_elevated.lock().await;
-        pending.retain(|_, cmd| {
-            cmd.expires_at > now || cmd.status != ElevatedCommandStatus::Pending
-        });
+        pending
+            .retain(|_, cmd| cmd.expires_at > now || cmd.status != ElevatedCommandStatus::Pending);
     }
 
     // Look up the request
@@ -267,7 +266,10 @@ pub async fn approve_elevated_request(
 }
 
 /// Deny an elevated command request (called by Tauri command)
-pub async fn deny_elevated_request(state: &HookServerState, request_id: &str) -> Result<(), String> {
+pub async fn deny_elevated_request(
+    state: &HookServerState,
+    request_id: &str,
+) -> Result<(), String> {
     let mut pending = state.pending_elevated.lock().await;
 
     let cmd = pending

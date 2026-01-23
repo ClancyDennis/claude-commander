@@ -3,9 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::types::{
-    ElevatedCommandStatus, ElevatedCommandStatusEvent, PendingElevatedCommand,
-};
+use crate::types::{ElevatedCommandStatus, ElevatedCommandStatusEvent, PendingElevatedCommand};
 use crate::AppState;
 
 /// Security status response

@@ -237,10 +237,16 @@ mod tests {
     #[test]
     fn test_extract_path() {
         let input = serde_json::json!({"file_path": "/tmp/test.txt"});
-        assert_eq!(extract_path_from_input(&input), Some("/tmp/test.txt".to_string()));
+        assert_eq!(
+            extract_path_from_input(&input),
+            Some("/tmp/test.txt".to_string())
+        );
 
         let input = serde_json::json!({"path": "/tmp/other.txt"});
-        assert_eq!(extract_path_from_input(&input), Some("/tmp/other.txt".to_string()));
+        assert_eq!(
+            extract_path_from_input(&input),
+            Some("/tmp/other.txt".to_string())
+        );
 
         let input = serde_json::json!({"command": "ls"});
         assert_eq!(extract_path_from_input(&input), None);

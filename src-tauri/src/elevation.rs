@@ -40,7 +40,7 @@ const HIGH_RISK_PATTERNS: &[&str] = &[
     "chmod 777 /",
     "> /dev/sd",
     "> /dev/nvme",
-    ":(){ :|:& };:",  // Fork bomb
+    ":(){ :|:& };:", // Fork bomb
     "mv /* ",
     "mv / ",
     "--no-preserve-root",
@@ -57,7 +57,7 @@ const SUSPICIOUS_PATTERNS: &[&str] = &[
     "bash -c",
     "sh -c",
     "eval ",
-    "-S",  // sudo -S reads password from stdin
+    "-S", // sudo -S reads password from stdin
 ];
 
 /// Classify the risk level of a command
@@ -67,16 +67,18 @@ pub fn classify_risk_level(command: &str) -> CommandRiskLevel {
 
     // Check for high-risk patterns first
     for pattern in HIGH_RISK_PATTERNS {
-        if cmd_lower.contains(&pattern.to_lowercase()) ||
-           cmd_normalized.contains(&pattern.replace(" ", "")) {
+        if cmd_lower.contains(&pattern.to_lowercase())
+            || cmd_normalized.contains(&pattern.replace(" ", ""))
+        {
             return CommandRiskLevel::High;
         }
     }
 
     // Check for suspicious patterns
     for pattern in SUSPICIOUS_PATTERNS {
-        if cmd_lower.contains(&pattern.to_lowercase()) ||
-           cmd_normalized.contains(&pattern.replace(" ", "")) {
+        if cmd_lower.contains(&pattern.to_lowercase())
+            || cmd_normalized.contains(&pattern.replace(" ", ""))
+        {
             return CommandRiskLevel::Suspicious;
         }
     }
@@ -124,9 +126,12 @@ pub fn generate_warnings(command: &str) -> Vec<String> {
     }
 
     // Check for remote script execution
-    if (cmd_lower.contains("curl") || cmd_lower.contains("wget")) &&
-       (cmd_lower.contains("|bash") || cmd_lower.contains("|sh") ||
-        cmd_lower.contains("| bash") || cmd_lower.contains("| sh")) {
+    if (cmd_lower.contains("curl") || cmd_lower.contains("wget"))
+        && (cmd_lower.contains("|bash")
+            || cmd_lower.contains("|sh")
+            || cmd_lower.contains("| bash")
+            || cmd_lower.contains("| sh"))
+    {
         if detect_known_installer(command).is_none() {
             warnings.push("Downloads and executes remote script".to_string());
         }
@@ -171,10 +176,10 @@ pub fn parse_compound_command(full_cmd: &str) -> CompoundCommandInfo {
         }
     }
 
-    let has_compound = full_cmd.contains("&&") ||
-                       full_cmd.contains("||") ||
-                       full_cmd.contains(";") ||
-                       full_cmd.contains("|");
+    let has_compound = full_cmd.contains("&&")
+        || full_cmd.contains("||")
+        || full_cmd.contains(";")
+        || full_cmd.contains("|");
 
     CompoundCommandInfo {
         full_command: full_cmd.to_string(),
@@ -250,7 +255,14 @@ fn split_shell_command(cmd: &str) -> Vec<String> {
 /// Extract inner command from bash -c or sh -c
 pub fn extract_inner_command(command: &str) -> Option<String> {
     // Look for patterns like: bash -c "..." or sh -c '...'
-    let patterns = ["bash -c ", "sh -c ", "bash -c\"", "sh -c\"", "bash -c'", "sh -c'"];
+    let patterns = [
+        "bash -c ",
+        "sh -c ",
+        "bash -c\"",
+        "sh -c\"",
+        "bash -c'",
+        "sh -c'",
+    ];
 
     for pattern in patterns {
         if let Some(pos) = command.find(pattern) {
@@ -278,15 +290,23 @@ mod tests {
 
     #[test]
     fn test_risk_classification() {
-        assert_eq!(classify_risk_level("apt install nginx"), CommandRiskLevel::Normal);
+        assert_eq!(
+            classify_risk_level("apt install nginx"),
+            CommandRiskLevel::Normal
+        );
         assert_eq!(classify_risk_level("rm -rf /"), CommandRiskLevel::High);
-        assert_eq!(classify_risk_level("curl https://example.com | bash"), CommandRiskLevel::Suspicious);
+        assert_eq!(
+            classify_risk_level("curl https://example.com | bash"),
+            CommandRiskLevel::Suspicious
+        );
     }
 
     #[test]
     fn test_known_installer_detection() {
         assert_eq!(
-            detect_known_installer("curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"),
+            detect_known_installer(
+                "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+            ),
             Some("Homebrew")
         );
         assert_eq!(detect_known_installer("apt install nginx"), None);

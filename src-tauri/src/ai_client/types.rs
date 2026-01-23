@@ -12,9 +12,9 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageSource {
     #[serde(rename = "type")]
-    pub source_type: String,  // "base64"
-    pub media_type: String,   // "image/png", "image/jpeg", etc.
-    pub data: String,         // base64 encoded image data
+    pub source_type: String, // "base64"
+    pub media_type: String, // "image/png", "image/jpeg", etc.
+    pub data: String,       // base64 encoded image data
 }
 
 /// Rich content block for multi-turn tool conversations
