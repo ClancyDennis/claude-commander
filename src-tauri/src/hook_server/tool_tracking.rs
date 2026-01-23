@@ -3,13 +3,25 @@
 //! Handles PreToolUse and PostToolUse events from Claude agents,
 //! tracking tool call duration and emitting events to the frontend.
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::security_monitor::{SecurityEvent, SecurityEventMetadata, SecurityEventType};
 use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
 
 use super::HookServerState;
+
+/// Query parameters for the hook endpoint
+#[derive(Debug, Deserialize)]
+pub(crate) struct HookQueryParams {
+    /// Agent ID passed directly in URL to avoid session mapping race condition
+    pub agent_id: Option<String>,
+}
 
 /// Represents a pending tool call awaiting completion
 #[derive(Debug, Clone)]

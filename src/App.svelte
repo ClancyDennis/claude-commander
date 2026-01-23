@@ -73,12 +73,24 @@
     setupKeyboardShortcuts,
     refreshAutoPipeline,
   } from "$lib/services";
+  import { InteractiveTutorial } from "$lib/components/tutorial";
+  import { ContextualHelpPanel } from "$lib/components/help";
+  import { tutorialStore } from "$lib/stores/tutorial.svelte";
+  import { HelpCircle } from "lucide-svelte";
   import type { Agent, AutoPipeline } from "./lib/types";
 
   let showNewAgentDialog = $state(false);
   let showDatabaseStats = $state(false);
   let showSettings = $state(false);
   let showWelcomeModal = $state(false);
+  let helpOpen = $state(false);
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'F1') {
+      e.preventDefault();
+      helpOpen = !helpOpen;
+    }
+  }
 
   // Show toast notifications for key events
   function handleStatusChange(agentId: string, status: string) {
@@ -480,11 +492,17 @@
 <SecurityAlertDetail />
 <NotificationsModal />
 <ElevatedCommandModal />
-<WelcomeModal show={showWelcomeModal} onClose={() => (showWelcomeModal = false)} />
+<WelcomeModal show={showWelcomeModal} onClose={() => (showWelcomeModal = false)} on:startTutorial={() => tutorialStore.start()} />
 
 {#if showNewAgentDialog}
   <NewAgentDialog onClose={() => (showNewAgentDialog = false)} />
 {/if}
+
+<!-- Global overlays -->
+<InteractiveTutorial />
+<ContextualHelpPanel bind:open={helpOpen} />
+
+<svelte:window onkeydown={handleKeydown} />
 
 <style>
   .app {

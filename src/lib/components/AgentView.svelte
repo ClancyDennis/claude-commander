@@ -111,7 +111,7 @@
 </script>
 
 {#if agent}
-  <main class="agent-view" class:compact>
+  <main class="agent-view" class:compact data-tutorial="agent-view">
     {#if showHeader}
       <AgentHeader 
         {agent} 

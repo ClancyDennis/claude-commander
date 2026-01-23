@@ -18,6 +18,7 @@
   import InstructionSelector from "./new-agent/InstructionSelector.svelte";
   import PipelineSettingsForm from "./new-agent/PipelineSettingsForm.svelte";
   import DialogFooter from "./new-agent/DialogFooter.svelte";
+  import ExpandableSection from "./ui/expandable-section.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -149,27 +150,34 @@
       <!-- Top Section: Creation Type -->
       <CreationTypeSelector bind:creationType {isCreating} />
 
-      <div class="form-grid">
-        <!-- Left Column: Configuration -->
-        <div class="col-left">
-          <WorkingDirectoryInput bind:workingDir {isCreating} />
-          <RepoSelector bind:githubUrl {isCreating} />
-
-          {#if creationType === 'pipeline'}
-            <PipelineSettingsForm bind:settings={pipelineSettings} {isCreating} />
-          {/if}
-        </div>
-
-        <!-- Right Column: Context -->
-        <div class="col-right">
-          <TaskDescriptionInput bind:pipelineTask {creationType} {isCreating} />
-          <InstructionSelector
-            {workingDir}
-            bind:selectedInstructions
-            {isCreating}
-          />
-        </div>
+      <!-- Essential Fields Section -->
+      <div class="essential-fields">
+        <WorkingDirectoryInput bind:workingDir {isCreating} />
+        <TaskDescriptionInput bind:pipelineTask {creationType} {isCreating} />
       </div>
+
+      <!-- Advanced Options - Progressive Disclosure -->
+      <ExpandableSection title="Advanced Options" badge="Optional" class="advanced-section">
+        <div class="form-grid">
+          <!-- Left Column: Configuration -->
+          <div class="col-left">
+            <RepoSelector bind:githubUrl {isCreating} />
+
+            {#if creationType === 'pipeline'}
+              <PipelineSettingsForm bind:settings={pipelineSettings} {isCreating} />
+            {/if}
+          </div>
+
+          <!-- Right Column: Context -->
+          <div class="col-right">
+            <InstructionSelector
+              {workingDir}
+              bind:selectedInstructions
+              {isCreating}
+            />
+          </div>
+        </div>
+      </ExpandableSection>
 
       {#if error}
         <div class="error animate-slide-up">
@@ -291,10 +299,22 @@
     overflow-y: auto;
   }
 
+  .essential-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-lg);
+  }
+
+  :global(.advanced-section) {
+    margin-top: var(--space-sm);
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-lg);
+    margin-top: var(--space-md);
   }
 
   .col-left, .col-right {

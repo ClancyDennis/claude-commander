@@ -20,26 +20,28 @@ pub(crate) fn create_hooks_config(
     agent_id: &str,
 ) -> Result<std::path::PathBuf, String> {
     let settings_path = std::env::temp_dir().join(format!("claude_hooks_{}.json", agent_id));
+    // Include agent_id in hook URL to avoid race condition where hooks arrive
+    // before session_id is mapped from Claude CLI stdout
     let hooks_config = serde_json::json!({
         "hooks": {
             "PreToolUse": [{
                 "matcher": "*",
                 "hooks": [{
                     "type": "command",
-                    "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", hook_port)
+                    "command": format!("curl -s -X POST 'http://127.0.0.1:{}/hook?agent_id={}' -H 'Content-Type: application/json' -d @-", hook_port, agent_id)
                 }]
             }],
             "PostToolUse": [{
                 "matcher": "*",
                 "hooks": [{
                     "type": "command",
-                    "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", hook_port)
+                    "command": format!("curl -s -X POST 'http://127.0.0.1:{}/hook?agent_id={}' -H 'Content-Type: application/json' -d @-", hook_port, agent_id)
                 }]
             }],
             "Stop": [{
                 "hooks": [{
                     "type": "command",
-                    "command": format!("curl -s -X POST http://127.0.0.1:{}/hook -H 'Content-Type: application/json' -d @-", hook_port)
+                    "command": format!("curl -s -X POST 'http://127.0.0.1:{}/hook?agent_id={}' -H 'Content-Type: application/json' -d @-", hook_port, agent_id)
                 }]
             }]
         }

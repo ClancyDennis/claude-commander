@@ -45,6 +45,7 @@
     <button
       class="agent-btn chat-assistant"
       class:selected={isChatSelected()}
+      data-tutorial="chat-button"
       onclick={() => onOpenChat()}
     >
       <div class="chat-icon">🎯</div>

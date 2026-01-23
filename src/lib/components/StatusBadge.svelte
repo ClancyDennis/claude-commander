@@ -16,7 +16,7 @@
   }
 </script>
 
-<div class="status-badge {size} {status}">
+<div class="status-badge {size} {status}" data-tutorial="status-badge">
   <div class="status-indicator" style="background-color: {getAgentStatusColor(status)}">
     {#if status === "running" || status === "waitingforinput"}
       <span class="pulse"></span>

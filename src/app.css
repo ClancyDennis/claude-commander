@@ -1,7 +1,110 @@
+@import "tailwindcss";
 @import './lib/styles/animations.css';
 
+/* Tailwind v4 theme configuration */
+@theme {
+  /* Colors mapped from CSS variables */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  /* Border radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Custom animations */
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-slide-in: slide-in 0.3s ease-out;
+  --animate-slide-out: slide-out 0.2s ease-in;
+  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
+  --animate-bounce-gentle: bounce-gentle 0.4s ease-out;
+
+  /* Keyframes */
+  @keyframes fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes slide-in {
+    0% { transform: translateY(-10px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-out {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(10px); opacity: 0; }
+  }
+
+  @keyframes scale-in {
+    0% { transform: scale(0.95); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  @keyframes bounce-gentle {
+    0% { transform: scale(0.9); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+}
+
+/* shadcn-svelte CSS variables (HSL format for Tailwind) */
 :root {
-  /* Modern dark theme with better contrast */
+  /* shadcn theme tokens */
+  --background: 240 10% 4%;
+  --foreground: 240 5% 96%;
+  --card: 240 10% 7%;
+  --card-foreground: 240 5% 96%;
+  --popover: 240 10% 7%;
+  --popover-foreground: 240 5% 96%;
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 10% 11%;
+  --secondary-foreground: 240 5% 96%;
+  --muted: 240 5% 26%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 262 83% 58%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 6% 20%;
+  --input: 240 6% 20%;
+  --ring: 262 83% 58%;
+  --radius: 0.5rem;
+
+  /* Status colors */
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 0%;
+
+  /* Legacy variables (for backward compatibility) */
   --bg-primary: #0f0f13;
   --bg-secondary: #18181f;
   --bg-tertiary: #1f1f2a;
@@ -9,16 +112,16 @@
   --text-primary: #f4f4f5;
   --text-secondary: #9898a6;
   --text-muted: #6b6b7a;
-  --accent: #7c3aed;
+  --accent-hex: #7c3aed;
   --accent-hover: #8b5cf6;
   --accent-glow: rgba(124, 58, 237, 0.3);
-  --success: #22c55e;
+  --success-hex: #22c55e;
   --success-glow: rgba(34, 197, 94, 0.2);
-  --warning: #f59e0b;
+  --warning-hex: #f59e0b;
   --warning-glow: rgba(245, 158, 11, 0.2);
   --error: #ef4444;
   --error-glow: rgba(239, 68, 68, 0.2);
-  --border: #2a2a3a;
+  --border-hex: #2a2a3a;
   --border-light: #3a3a4a;
 
   /* Spacing scale for touch */
