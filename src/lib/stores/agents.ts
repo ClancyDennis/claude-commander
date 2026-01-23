@@ -384,3 +384,17 @@ export function setHistoricalRuns(runs: AgentRun[]) {
 export function selectHistoricalRun(run: AgentRun | null) {
   selectedHistoricalRun.set(run);
 }
+
+/**
+ * Reconcile stale runs - marks any "running" agents in the database as "crashed"
+ * This is useful for cleaning up orphaned agents from previous sessions
+ * Returns the number of runs that were reconciled
+ */
+export async function reconcileStaleRuns(): Promise<number> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const count = await invoke<number>("reconcile_stale_runs");
+  // Reload historical runs after reconciliation
+  const runs = await invoke<AgentRun[]>("get_all_runs");
+  setHistoricalRuns(runs);
+  return count;
+}

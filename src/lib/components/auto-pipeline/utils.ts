@@ -1,5 +1,5 @@
 import type { AutoPipeline, PipelineHistoryBundle } from '$lib/types';
-import type { UnifiedOutput } from './OutputList.svelte';
+import type { UnifiedOutput } from './types';
 
 /**
  * Process pipeline and history into unified outputs

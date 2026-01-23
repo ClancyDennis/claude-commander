@@ -9,7 +9,8 @@
     viewMode?: "side-by-side" | "inline";
   } = $props();
 
-  let localViewMode = $state(viewMode);
+  // Intentionally capture initial viewMode (IIFE breaks reactive tracking)
+  let localViewMode = $state((() => viewMode)());
 
   // Simple line-by-line diff computation
   function computeDiff(orig: string, impr: string) {

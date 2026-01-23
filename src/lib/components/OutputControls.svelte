@@ -14,7 +14,8 @@
   } = $props();
 
   let searchQuery = $state("");
-  let filterType = $state<string>(initialFilterType);
+  // Intentionally capture initial value only (IIFE breaks reactive tracking)
+  let filterType = $state<string>((() => initialFilterType)());
 
   // Get unique output types for filter dropdown
   const outputTypes = $derived.by(() => {

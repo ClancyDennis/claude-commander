@@ -5,5 +5,5 @@ export { default as StageRow } from './StageRow.svelte';
 export { default as FilterBar } from './FilterBar.svelte';
 export { default as OutputList } from './OutputList.svelte';
 
-// Re-export the UnifiedOutput type from OutputList
-export type { UnifiedOutput } from './OutputList.svelte';
+// Re-export the UnifiedOutput type
+export type { UnifiedOutput } from './types';

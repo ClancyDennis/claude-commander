@@ -346,8 +346,8 @@
   }
 
   .status-badge.crashed {
-    background: rgba(231, 76, 60, 0.2);
-    color: var(--error);
+    background: rgba(156, 163, 175, 0.2);
+    color: var(--text-secondary);
   }
 
   .status-badge.waiting_input {

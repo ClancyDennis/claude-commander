@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type TabType = 'overview' | 'activity' | 'outputs' | 'prompts';
+  import type { TabType } from './types';
 
   interface Props {
     activeTab: TabType;

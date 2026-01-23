@@ -50,7 +50,7 @@ export function getRunStatusColor(status: RunStatus): string {
     case 'stopped':
       return 'var(--text-muted)';
     case 'crashed':
-      return 'var(--error)';
+      return 'var(--text-secondary)';
     case 'waiting_input':
       return 'var(--warning)';
     default:
@@ -71,8 +71,9 @@ export function getStatusColor(status: Status): string {
     case 'stopped':
       return 'var(--text-muted)';
     case 'error':
-    case 'crashed':
       return 'var(--error)';
+    case 'crashed':
+      return 'var(--text-secondary)';
 
     // AgentStatus specific
     case 'waitingforinput':
@@ -106,8 +107,9 @@ export function getStatusColorHex(status: Status): string {
     case 'idle':
       return '#6b7280'; // gray-500
     case 'error':
-    case 'crashed':
       return '#ef4444'; // red-500
+    case 'crashed':
+      return '#9ca3af'; // gray-400 (slightly lighter than stopped)
     case 'waitingforinput':
     case 'waiting_input':
       return '#f59e0b'; // amber-500
@@ -175,7 +177,7 @@ export function getRunStatusLabel(status: RunStatus): string {
     case 'stopped':
       return 'Stopped';
     case 'crashed':
-      return 'Crashed';
+      return 'Ended';
     case 'waiting_input':
       return 'Waiting';
     default:
@@ -209,7 +211,7 @@ export function getStatusLabel(status: Status): string {
     case 'completed':
       return 'Completed';
     case 'crashed':
-      return 'Crashed';
+      return 'Ended';
     case 'waiting_input':
       return 'Waiting';
 

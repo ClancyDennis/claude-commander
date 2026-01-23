@@ -5,8 +5,7 @@
     OrchestratorDecision
   } from "$lib/types";
   import { ToolCallList, StateChangeList, DecisionList } from '../orchestrator';
-
-  export type ActivitySubtab = 'tools' | 'states' | 'decisions';
+  import type { ActivitySubtab } from './types';
 
   interface Props {
     loading: boolean;

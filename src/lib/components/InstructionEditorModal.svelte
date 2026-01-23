@@ -25,7 +25,8 @@
 
   // State
   let mode = $state<EditorMode>("draft");
-  let filename = $state(existingFile?.name || "");
+  // Intentionally capture initial filename (IIFE breaks reactive tracking)
+  let filename = $state((() => existingFile?.name || "")());
   let content = $state("");
   let context = $state("");
   let error = $state("");

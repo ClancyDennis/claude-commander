@@ -10,8 +10,7 @@ export { default as OutputsTab } from './OutputsTab.svelte';
 export { default as PromptsTab } from './PromptsTab.svelte';
 
 // Re-export types and utilities
-export type { TabType } from './RunTabs.svelte';
-export type { ActivitySubtab } from './ActivityTab.svelte';
+export type { TabType, ActivitySubtab } from './types';
 export type { PromptData, ActivityData, LoadResult } from './dataLoader';
 export {
   loadPrompts,

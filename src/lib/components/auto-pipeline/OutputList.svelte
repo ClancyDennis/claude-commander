@@ -1,13 +1,6 @@
 <script lang="ts">
   import { getOutputTypeLabel, getOutputTypeClass } from '$lib/utils/outputTypes';
-
-  export type UnifiedOutput = {
-    stage: string;
-    output_type: string;
-    content: string;
-    timestamp: number;
-    summary?: string;
-  };
+  import type { UnifiedOutput } from './types';
 
   let {
     filteredOutputs,
