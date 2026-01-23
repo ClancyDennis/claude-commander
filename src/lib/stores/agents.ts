@@ -16,6 +16,7 @@ import type {
   AgentRun
 } from "../types";
 import { selectedAutoPipelineId } from "./autoPipelines";
+import { selectedPipelineId } from "./pipelines";
 
 // Re-export all orchestrator functionality for backward compatibility
 export {
@@ -331,12 +332,17 @@ export function addAgentToSelection(agentId: string) {
 export function openChat() {
   viewMode.set('chat');
   selectedAgentId.set(null);
+  selectedAutoPipelineId.set(null);
+  selectedPipelineId.set(null);
+  selectedHistoricalRun.set(null);
 }
 
 export function openAgent(agentId: string, multiSelect: boolean = false) {
   viewMode.set('agent');
   selectedAgentId.set(agentId);
   selectedAutoPipelineId.set(null);
+  selectedPipelineId.set(null);
+  selectedHistoricalRun.set(null);
   markAgentViewed(agentId);
 
   // When not multi-selecting, reset selectedAgentIds to just this agent
@@ -383,6 +389,11 @@ export function setHistoricalRuns(runs: AgentRun[]) {
 
 export function selectHistoricalRun(run: AgentRun | null) {
   selectedHistoricalRun.set(run);
+  if (run) {
+    selectedAutoPipelineId.set(null);
+    selectedPipelineId.set(null);
+    sidebarMode.set('history');
+  }
 }
 
 /**

@@ -56,8 +56,8 @@
     align-items: center;
     gap: 10px;
     padding: 8px 12px;
-    background: rgba(124, 58, 237, 0.1);
-    border: 1px solid rgba(124, 58, 237, 0.3);
+    background: rgba(240, 112, 90, 0.1);
+    border: 1px solid rgba(240, 112, 90, 0.3);
     border-radius: 8px;
     max-width: 300px;
   }

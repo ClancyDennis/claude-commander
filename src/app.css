@@ -28,18 +28,19 @@
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
 
-  /* Border radius */
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  /* Border radius - Apple HIG */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
 
-  /* Custom animations */
+  /* Custom animations - Apple-style spring curves */
   --animate-fade-in: fade-in 0.2s ease-out;
-  --animate-slide-in: slide-in 0.3s ease-out;
+  --animate-slide-in: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-slide-out: slide-out 0.2s ease-in;
-  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
-  --animate-bounce-gentle: bounce-gentle 0.4s ease-out;
+  --animate-bounce-gentle: bounce-gentle 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Keyframes */
   @keyframes fade-in {
@@ -48,13 +49,13 @@
   }
 
   @keyframes slide-in {
-    0% { transform: translateY(-10px); opacity: 0; }
+    0% { transform: translateY(-8px); opacity: 0; }
     100% { transform: translateY(0); opacity: 1; }
   }
 
   @keyframes slide-out {
     0% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(10px); opacity: 0; }
+    100% { transform: translateY(8px); opacity: 0; }
   }
 
   @keyframes scale-in {
@@ -68,75 +69,171 @@
   }
 
   @keyframes bounce-gentle {
-    0% { transform: scale(0.9); }
-    50% { transform: scale(1.05); }
+    0% { transform: scale(0.95); }
+    50% { transform: scale(1.02); }
     100% { transform: scale(1); }
   }
 }
 
-/* shadcn-svelte CSS variables (HSL format for Tailwind) */
-:root {
-  /* shadcn theme tokens */
-  --background: 240 10% 4%;
-  --foreground: 240 5% 96%;
-  --card: 240 10% 7%;
-  --card-foreground: 240 5% 96%;
-  --popover: 240 10% 7%;
-  --popover-foreground: 240 5% 96%;
-  --primary: 262 83% 58%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 240 10% 11%;
-  --secondary-foreground: 240 5% 96%;
-  --muted: 240 5% 26%;
-  --muted-foreground: 240 5% 65%;
-  --accent: 262 83% 58%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 240 6% 20%;
-  --input: 240 6% 20%;
-  --ring: 262 83% 58%;
-  --radius: 0.5rem;
+/* ============================================
+   APPLE HIG DESIGN TOKENS
+   ============================================ */
 
-  /* Status colors */
-  --success: 142 71% 45%;
+:root {
+  /* ----------------------------------------
+     COLOR PALETTE - Apple-inspired pure grays
+     ---------------------------------------- */
+
+  /* Background hierarchy (pure grays for Apple feel) */
+  --background: 0 0% 6%;              /* Deep black: #0f0f0f */
+  --background-secondary: 0 0% 10%;   /* Elevated: #1a1a1a */
+  --background-tertiary: 0 0% 14%;    /* Surface: #242424 */
+  --background-elevated: 0 0% 18%;    /* Card: #2e2e2e */
+
+  /* Foreground hierarchy */
+  --foreground: 0 0% 98%;             /* Primary text: #fafafa */
+  --foreground-secondary: 0 0% 70%;   /* Secondary text: #b3b3b3 */
+  --foreground-tertiary: 0 0% 50%;    /* Muted text: #808080 */
+
+  /* shadcn compatibility tokens */
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 12 80% 58%;              /* Accent: #e8664d */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 14%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 18%;
+  --muted-foreground: 0 0% 50%;
+  --accent: 12 80% 58%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 85% 60%;           /* System red: #FF3B30 */
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 18%;
+  --input: 0 0% 18%;
+  --ring: 12 80% 58%;
+  --radius: 10px;
+
+  /* ----------------------------------------
+     SYSTEM COLORS - Apple standard
+     ---------------------------------------- */
+  --system-blue: 211 100% 50%;        /* #007AFF */
+  --system-green: 142 70% 45%;        /* #34C759 */
+  --system-yellow: 40 100% 50%;       /* #FF9500 */
+  --system-orange: 28 100% 50%;       /* #FF9500 */
+  --system-red: 0 85% 60%;            /* #FF3B30 */
+  --system-purple: 280 85% 65%;       /* #AF52DE */
+
+  /* Status colors (HSL) */
+  --success: 142 70% 45%;
   --success-foreground: 0 0% 100%;
-  --warning: 38 92% 50%;
+  --warning: 40 100% 50%;
   --warning-foreground: 0 0% 0%;
 
-  /* Legacy variables (for backward compatibility) */
-  --bg-primary: #0f0f13;
-  --bg-secondary: #18181f;
-  --bg-tertiary: #1f1f2a;
-  --bg-elevated: #252532;
-  --text-primary: #f4f4f5;
-  --text-secondary: #9898a6;
-  --text-muted: #6b6b7a;
-  --accent-hex: #7c3aed;
-  --accent-hover: #8b5cf6;
-  --accent-glow: rgba(124, 58, 237, 0.3);
-  --success-hex: #22c55e;
-  --success-glow: rgba(34, 197, 94, 0.2);
-  --warning-hex: #f59e0b;
-  --warning-glow: rgba(245, 158, 11, 0.2);
-  --error: #ef4444;
-  --error-glow: rgba(239, 68, 68, 0.2);
-  --border-hex: #2a2a3a;
-  --border-light: #3a3a4a;
+  /* ----------------------------------------
+     LEGACY VARIABLES - Hex format compatibility
+     ---------------------------------------- */
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #242424;
+  --bg-elevated: #2e2e2e;
+  --text-primary: #fafafa;
+  --text-secondary: #b3b3b3;
+  --text-muted: #808080;
 
-  /* Spacing scale for touch */
+  /* Accent colors */
+  --accent-hex: #e8664d;
+  --accent-hover: #ef7d66;
+  --accent-glow: rgba(232, 102, 77, 0.25);
+  --text-accent: #ff9580;
+
+  /* Status hex colors */
+  --success-hex: #34C759;
+  --success-glow: rgba(52, 199, 89, 0.2);
+  --warning-hex: #FF9500;
+  --warning-glow: rgba(255, 149, 0, 0.2);
+  --error: #FF3B30;
+  --error-glow: rgba(255, 59, 48, 0.2);
+
+  /* Border colors */
+  --border-hex: #2e2e2e;
+  --border-light: #404040;
+
+  /* ----------------------------------------
+     SPACING - Apple 8pt grid system
+     ---------------------------------------- */
+  --space-1: 4px;    /* 0.5 unit */
+  --space-2: 8px;    /* 1 unit */
+  --space-3: 12px;   /* 1.5 units */
+  --space-4: 16px;   /* 2 units */
+  --space-5: 20px;   /* 2.5 units */
+  --space-6: 24px;   /* 3 units */
+  --space-8: 32px;   /* 4 units */
+  --space-10: 40px;  /* 5 units */
+  --space-12: 48px;  /* 6 units */
+
+  /* Legacy spacing names */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
 
-  /* Shadows for depth */
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+  /* ----------------------------------------
+     TYPOGRAPHY - Apple scale
+     ---------------------------------------- */
+  --text-xs: 11px;    /* Caption */
+  --text-sm: 13px;    /* Secondary */
+  --text-base: 15px;  /* Body (Apple default) */
+  --text-lg: 17px;    /* Emphasized */
+  --text-xl: 20px;    /* Title 3 */
+  --text-2xl: 22px;   /* Title 2 */
+  --text-3xl: 26px;   /* Title 1 */
+  --text-4xl: 34px;   /* Large Title */
+
+  /* Line heights */
+  --leading-tight: 1.2;
+  --leading-normal: 1.47;
+  --leading-relaxed: 1.6;
+
+  /* Font weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ----------------------------------------
+     SHADOWS - Apple subtle depth
+     ---------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px var(--accent-glow);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 16px var(--accent-glow);
+
+  /* ----------------------------------------
+     CORNER RADIUS - Apple consistent radii
+     ---------------------------------------- */
+  --radius-none: 0;
+  --radius-sm: 6px;     /* Small elements, badges */
+  --radius-md: 10px;    /* Buttons, inputs */
+  --radius-lg: 14px;    /* Cards */
+  --radius-xl: 20px;    /* Dialogs, large containers */
+  --radius-full: 9999px;
+
+  /* ----------------------------------------
+     TRANSITIONS - Apple snappy timing
+     ---------------------------------------- */
+  --transition-fast: 0.1s ease;
+  --transition-normal: 0.15s ease;
+  --transition-slow: 0.25s ease;
+  --spring-bounce: cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* ============================================
+   BASE RESET & DEFAULTS
+   ============================================ */
 
 * {
   margin: 0;
@@ -151,84 +248,143 @@ html, body, #app {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-normal);
+  letter-spacing: -0.01em;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 16px;
-  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Larger touch-friendly buttons */
+/* ============================================
+   BUTTON BASE STYLES - Apple HIG
+   ============================================ */
+
 button {
   cursor: pointer;
   border: none;
-  border-radius: 12px;
-  padding: 14px 24px;
-  font-size: 16px;
-  font-weight: 600;
-  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  transition: all var(--transition-normal);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-button.primary {
-  background: linear-gradient(135deg, var(--accent) 0%, #9333ea 100%);
-  color: white;
-  box-shadow: var(--shadow-sm), 0 0 16px var(--accent-glow);
+button:active {
+  transform: scale(0.98);
 }
 
-button.primary:hover, button.primary:active {
-  background: linear-gradient(135deg, var(--accent-hover) 0%, #a855f7 100%);
-  box-shadow: var(--shadow-md), 0 0 24px var(--accent-glow);
-  transform: translateY(-1px);
-}
-
-button.primary:disabled {
-  opacity: 0.5;
+button:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Filled button (primary) */
+button.primary,
+button.filled {
+  background: var(--accent-hex);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+button.primary:hover,
+button.filled:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+button.primary:disabled,
+button.filled:disabled {
   box-shadow: none;
 }
 
-button.secondary {
-  background-color: var(--bg-elevated);
+/* Tinted button (secondary accent) */
+button.tinted {
+  background: rgba(232, 102, 77, 0.15);
+  color: var(--accent-hex);
+}
+
+button.tinted:hover {
+  background: rgba(232, 102, 77, 0.25);
+}
+
+/* Gray button (tertiary) */
+button.secondary,
+button.gray {
+  background: var(--bg-tertiary);
   color: var(--text-primary);
-  border: 1px solid var(--border);
 }
 
-button.secondary:hover, button.secondary:active {
-  background-color: var(--bg-tertiary);
-  border-color: var(--border-light);
+button.secondary:hover,
+button.gray:hover {
+  background: var(--bg-elevated);
 }
 
-button.secondary.active {
-  background: linear-gradient(135deg, var(--accent) 0%, #9333ea 100%);
+/* Plain/ghost button */
+button.plain,
+button.ghost {
+  background: transparent;
+  color: var(--accent-hex);
+  padding: var(--space-2);
+}
+
+button.plain:hover,
+button.ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Danger button */
+button.danger {
+  background: var(--error);
   color: white;
-  border-color: transparent;
 }
 
-/* Touch-friendly inputs */
-input, textarea {
+button.danger:hover {
+  background: hsl(0 85% 55%);
+}
+
+/* Active state for toggles */
+button.active {
+  background: var(--accent-hex);
+  color: white;
+}
+
+/* ============================================
+   INPUT STYLES - Apple HIG
+   ============================================ */
+
+input, textarea, select {
   background-color: var(--bg-tertiary);
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 18px;
+  border: 1px solid var(--border-hex);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   color: var(--text-primary);
-  font-size: 16px;
   font-family: inherit;
-  transition: all 0.2s ease;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  transition: all var(--transition-normal);
   -webkit-appearance: none;
 }
 
-input:focus, textarea:focus {
+input:hover, textarea:hover, select:hover {
+  border-color: var(--border-light);
+}
+
+input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-hex);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
@@ -236,27 +392,32 @@ input::placeholder, textarea::placeholder {
   color: var(--text-muted);
 }
 
-/* Custom scrollbar */
+/* ============================================
+   SCROLLBAR - Apple minimal style
+   ============================================ */
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-elevated);
-  border-radius: 5px;
-  border: 2px solid var(--bg-secondary);
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border);
+  background: rgba(255, 255, 255, 0.25);
 }
 
-/* Animations */
+/* ============================================
+   UTILITY ANIMATIONS
+   ============================================ */
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -265,11 +426,22 @@ input::placeholder, textarea::placeholder {
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -278,10 +450,38 @@ input::placeholder, textarea::placeholder {
   50% { opacity: 0.5; }
 }
 
+@keyframes spinner-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .animate-fade-in {
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s ease;
+  animation: slideUp 0.25s var(--spring-bounce);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s var(--spring-bounce);
+}
+
+/* ============================================
+   FOCUS STATES - Apple accessibility
+   ============================================ */
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* For elements that shouldn't show focus ring on click */
+.focus-ring-inset:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-hex);
 }

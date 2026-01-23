@@ -114,7 +114,7 @@ export function getStatusColorHex(status: Status): string {
     case 'waiting_input':
       return '#f59e0b'; // amber-500
     case 'processing':
-      return '#8b5cf6'; // violet-500 (accent)
+      return '#f0705a'; // coral (accent)
     default:
       return '#6b7280'; // gray-500
   }

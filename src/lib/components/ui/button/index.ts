@@ -4,6 +4,12 @@ import Root, {
   type ButtonVariant,
   buttonVariants,
 } from "./button.svelte";
+import IconButton, {
+  type IconButtonProps,
+  type IconButtonSize,
+  type IconButtonVariant,
+  iconButtonVariants,
+} from "./icon-button.svelte";
 
 export {
   Root,
@@ -12,4 +18,9 @@ export {
   type ButtonVariant,
   buttonVariants,
   Root as Button,
+  IconButton,
+  type IconButtonProps,
+  type IconButtonSize,
+  type IconButtonVariant,
+  iconButtonVariants,
 };

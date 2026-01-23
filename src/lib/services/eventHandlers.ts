@@ -47,6 +47,11 @@ export interface EventHandlerCallbacks {
     pendingInput: boolean;
     lastActivity: Date;
   }) => void;
+  onAgentActivityDetail?: (agentId: string, detail: {
+    activity: string;
+    toolName: string;
+    timestamp: Date;
+  }) => void;
   onAgentStats: (agentId: string, stats: {
     agentId: string;
     totalPrompts: number;
@@ -238,6 +243,24 @@ async function setupStatsListener(
       totalCostUsd: event.payload.stats.total_cost_usd,
     };
     onAgentStats(event.payload.agent_id, stats);
+  });
+}
+
+async function setupActivityDetailListener(
+  onAgentActivityDetail: EventHandlerCallbacks['onAgentActivityDetail']
+): Promise<UnlistenFn> {
+  return listen<{
+    agent_id: string;
+    activity: string;
+    tool_name: string;
+    timestamp: number;
+  }>("agent:activity:detail", (event) => {
+    console.log("[Frontend] Received agent:activity:detail event:", event.payload.agent_id, event.payload.activity);
+    onAgentActivityDetail?.(event.payload.agent_id, {
+      activity: event.payload.activity,
+      toolName: event.payload.tool_name,
+      timestamp: new Date(event.payload.timestamp),
+    });
   });
 }
 
@@ -576,13 +599,14 @@ export async function setupEventListeners(
 ): Promise<() => void> {
   // Setup all listeners in parallel
   const unlistenPromises = await Promise.all([
-    // Agent events (6)
+    // Agent events (7)
     setupAgentOutputListener(callbacks.onAgentOutput),
     setupToolEventListener(callbacks.onToolEvent),
     setupStatusListener(callbacks.onAgentStatus),
     setupInputRequiredListener(callbacks.onInputRequired),
     setupActivityListener(callbacks.onAgentActivity),
     setupStatsListener(callbacks.onAgentStats),
+    setupActivityDetailListener(callbacks.onAgentActivityDetail),
 
     // Meta-agent events (3)
     setupThinkingListener(callbacks.onMetaAgentThinking),

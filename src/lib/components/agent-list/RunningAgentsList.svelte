@@ -2,7 +2,6 @@
   import type { Agent, AutoPipeline } from '$lib/types';
   import PipelineListItem from './PipelineListItem.svelte';
   import AgentListItem from './AgentListItem.svelte';
-  import HelpTip from "../new-agent/HelpTip.svelte";
 
   let {
     agents,
@@ -10,7 +9,6 @@
     selectedAgentId,
     selectedPipelineId,
     viewMode,
-    onOpenChat,
     onSelectAgent,
     onMultiSelectAgent,
     onSelectPipeline
@@ -20,15 +18,10 @@
     selectedAgentId: string | null;
     selectedPipelineId: string | null;
     viewMode: string;
-    onOpenChat: () => void;
     onSelectAgent: (id: string) => void;
     onMultiSelectAgent?: (id: string) => void;
     onSelectPipeline: (id: string) => void;
   } = $props();
-
-  function isChatSelected(): boolean {
-    return viewMode === 'chat' && !selectedPipelineId;
-  }
 
   function isAgentSelected(id: string): boolean {
     return viewMode === 'agent' && selectedAgentId === id && !selectedPipelineId;
@@ -39,37 +32,13 @@
   }
 </script>
 
-<!-- Chat Assistant entry -->
-<ul>
-  <li>
-    <button
-      class="agent-btn chat-assistant"
-      class:selected={isChatSelected()}
-      data-tutorial="chat-button"
-      onclick={() => onOpenChat()}
-    >
-      <div class="chat-icon">🎯</div>
-      <div class="info">
-        <div class="name-row">
-          <span class="name">System Commander</span>
-        </div>
-        <div class="meta-row">
-          <span class="path">Mission control for Claude <HelpTip text="Chat interface to control agents via natural language. Ask questions or give commands." placement="right" /></span>
-        </div>
-      </div>
-      <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="9,6 15,12 9,18"/>
-      </svg>
-    </button>
-  </li>
-</ul>
-
 <!-- Auto Pipelines Section -->
 {#if pipelines.size > 0}
-  <div class="separator">
-    <span>Auto Pipelines ({pipelines.size})</span>
+  <div class="section-header">
+    <span>Pipelines</span>
+    <span class="count">{pipelines.size}</span>
   </div>
-  <ul>
+  <div class="list-section">
     {#each [...pipelines.values()] as pipeline (pipeline.id)}
       <PipelineListItem
         {pipeline}
@@ -77,30 +46,16 @@
         onSelect={onSelectPipeline}
       />
     {/each}
-  </ul>
+  </div>
 {/if}
 
 <!-- Worker Agents Section -->
 {#if agents.size > 0}
-  <div class="separator">
-    <span>Worker Agents</span>
+  <div class="section-header">
+    <span>Agents</span>
+    <span class="count">{agents.size}</span>
   </div>
-{/if}
-
-{#if agents.size === 0}
-  <div class="empty">
-    <div class="empty-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <circle cx="12" cy="10" r="3"/>
-        <path d="M7 21v-2a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v2"/>
-      </svg>
-    </div>
-    <p class="empty-title">No worker agents</p>
-    <p class="empty-hint">Tap "New" or use Chat to create agents</p>
-  </div>
-{:else}
-  <ul>
+  <div class="list-section">
     {#each [...agents.values()] as agent (agent.id)}
       <AgentListItem
         {agent}
@@ -109,162 +64,165 @@
         onMultiSelect={onMultiSelectAgent}
       />
     {/each}
-  </ul>
+  </div>
+{:else}
+  <div class="empty-state">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="12" cy="10" r="3"/>
+        <path d="M7 21v-2a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v2"/>
+      </svg>
+    </div>
+    <p class="empty-title">No agents running</p>
+    <p class="empty-hint">Tap "New" to create one</p>
+  </div>
 {/if}
 
 <style>
-  ul {
-    list-style: none;
-    padding: var(--space-sm);
+  .list-section {
+    padding: var(--space-2) var(--space-3);
   }
 
-  li {
-    padding: 0;
-    margin-bottom: var(--space-sm);
-  }
-
-  .agent-btn {
-    width: 100%;
-    padding: var(--space-md) var(--space-lg);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    cursor: pointer;
-    border-radius: 12px;
-    transition: all 0.2s ease;
-    background-color: var(--bg-tertiary);
-    border: 1px solid transparent;
-    text-align: left;
-    font: inherit;
-    color: inherit;
-  }
-
-  .agent-btn:hover {
-    background-color: var(--bg-elevated);
-    border-color: var(--border);
-  }
-
-  .agent-btn.selected {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(147, 51, 234, 0.1) 100%);
-    border-color: var(--accent);
-    box-shadow: 0 0 16px var(--accent-glow);
-  }
-
-  .chat-assistant {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(147, 51, 234, 0.05) 100%);
-    border: 1px solid rgba(124, 58, 237, 0.3);
-  }
-
-  .chat-assistant.selected {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.2) 0%, rgba(147, 51, 234, 0.15) 100%);
-    border-color: var(--accent);
-    box-shadow: 0 0 16px var(--accent-glow);
-  }
-
-  .chat-icon {
-    font-size: 24px;
-    width: 28px;
-    text-align: center;
-  }
-
-  .info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .name-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .name {
-    font-weight: 600;
-    font-size: 16px;
-    color: var(--text-primary);
-  }
-
-  .meta-row {
+  .section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-  }
-
-  .path {
-    font-size: 13px;
-    color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .chevron {
-    width: 20px;
-    height: 20px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
-
-  .agent-btn.selected .chevron {
-    color: var(--accent);
-  }
-
-  .separator {
-    padding: 12px var(--space-lg);
-    font-size: 12px;
-    font-weight: 600;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  .empty {
+  .count {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .list-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    text-align: left;
+    color: inherit;
+  }
+
+  .list-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .list-item:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .list-item.selected {
+    background: rgba(232, 102, 77, 0.12);
+  }
+
+  .list-item.selected:hover {
+    background: rgba(232, 102, 77, 0.18);
+  }
+
+  .item-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+
+  .item-content {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .item-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-subtitle {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .list-item :global(.disclosure) {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity var(--transition-fast);
+  }
+
+  .list-item:hover :global(.disclosure) {
+    opacity: 0.8;
+  }
+
+  .list-item.selected :global(.disclosure) {
+    color: var(--accent-hex);
+    opacity: 1;
+  }
+
+  .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--space-8) var(--space-4);
     text-align: center;
-    height: 100%;
-    min-height: 300px;
   }
 
   .empty-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 24px;
-    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-elevated) 100%);
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: var(--space-lg);
-    border: 1px solid var(--border);
+    margin-bottom: var(--space-4);
   }
 
   .empty-icon svg {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     color: var(--text-muted);
   }
 
   .empty-title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     color: var(--text-primary);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-1);
   }
 
   .empty-hint {
-    font-size: 14px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 </style>

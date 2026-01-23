@@ -1,4 +1,6 @@
 import { writable, derived } from 'svelte/store';
+import { selectedHistoricalRun } from './agents';
+import { selectedAutoPipelineId } from './autoPipelines';
 
 export interface Pipeline {
   id: string;
@@ -111,4 +113,6 @@ export function removePipeline(pipelineId: string) {
 // Open a pipeline (select it)
 export function openPipeline(pipelineId: string) {
   selectedPipelineId.set(pipelineId);
+  selectedAutoPipelineId.set(null);
+  selectedHistoricalRun.set(null);
 }

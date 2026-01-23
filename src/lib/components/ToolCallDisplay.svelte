@@ -55,8 +55,8 @@
 
 <style>
   .tool-call {
-    background: rgba(124, 58, 237, 0.1);
-    border: 1px solid rgba(124, 58, 237, 0.3);
+    background: rgba(240, 112, 90, 0.1);
+    border: 1px solid rgba(240, 112, 90, 0.3);
     border-radius: 8px;
     margin: 8px 0;
     overflow: hidden;
@@ -64,7 +64,7 @@
   }
 
   .tool-call.expanded {
-    background: rgba(124, 58, 237, 0.15);
+    background: rgba(240, 112, 90, 0.15);
   }
 
   .tool-header {
@@ -77,7 +77,7 @@
   }
 
   .tool-header:hover {
-    background: rgba(124, 58, 237, 0.05);
+    background: rgba(240, 112, 90, 0.05);
   }
 
   .tool-icon {
@@ -87,7 +87,7 @@
   .tool-name {
     flex: 1;
     font-weight: 500;
-    color: #7c3aed;
+    color: #f0705a;
     font-size: 13px;
   }
 
@@ -149,11 +149,11 @@
   }
 
   .json-block::-webkit-scrollbar-thumb {
-    background: rgba(124, 58, 237, 0.4);
+    background: rgba(240, 112, 90, 0.4);
     border-radius: 3px;
   }
 
   .json-block::-webkit-scrollbar-thumb:hover {
-    background: rgba(124, 58, 237, 0.6);
+    background: rgba(240, 112, 90, 0.6);
   }
 </style>

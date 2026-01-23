@@ -66,7 +66,7 @@
     flex: 1;
     min-height: 0; /* Critical for flex children to shrink properly during resize */
     overflow: hidden;
-    padding: 20px;
+    padding: var(--space-5);
     display: flex;
     flex-direction: column;
   }
@@ -75,5 +75,6 @@
   .virtual-scroll-container :global(.virtual-scroll-list) {
     height: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 </style>

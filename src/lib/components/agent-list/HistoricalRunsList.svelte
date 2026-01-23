@@ -74,23 +74,23 @@
 <style>
   ul {
     list-style: none;
-    padding: var(--space-sm);
+    padding: var(--space-2);
   }
 
   li {
     padding: 0;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-2);
   }
 
   .agent-btn {
     width: 100%;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-3) var(--space-4);
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-4);
     cursor: pointer;
-    border-radius: 12px;
-    transition: all 0.2s ease;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
     background-color: var(--bg-tertiary);
     border: 1px solid transparent;
     text-align: left;
@@ -100,13 +100,13 @@
 
   .agent-btn:hover {
     background-color: var(--bg-elevated);
-    border-color: var(--border);
+    border-color: var(--border-hex);
   }
 
   .status-indicator {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-full);
     flex-shrink: 0;
     position: relative;
   }
@@ -114,7 +114,7 @@
   .pulse {
     position: absolute;
     inset: -3px;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: inherit;
     opacity: 0.4;
     animation: pulse 2s ease-in-out infinite;
@@ -125,18 +125,18 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
   }
 
   .name-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .name {
-    font-weight: 600;
-    font-size: 16px;
+    font-weight: var(--font-medium);
+    font-size: var(--text-base);
     color: var(--text-primary);
   }
 
@@ -144,11 +144,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 2px 8px;
+    padding: 2px var(--space-2);
     color: white;
-    font-size: 10px;
-    font-weight: 600;
-    border-radius: 10px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -158,11 +158,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .path {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -171,15 +171,15 @@
   }
 
   .activity-time {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     flex-shrink: 0;
   }
 
   .run-prompt {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 2px;
     font-style: italic;
     white-space: nowrap;
     overflow: hidden;
@@ -187,16 +187,16 @@
   }
 
   .chevron {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     color: var(--text-muted);
     flex-shrink: 0;
   }
 
   .separator {
-    padding: 12px var(--space-lg);
-    font-size: 12px;
-    font-weight: 600;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -208,39 +208,39 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--space-8);
     text-align: center;
     height: 100%;
     min-height: 300px;
   }
 
   .empty-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 24px;
-    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-elevated) 100%);
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: var(--space-lg);
-    border: 1px solid var(--border);
+    margin-bottom: var(--space-4);
+    border: 1px solid var(--border-hex);
   }
 
   .empty-icon svg {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     color: var(--text-muted);
   }
 
   .empty-title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
     color: var(--text-primary);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-2);
   }
 
   .empty-hint {
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
   }
 

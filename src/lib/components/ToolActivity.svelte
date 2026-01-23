@@ -525,10 +525,10 @@
   }
 
   .tool-icon.glob, .tool-icon.grep {
-    background-color: rgba(168, 85, 247, 0.15);
+    background-color: rgba(45, 177, 160, 0.15);
   }
   .tool-icon.glob svg, .tool-icon.grep svg {
-    color: #a855f7;
+    color: #2db1a0;
   }
 
   .tool-icon.webfetch {

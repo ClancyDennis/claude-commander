@@ -75,27 +75,27 @@
 
 <style>
   .overview-content {
-    padding: var(--space-md);
+    padding: var(--space-4);
   }
 
   .section {
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-5);
   }
 
   h3 {
-    font-size: 15px;
-    font-weight: 600;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
     color: var(--text-primary);
-    margin: 0 0 var(--space-sm) 0;
+    margin: 0 0 var(--space-2) 0;
   }
 
   .prompt-content,
   .error-content,
   .result-content {
     background-color: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: var(--space-md);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
     color: var(--text-primary);
   }
 
@@ -106,14 +106,14 @@
 
   .error-content {
     border-color: var(--error);
-    background-color: rgba(239, 68, 68, 0.1);
+    background-color: rgba(255, 59, 48, 0.1);
   }
 
   .empty-content {
     background-color: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: var(--space-lg);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
     text-align: center;
   }
 
@@ -121,22 +121,34 @@
     color: var(--text-muted);
     margin: 0;
     font-style: italic;
+    font-size: var(--text-sm);
   }
 
   .resume-section {
-    padding: var(--space-lg);
+    padding: var(--space-5);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-2);
   }
 
   .resume-btn {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    padding: 12px 24px;
-    font-size: 14px;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5);
+    font-size: var(--text-sm);
+    background: var(--accent-hex);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .resume-btn:hover {
+    filter: brightness(1.1);
   }
 
   .resume-btn svg {
@@ -145,7 +157,7 @@
   }
 
   .resume-hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     margin: 0;
   }

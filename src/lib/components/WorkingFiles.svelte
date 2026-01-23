@@ -226,7 +226,7 @@
   }
 
   .badge.read {
-    background-color: rgba(124, 58, 237, 0.15);
+    background-color: rgba(240, 112, 90, 0.15);
     color: var(--accent);
   }
 

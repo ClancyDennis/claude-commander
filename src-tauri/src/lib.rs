@@ -19,6 +19,7 @@ pub mod subagent_generator;
 pub mod tool_registry;
 pub mod types;
 pub mod utils;
+pub mod voice;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -148,7 +149,10 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 match runs_db_for_reconcile.reconcile_stale_runs().await {
                     Ok(count) if count > 0 => {
-                        println!("✓ Reconciled {} stale agent runs from previous session", count);
+                        println!(
+                            "✓ Reconciled {} stale agent runs from previous session",
+                            count
+                        );
                     }
                     Ok(_) => {}
                     Err(e) => eprintln!("⚠ Warning: Failed to reconcile stale runs: {}", e),
@@ -361,7 +365,12 @@ pub fn run() {
             commands::create_env_placeholder,
             commands::update_config_value,
             commands::update_config_batch,
-            commands::validate_api_key
+            commands::validate_api_key,
+            // Voice commands
+            voice::start_voice_session,
+            voice::send_voice_audio,
+            voice::stop_voice_session,
+            voice::get_voice_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

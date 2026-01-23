@@ -7,6 +7,8 @@
     OrchestratorDecision,
     AgentOutputRecord
   } from "../types";
+  import { PageLayout } from './ui/layout';
+  import { History } from './ui/icons';
   import {
     RunHeader,
     RunStats,
@@ -117,7 +119,7 @@
 </script>
 
 {#if $selectedHistoricalRun}
-  <main class="historical-run-view">
+  <PageLayout>
     <RunHeader run={$selectedHistoricalRun} />
 
     <RunStats run={$selectedHistoricalRun} />
@@ -163,27 +165,17 @@
         />
       {/if}
     </div>
-  </main>
+  </PageLayout>
 {:else}
-  <div class="empty-view">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-      <path d="M3 3v5h5"/>
-      <circle cx="12" cy="12" r="1"/>
-    </svg>
-    <p>Select a historical run to view details</p>
-  </div>
+  <PageLayout variant="centered">
+    <div class="empty-content">
+      <History size={80} />
+      <p>Select a historical run to view details</p>
+    </div>
+  </PageLayout>
 {/if}
 
 <style>
-  .historical-run-view {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background-color: var(--bg-primary);
-    overflow: hidden;
-  }
-
   /* Tab content area */
   .tab-content {
     flex: 1;
@@ -192,25 +184,18 @@
     flex-direction: column;
   }
 
-  /* Empty view (no run selected) */
-  .empty-view {
-    height: 100%;
+  /* Empty view content */
+  .empty-content {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: var(--space-md);
+    gap: var(--space-4);
     color: var(--text-muted);
+    opacity: 0.6;
   }
 
-  .empty-view svg {
-    width: 80px;
-    height: 80px;
-    opacity: 0.4;
-  }
-
-  .empty-view p {
-    font-size: 15px;
+  .empty-content p {
+    font-size: var(--text-base);
   }
 
   /* Scrollbar styles */
@@ -223,11 +208,11 @@
   }
 
   .tab-content::-webkit-scrollbar-thumb {
-    background: var(--border);
+    background: var(--border-hex);
     border-radius: 3px;
   }
 
   .tab-content::-webkit-scrollbar-thumb:hover {
-    background: var(--accent);
+    background: var(--accent-hex);
   }
 </style>

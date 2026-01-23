@@ -405,7 +405,7 @@ Tips for good instructions:
     background-color: var(--bg-secondary);
     border-radius: 20px;
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg), 0 0 60px rgba(124, 58, 237, 0.1);
+    box-shadow: var(--shadow-lg), 0 0 60px rgba(240, 112, 90, 0.1);
     overflow: hidden;
     transition: width 0.3s ease;
   }
@@ -434,7 +434,7 @@ Tips for good instructions:
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: linear-gradient(135deg, var(--accent) 0%, #9333ea 100%);
+    background: linear-gradient(135deg, var(--accent-hex) 0%, #e85a45 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -618,7 +618,7 @@ Tips for good instructions:
   }
 
   .primary:hover:not(:disabled) {
-    background: var(--accent-hover, #7c3aed);
+    background: var(--accent-hover, #f0705a);
     transform: scale(1.02);
   }
 

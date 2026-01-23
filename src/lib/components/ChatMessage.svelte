@@ -49,14 +49,14 @@
 <style>
   .message-wrapper {
     display: flex;
-    margin-bottom: 16px;
-    animation: fadeIn 0.3s ease;
+    margin-bottom: var(--space-4);
+    animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @keyframes fadeIn {
+  @keyframes slideIn {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -74,49 +74,56 @@
 
   .message {
     max-width: 85%;
-    min-width: 200px;
-    border-radius: 12px;
-    padding: 12px 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    min-width: 180px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    box-shadow: var(--shadow-sm);
   }
 
   .user .message {
-    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    background: var(--accent-hex);
     color: white;
   }
 
   .assistant .message {
-    background: #1a1a1f;
-    border: 1px solid rgba(124, 58, 237, 0.2);
-    color: #e0e0e0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    color: var(--text-primary);
   }
 
   .message-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: 12px;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .user .message-header {
     opacity: 0.9;
   }
 
+  .assistant .message-header {
+    color: var(--text-secondary);
+  }
+
   .role-icon {
-    font-size: 14px;
+    font-size: var(--text-sm);
   }
 
   .role-name {
-    font-weight: 600;
+    font-weight: var(--font-semibold);
     flex: 1;
   }
 
   .timestamp {
-    font-size: 11px;
+    font-size: var(--text-xs);
     opacity: 0.7;
   }
 
   .message-image-container {
-    margin-bottom: 10px;
-    border-radius: 8px;
+    margin-bottom: var(--space-3);
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
@@ -126,9 +133,9 @@
     width: auto;
     height: auto;
     display: block;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: transform 0.2s ease;
+    transition: transform var(--transition-fast);
   }
 
   .message-image:hover {
@@ -136,23 +143,32 @@
   }
 
   .message-content {
-    line-height: 1.6;
-    font-size: 14px;
-    /* MarkdownRenderer handles wrapping */
+    line-height: var(--leading-relaxed);
+    font-size: var(--text-sm);
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 
   .tool-calls {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(124, 58, 237, 0.2);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .user .tool-calls {
+    border-top-color: rgba(255, 255, 255, 0.2);
   }
 
   .tool-calls-header {
-    font-size: 11px;
-    font-weight: 600;
-    color: #999;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
+  }
+
+  .user .tool-calls-header {
+    color: rgba(255, 255, 255, 0.7);
   }
 </style>

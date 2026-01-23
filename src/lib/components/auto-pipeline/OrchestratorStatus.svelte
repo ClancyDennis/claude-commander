@@ -80,7 +80,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--accent-glow) 0%, rgba(124, 58, 237, 0.2) 100%);
+    background: linear-gradient(135deg, var(--accent-glow) 0%, rgba(240, 112, 90, 0.2) 100%);
     border-radius: 10px;
   }
 

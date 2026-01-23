@@ -14,7 +14,7 @@
   } = $props();
 
   const categoryColors: Record<string, string> = {
-    clarity: "#8b5cf6",
+    clarity: "#f58573",
     structure: "#3b82f6",
     completeness: "#10b981",
     specificity: "#f59e0b",

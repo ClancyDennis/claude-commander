@@ -43,32 +43,32 @@
 <style>
   .stats-summary {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: var(--space-sm);
-    padding: var(--space-md);
-    border-bottom: 1px solid var(--border);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border-hex);
     flex-shrink: 0;
   }
 
   .stat-card {
     background-color: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
   }
 
   .stat-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
-    font-weight: 500;
-    margin-bottom: 4px;
+    font-weight: var(--font-medium);
+    margin-bottom: 2px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .stat-value {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
     color: var(--text-primary);
   }
 </style>

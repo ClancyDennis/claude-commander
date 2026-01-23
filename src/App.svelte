@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import "./app.css";
   import { initResizeTracking } from "./lib/stores/resize";
@@ -52,7 +53,7 @@
     updatePhaseProgress,
   } from "./lib/stores/pipelines";
   import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "./lib/stores/autoPipelines";
-  import { updateActivity } from "./lib/stores/activity";
+  import { updateActivity, updateActivityDetail } from "./lib/stores/activity";
   import {
     addSecurityAlert,
     markAgentTerminated,
@@ -213,6 +214,9 @@
       },
       onAgentStats: (agentId, stats) => {
         updateAgentStats(agentId, stats);
+      },
+      onAgentActivityDetail: (agentId, detail) => {
+        updateActivityDetail(agentId, detail);
       },
 
       // Meta-agent callbacks

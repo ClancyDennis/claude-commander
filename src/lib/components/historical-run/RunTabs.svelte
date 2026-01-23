@@ -56,31 +56,42 @@
 <style>
   .main-tabs {
     display: flex;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-hex);
     background: var(--bg-secondary);
     flex-shrink: 0;
+    padding: 0;
   }
 
   .main-tab {
+    /* Override global button styles */
     flex: 1;
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     background: transparent;
     border: none;
+    border-radius: 0;
     border-bottom: 2px solid transparent;
     color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    line-height: var(--leading-normal);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+    box-shadow: none;
   }
 
   .main-tab:hover {
     color: var(--text-primary);
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: none;
+  }
+
+  .main-tab:active {
+    transform: none;
   }
 
   .main-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    color: var(--accent-hex);
+    border-bottom-color: var(--accent-hex);
+    background: transparent;
   }
 </style>

@@ -66,59 +66,61 @@
   .label-text {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-    font-size: 15px;
-    font-weight: 600;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     color: var(--text-primary);
   }
 
   .label-text svg {
-    width: 18px;
-    height: 18px;
-    color: var(--accent);
+    width: 16px;
+    height: 16px;
+    color: var(--accent-hex);
+    flex-shrink: 0;
   }
 
   .input-group {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-2);
   }
 
   .input-group input {
     flex: 1;
-    padding: var(--space-md);
-    background: var(--bg-elevated);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 14px;
-    transition: all 0.2s ease;
+    font-size: var(--text-sm);
+    transition: all var(--transition-fast);
   }
 
   .input-group input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    border-color: var(--accent-hex);
+    box-shadow: 0 0 0 3px rgba(232, 102, 77, 0.15);
   }
 
   .browse-btn {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: 0 var(--space-md);
-    background: var(--bg-elevated);
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
-    transition: all 0.2s ease;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
   }
 
   .browse-btn:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
+    background: var(--bg-elevated);
+    border-color: var(--accent-hex);
     color: var(--text-primary);
   }
 

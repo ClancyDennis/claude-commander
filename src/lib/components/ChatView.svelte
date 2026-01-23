@@ -5,15 +5,19 @@
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
 
   // Import sub-components
+  import { PageLayout } from "./ui/layout";
   import ChatHeader from "./chat/ChatHeader.svelte";
   import ChatInput from "./chat/ChatInput.svelte";
   import ChatEmptyState from "./chat/ChatEmptyState.svelte";
   import ChatLockedState from "./chat/ChatLockedState.svelte";
   import ChatMessageList from "./chat/ChatMessageList.svelte";
   import AgentResultsSection from "./chat/AgentResultsSection.svelte";
+  import VoicePanel from "./voice/VoicePanel.svelte";
+  import { voiceState } from "../stores/voice";
 
   // State
   let hasApiKey = $state(true); // Default to true to avoid flash
+  let hasOpenAiKey = $state(false);
   let configLoaded = $state(false);
   let configPath = $state("");
   let processingAgentId = $state<string | null>(null);
@@ -23,6 +27,9 @@
     try {
       const config = await invoke<ConfigStatus>("get_config_status");
       hasApiKey = config.api_keys.some((key) => key.is_configured);
+      hasOpenAiKey = config.api_keys.some(
+        (key) => key.provider.toLowerCase() === "openai" && key.is_configured
+      );
       configPath = config.config_path;
       configLoaded = true;
     } catch (err) {
@@ -100,8 +107,14 @@
   }
 </script>
 
-<div class="chat-view">
-  <ChatHeader isThinking={$metaAgentThinking} onClear={handleClear} />
+<PageLayout>
+  <ChatHeader isThinking={$metaAgentThinking} onClear={handleClear} {hasOpenAiKey} />
+
+  {#if $voiceState.isRecording || $voiceState.transcript}
+    <div class="voice-panel-wrapper">
+      <VoicePanel />
+    </div>
+  {/if}
 
   <div class="messages-wrapper">
     {#if configLoaded && !hasApiKey}
@@ -127,15 +140,12 @@
     {hasApiKey}
     onSend={handleSendMessage}
   />
-</div>
+</PageLayout>
 
 <style>
-  .chat-view {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: #0f0f13;
+  .voice-panel-wrapper {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-hex);
   }
 
   .messages-wrapper {

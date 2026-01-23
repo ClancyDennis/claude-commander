@@ -33,9 +33,9 @@
 
 <style>
   .setting-group {
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-hex);
   }
 
   .setting-group:last-child {
@@ -48,10 +48,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--accent);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--accent-hex);
   }
 
   .toggle-small {
@@ -74,9 +74,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--border);
-    transition: 0.3s;
-    border-radius: 20px;
+    background-color: var(--border-hex);
+    transition: all var(--transition-fast);
+    border-radius: var(--radius-full);
   }
 
   .slider-small:before {
@@ -87,12 +87,12 @@
     left: 3px;
     bottom: 3px;
     background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
+    transition: all var(--transition-fast);
+    border-radius: var(--radius-full);
   }
 
   input:checked + .slider-small {
-    background-color: var(--accent);
+    background-color: var(--accent-hex);
   }
 
   input:checked + .slider-small:before {

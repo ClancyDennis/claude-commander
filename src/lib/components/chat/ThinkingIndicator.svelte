@@ -12,25 +12,24 @@
 
 <style>
   .thinking-message {
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding: var(--space-3) 0;
   }
 
   .thinking-dots {
-    background: #1a1a1f;
-    border: 1px solid rgba(124, 58, 237, 0.2);
-    border-radius: 12px;
-    padding: 12px 20px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
     display: flex;
-    gap: 6px;
+    gap: var(--space-2);
     width: fit-content;
   }
 
   .thinking-dots span {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #7c3aed;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--accent-hex);
     animation: bounce 1.4s infinite ease-in-out;
   }
 
@@ -44,8 +43,8 @@
 
   @keyframes bounce {
     0%, 80%, 100% {
-      transform: scale(0);
-      opacity: 0.5;
+      transform: scale(0.6);
+      opacity: 0.4;
     }
     40% {
       transform: scale(1);

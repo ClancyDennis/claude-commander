@@ -2,6 +2,7 @@
   import type { Agent } from "../types";
   import { selectedAgentOutputs, agentOutputs } from "../stores/agents";
   import { agentsWithAlerts } from "../stores/security";
+  import { agentActivities } from "../stores/activity";
   import StatusBadge from "./StatusBadge.svelte";
   import TypingIndicator from "./TypingIndicator.svelte";
   import { formatPath, formatTimeAgo } from '$lib/utils/formatting';
@@ -12,6 +13,8 @@
   const recentOutputs = $derived(outputs.slice(-3));
   const hasOutputs = $derived(outputs.length > 0);
   const hasSecurityAlert = $derived($agentsWithAlerts.has(agent.id));
+  const activity = $derived($agentActivities.get(agent.id));
+  const currentActivity = $derived(activity?.currentActivity);
 </script>
 
 <div class="agent-card">
@@ -38,7 +41,12 @@
 
   <div class="card-content">
     {#if agent.isProcessing}
-      <TypingIndicator />
+      <div class="processing-status">
+        <TypingIndicator />
+        {#if currentActivity}
+          <span class="current-activity">{currentActivity}</span>
+        {/if}
+      </div>
     {:else if hasOutputs}
       <div class="recent-outputs">
         {#each recentOutputs as output (output.timestamp)}
@@ -112,7 +120,7 @@
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: linear-gradient(135deg, var(--accent) 0%, #9333ea 100%);
+    background: linear-gradient(135deg, var(--accent-hex) 0%, #e85a45 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -221,6 +229,26 @@
   .output-preview.error {
     border-color: var(--error);
     background-color: var(--error-glow);
+  }
+
+  .processing-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    height: 100%;
+  }
+
+  .current-activity {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 0 var(--space-sm);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .no-output {

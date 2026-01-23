@@ -111,38 +111,51 @@
 
   .activity-subtabs {
     display: flex;
-    padding: var(--space-sm);
-    gap: var(--space-sm);
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-2);
+    gap: var(--space-2);
+    border-bottom: 1px solid var(--border-hex);
     background: var(--bg-tertiary);
   }
 
   .subtab {
-    padding: 8px 14px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    /* Override global button styles */
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    line-height: var(--leading-normal);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    box-shadow: none;
   }
 
   .subtab:hover {
-    background: var(--bg-hover);
+    background: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
+    box-shadow: none;
+  }
+
+  .subtab:active {
+    transform: none;
   }
 
   .subtab.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--accent-hex);
+    border-color: var(--accent-hex);
     color: white;
+  }
+
+  .subtab.active:hover {
+    background: var(--accent-hover);
   }
 
   .activity-list {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md);
+    padding: var(--space-4);
   }
 
   /* Loading and empty states */
@@ -153,31 +166,38 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
-    gap: var(--space-md);
+    padding: var(--space-8);
+    gap: var(--space-4);
     color: var(--text-muted);
     flex: 1;
     text-align: center;
   }
 
+  .loading p,
+  .error-message p,
+  .empty-state p {
+    font-size: var(--text-sm);
+    margin: 0;
+  }
+
   .empty-state .hint {
-    font-size: 13px;
+    font-size: var(--text-xs);
     opacity: 0.7;
   }
 
   .error-message svg,
   .empty-state svg {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     opacity: 0.5;
   }
 
   .spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--border-hex);
+    border-top-color: var(--accent-hex);
+    border-radius: var(--radius-full);
     animation: spin 1s linear infinite;
   }
 
@@ -195,11 +215,11 @@
   }
 
   .activity-list::-webkit-scrollbar-thumb {
-    background: var(--border);
+    background: var(--border-hex);
     border-radius: 3px;
   }
 
   .activity-list::-webkit-scrollbar-thumb:hover {
-    background: var(--accent);
+    background: var(--accent-hex);
   }
 </style>

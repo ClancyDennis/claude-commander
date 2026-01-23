@@ -136,7 +136,7 @@
 
   .progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent) 0%, #9333ea 100%);
+    background: linear-gradient(90deg, var(--accent-hex) 0%, #e85a45 100%);
     transition: width 0.3s ease;
   }
 
@@ -145,7 +145,7 @@
     align-items: center;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-lg);
-    background-color: rgba(124, 58, 237, 0.1);
+    background-color: rgba(240, 112, 90, 0.1);
     border-bottom: 1px solid var(--border);
   }
 
@@ -212,7 +212,7 @@
   }
 
   .step.in_progress {
-    background-color: rgba(124, 58, 237, 0.08);
+    background-color: rgba(240, 112, 90, 0.08);
   }
 
   .step.in_progress .content {

@@ -182,7 +182,7 @@
     flex-direction: column;
     height: 100%;
     background-color: var(--bg-secondary);
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--border-hex);
     overflow-y: auto;
   }
 
@@ -191,18 +191,18 @@
   .stats-panel.empty {
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--space-8);
     text-align: center;
   }
 
   .spinner {
     width: 40px;
     height: 40px;
-    border: 4px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
+    border: 3px solid var(--border-hex);
+    border-top-color: var(--accent-hex);
+    border-radius: var(--radius-full);
     animation: spin 1s linear infinite;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-4);
   }
 
   @keyframes spin {
@@ -213,26 +213,26 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    padding: var(--space-6);
+    border-bottom: 1px solid var(--border-hex);
+    background: var(--bg-secondary);
   }
 
   h3 {
-    font-size: 18px;
-    font-weight: 700;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
     margin: 0;
     color: var(--text-primary);
   }
 
   .icon-btn {
-    padding: 8px;
-    background: none;
+    padding: var(--space-2);
+    background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     color: var(--text-secondary);
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
   }
 
   .icon-btn:hover {
@@ -248,29 +248,29 @@
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--space-md);
-    padding: var(--space-lg);
+    gap: var(--space-4);
+    padding: var(--space-6);
   }
 
   .stat-card {
     display: flex;
-    gap: var(--space-md);
-    padding: var(--space-md);
-    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
   }
 
   .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
   }
 
   .stat-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -316,26 +316,26 @@
   }
 
   .stat-value {
-    font-size: 24px;
-    font-weight: 700;
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
     color: var(--text-primary);
     margin-bottom: 2px;
     line-height: 1;
   }
 
   .stat-label {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .stats-footer {
-    padding: var(--space-lg);
-    border-top: 1px solid var(--border);
+    padding: var(--space-6);
+    border-top: 1px solid var(--border-hex);
     background-color: var(--bg-primary);
     margin-top: auto;
   }
@@ -344,17 +344,17 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-sm) 0;
+    padding: var(--space-2) 0;
   }
 
   .footer-label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
-    font-weight: 600;
+    font-weight: var(--font-semibold);
   }
 
   .footer-value {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-primary);
     font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
   }

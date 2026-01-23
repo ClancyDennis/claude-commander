@@ -68,7 +68,7 @@
     font-weight: 600;
     text-transform: uppercase;
     color: var(--accent);
-    background-color: rgba(124, 58, 237, 0.15);
+    background-color: rgba(240, 112, 90, 0.15);
     padding: 4px 10px;
     border-radius: 6px;
   }

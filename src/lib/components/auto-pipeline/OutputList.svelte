@@ -104,8 +104,8 @@
   }
 
   .output-item.orchestrator_tool {
-    background: rgba(124, 58, 237, 0.05);
-    border-color: rgba(124, 58, 237, 0.2);
+    background: rgba(240, 112, 90, 0.05);
+    border-color: rgba(240, 112, 90, 0.2);
   }
 
   .output-item.state_change {
@@ -138,7 +138,7 @@
     color: var(--text-secondary);
   }
 
-  .stage-badge.orchestrator { background: rgba(124, 58, 237, 0.2); color: #7c3aed; }
+  .stage-badge.orchestrator { background: rgba(240, 112, 90, 0.2); color: #f0705a; }
   .stage-badge.planning { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
   .stage-badge.building { background: rgba(234, 179, 8, 0.2); color: #eab308; }
   .stage-badge.verifying { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
@@ -152,7 +152,7 @@
   .type-badge.error { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
   .type-badge.tool_use { color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
   .type-badge.tool_result { color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
-  .type-badge.orchestrator_tool { color: #7c3aed; border-color: rgba(124, 58, 237, 0.3); }
+  .type-badge.orchestrator_tool { color: #f0705a; border-color: rgba(240, 112, 90, 0.3); }
   .type-badge.state_change { color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
   .type-badge.decision { color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
 

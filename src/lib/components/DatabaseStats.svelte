@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
   import HelpTip from "./new-agent/HelpTip.svelte";
+  import { formatCost } from '$lib/utils/formatting';
 
   interface DatabaseStats {
     db_size_bytes: number;
@@ -13,7 +14,16 @@
     total_cost_usd: number;
   }
 
+  interface CostMetrics {
+    today: number;
+    last24Hours: number;
+    thisWeek: number;
+    thisMonth: number;
+    allTime: number;
+  }
+
   let stats = $state<DatabaseStats | null>(null);
+  let costMetrics = $state<CostMetrics | null>(null);
   let loading = $state(true);
   let autoRefresh = $state(true);
   let refreshInterval: number;
@@ -30,10 +40,10 @@
   }
 
   onMount(() => {
-    fetchDatabaseStats();
+    refreshAll();
     refreshInterval = setInterval(() => {
-      if (autoRefresh) fetchDatabaseStats();
-    }, 5000); // Refresh every 5 seconds
+      if (autoRefresh) refreshAll();
+    }, 5000);
   });
 
   onDestroy(() => {
@@ -44,15 +54,53 @@
     return new Intl.NumberFormat().format(num);
   }
 
-  function formatCost(cost: number): string {
-    return `$${cost.toFixed(4)}`;
+  function formatStatus(status: string): string {
+    if (status === 'crashed') return 'ended';
+    if (status === 'waiting_input') return 'waiting';
+    return status;
+  }
+
+  async function fetchCostMetrics() {
+    try {
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [todayCost, monthCost, summary, last24HoursData, weekData] = await Promise.all([
+        invoke<number>('get_today_cost'),
+        invoke<number>('get_current_month_cost'),
+        invoke<{ total_cost_usd: number }>('get_cost_summary'),
+        invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
+          startDate: twentyFourHoursAgo.toISOString(),
+          endDate: null
+        }),
+        invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
+          startDate: weekAgo.toISOString(),
+          endDate: null
+        })
+      ]);
+
+      costMetrics = {
+        today: todayCost,
+        last24Hours: last24HoursData.total_cost_usd,
+        thisWeek: weekData.total_cost_usd,
+        thisMonth: monthCost,
+        allTime: summary.total_cost_usd
+      };
+    } catch (err) {
+      console.error("Failed to fetch cost metrics:", err);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([fetchDatabaseStats(), fetchCostMetrics()]);
   }
 </script>
 
 <div class="database-stats">
   <header class="stats-header">
     <h2>Database Statistics</h2>
-    <button class="refresh-btn" onclick={fetchDatabaseStats} disabled={loading} aria-label="Refresh statistics">
+    <button class="refresh-btn" onclick={refreshAll} disabled={loading} aria-label="Refresh statistics">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M1 4v6h6M23 20v-6h-6"/>
         <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 014.51 15"/>
@@ -63,132 +111,156 @@
   {#if loading && !stats}
     <div class="loading-state">
       <div class="spinner"></div>
-      <p>Loading database statistics...</p>
+      <p>Loading statistics...</p>
     </div>
   {:else if stats}
-    <div class="stats-grid">
-      <div class="stat-card primary">
-        <div class="stat-icon" style="background: var(--info);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
-          </svg>
+    <!-- Storage Section -->
+    <section class="section">
+      <h3 class="section-title">Storage</h3>
+      <div class="list-group">
+        <div class="list-row">
+          <span class="list-label">Database Size <HelpTip text="Total size of the SQLite database." placement="right" /></span>
+          <span class="list-value">{stats.db_size_formatted}</span>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{stats.db_size_formatted}</div>
-          <div class="stat-label">Database Size <HelpTip text="Total size of the SQLite database storing agent runs and outputs." placement="right" /></div>
-          <div class="stat-meta">{formatNumber(stats.db_size_bytes)} bytes</div>
+        <div class="list-row">
+          <span class="list-label">Size in Bytes</span>
+          <span class="list-value secondary">{formatNumber(stats.db_size_bytes)}</span>
         </div>
       </div>
+    </section>
 
-      <div class="stat-card">
-        <div class="stat-icon" style="background: var(--accent);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
+    <!-- Usage Section -->
+    <section class="section">
+      <h3 class="section-title">Usage</h3>
+      <div class="list-group">
+        <div class="list-row">
+          <span class="list-label">Total Runs <HelpTip text="Number of agent sessions stored." placement="right" /></span>
+          <span class="list-value">{formatNumber(stats.total_runs)}</span>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{formatNumber(stats.total_runs)}</div>
-          <div class="stat-label">Total Runs <HelpTip text="Number of agent sessions stored, including completed and failed runs." placement="right" /></div>
+        <div class="list-row">
+          <span class="list-label">Total Prompts</span>
+          <span class="list-value">{formatNumber(stats.total_prompts)}</span>
         </div>
       </div>
+    </section>
 
-      <div class="stat-card">
-        <div class="stat-icon" style="background: var(--success);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{formatNumber(stats.total_prompts)}</div>
-          <div class="stat-label">Total Prompts</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="breakdown-section">
-      {#if stats.runs_by_status.length > 0}
-        <div class="breakdown-column">
-          <h3>Runs by Status</h3>
-          <div class="breakdown-list">
-            {#each stats.runs_by_status as [status, count]}
-              <div class="breakdown-item">
-                <span class="status-badge {status}">{status}</span>
-                <span class="breakdown-value">{formatNumber(count)}</span>
-              </div>
-            {/each}
+    <!-- Cost Section -->
+    {#if costMetrics}
+      <section class="section">
+        <h3 class="section-title">Cost</h3>
+        <div class="list-group">
+          <div class="list-row featured">
+            <span class="list-label">Total Spend <HelpTip text="Total cost across all agent sessions." placement="right" /></span>
+            <span class="list-value featured-value">{formatCost(costMetrics.allTime)}</span>
           </div>
         </div>
-      {/if}
-
-      {#if stats.runs_by_source.length > 0}
-        <div class="breakdown-column">
-          <h3>Runs by Source</h3>
-          <div class="breakdown-list">
-            {#each stats.runs_by_source as [source, count]}
-              <div class="breakdown-item">
-                <span class="breakdown-label">{source.toUpperCase()}</span>
-                <span class="breakdown-value">{formatNumber(count)}</span>
-              </div>
-            {/each}
+        <div class="list-group">
+          <div class="list-row">
+            <span class="list-label">Last 24 Hours</span>
+            <span class="list-value">{formatCost(costMetrics.last24Hours)}</span>
+          </div>
+          <div class="list-row">
+            <span class="list-label">Today</span>
+            <span class="list-value">{formatCost(costMetrics.today)}</span>
+          </div>
+          <div class="list-row">
+            <span class="list-label">This Week</span>
+            <span class="list-value">{formatCost(costMetrics.thisWeek)}</span>
+          </div>
+          <div class="list-row">
+            <span class="list-label">This Month</span>
+            <span class="list-value">{formatCost(costMetrics.thisMonth)}</span>
           </div>
         </div>
-      {/if}
-    </div>
+      </section>
+    {/if}
+
+    <!-- Runs by Status -->
+    {#if stats.runs_by_status.length > 0}
+      <section class="section">
+        <h3 class="section-title">Runs by Status</h3>
+        <div class="list-group">
+          {#each stats.runs_by_status as [status, count]}
+            <div class="list-row">
+              <span class="status-indicator {status}">{formatStatus(status)}</span>
+              <span class="list-value">{formatNumber(count)}</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    <!-- Runs by Source -->
+    {#if stats.runs_by_source.length > 0}
+      <section class="section">
+        <h3 class="section-title">Runs by Source</h3>
+        <div class="list-group">
+          {#each stats.runs_by_source as [source, count]}
+            <div class="list-row">
+              <span class="list-label">{source}</span>
+              <span class="list-value">{formatNumber(count)}</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
   {/if}
 </div>
 
 <style>
   .database-stats {
-    padding: var(--space-lg);
+    padding: var(--space-4);
     background: var(--bg-secondary);
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-hex);
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .stats-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-hex);
   }
 
   .stats-header h2 {
     margin: 0;
-    font-size: 24px;
-    font-weight: 700;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
     color: var(--text-primary);
   }
 
   .refresh-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-hex);
     background: var(--bg-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
+    color: var(--text-muted);
   }
 
   .refresh-btn:hover:not(:disabled) {
     background: var(--accent-glow);
-    border-color: var(--accent);
+    border-color: var(--accent-hex);
+    color: var(--accent-hex);
   }
 
   .refresh-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
   .refresh-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
   }
 
   .loading-state {
@@ -196,16 +268,22 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
-    gap: var(--space-md);
+    padding: var(--space-6);
+    gap: var(--space-3);
+  }
+
+  .loading-state p {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin: 0;
   }
 
   .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-hex);
+    border-top-color: var(--accent-hex);
+    border-radius: var(--radius-full);
     animation: spin 0.8s linear infinite;
   }
 
@@ -215,143 +293,114 @@
     }
   }
 
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
+  /* Sections */
+  .section {
+    margin-bottom: var(--space-4);
   }
 
-  .stat-card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-md);
+  .section:last-child {
+    margin-bottom: 0;
+  }
+
+  .section-title {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 var(--space-2) var(--space-1);
+  }
+
+  /* List Groups */
+  .list-group {
     background: var(--bg-tertiary);
-    border-radius: 10px;
-    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hex);
+    overflow: hidden;
+    margin-bottom: var(--space-2);
   }
 
-  .stat-card.primary {
-    grid-column: 1 / -1;
-    background: linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(155, 89, 182, 0.1) 100%);
+  .list-group:last-child {
+    margin-bottom: 0;
   }
 
-  .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .stat-icon svg {
-    width: 24px;
-    height: 24px;
-  }
-
-  .stat-content {
-    flex: 1;
-  }
-
-  .stat-value {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-  }
-
-  .stat-label {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-top: 4px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .stat-meta {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
-  .breakdown-section {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: var(--space-lg);
-  }
-
-  .breakdown-column h3 {
-    margin: 0 0 var(--space-md) 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .breakdown-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .breakdown-item {
+  .list-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-sm) var(--space-md);
-    background: var(--bg-tertiary);
-    border-radius: 8px;
-    border: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-hex);
+    min-height: 36px;
   }
 
-  .breakdown-label {
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .list-row:last-child {
+    border-bottom: none;
   }
 
-  .breakdown-value {
+  .list-row.featured {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.06) 0%, rgba(155, 89, 182, 0.06) 100%);
+  }
+
+  .list-label {
+    font-size: var(--text-sm);
     color: var(--text-primary);
-    font-weight: 600;
-    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
   }
 
-  .status-badge {
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .list-value {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--text-primary);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
   }
 
-  .status-badge.running {
-    background: rgba(74, 158, 255, 0.2);
-    color: var(--info);
+  .list-value.secondary {
+    color: var(--text-muted);
+    font-weight: normal;
   }
 
-  .status-badge.completed {
-    background: rgba(46, 213, 115, 0.2);
-    color: var(--success);
+  .list-value.featured-value {
+    font-weight: var(--font-semibold);
+    color: var(--accent-hex);
   }
 
-  .status-badge.stopped {
-    background: rgba(149, 165, 166, 0.2);
+  /* Status indicators */
+  .status-indicator {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    text-transform: capitalize;
+  }
+
+  .status-indicator.running {
+    background: rgba(0, 122, 255, 0.15);
+    color: hsl(var(--system-blue));
+  }
+
+  .status-indicator.completed {
+    background: var(--success-glow);
+    color: var(--success-hex);
+  }
+
+  .status-indicator.stopped {
+    background: rgba(128, 128, 128, 0.15);
     color: var(--text-muted);
   }
 
-  .status-badge.crashed {
-    background: rgba(156, 163, 175, 0.2);
-    color: var(--text-secondary);
+  .status-indicator.crashed,
+  .status-indicator.ended {
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--text-muted);
   }
 
-  .status-badge.waiting_input {
-    background: rgba(255, 193, 7, 0.2);
-    color: var(--warning);
+  .status-indicator.waiting_input {
+    background: var(--warning-glow);
+    color: var(--warning-hex);
   }
 </style>

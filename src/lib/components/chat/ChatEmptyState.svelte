@@ -24,54 +24,62 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 40px;
-    color: #999;
+    padding: var(--space-10);
+    color: var(--text-muted);
   }
 
   .empty-icon {
-    font-size: 64px;
-    margin-bottom: 16px;
-    opacity: 0.6;
+    font-size: 56px;
+    margin-bottom: var(--space-4);
+    opacity: 0.7;
   }
 
   .empty-title {
-    font-size: 24px;
-    font-weight: 600;
-    color: #e0e0e0;
-    margin-bottom: 8px;
+    font-size: var(--text-2xl);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-2);
   }
 
   .empty-description {
-    font-size: 14px;
-    margin-bottom: 24px;
-    max-width: 400px;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-6);
+    max-width: 360px;
+    line-height: var(--leading-relaxed);
   }
 
   .example-prompts {
-    background: rgba(124, 58, 237, 0.05);
-    border: 1px solid rgba(124, 58, 237, 0.2);
-    border-radius: 12px;
-    padding: 16px;
-    max-width: 400px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    max-width: 360px;
+    width: 100%;
   }
 
   .example-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: #7c3aed;
-    margin-bottom: 12px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--accent-hex);
+    margin-bottom: var(--space-3);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .example {
-    font-size: 13px;
-    padding: 8px 12px;
-    background: rgba(124, 58, 237, 0.1);
-    border-radius: 6px;
-    margin-bottom: 6px;
-    color: #c0c0c0;
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-elevated);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    color: var(--text-secondary);
     font-style: italic;
+    text-align: left;
+    transition: background var(--transition-fast);
+  }
+
+  .example:hover {
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .example:last-child {

@@ -37,15 +37,28 @@ pub(crate) struct PendingToolCall {
 /// tracking tool execution and emitting events to the frontend.
 pub(crate) async fn handle_hook(
     State(state): State<Arc<HookServerState>>,
+    Query(params): Query<HookQueryParams>,
     Json(input): Json<HookInput>,
 ) -> StatusCode {
-    // Find agent by session_id
+    // Find agent by session_id, with fallback to agent_id from query params
+    // This handles the race condition where hooks arrive before session is mapped
     let agent_manager = state.agent_manager.lock().await;
     let agent_id = match agent_manager.get_agent_by_session(&input.session_id).await {
         Some(id) => id,
         None => {
-            // Session not mapped yet, just acknowledge
-            return StatusCode::OK;
+            // Session not mapped yet, try using agent_id from query params
+            match params.agent_id {
+                Some(id) => {
+                    // Also register this session mapping for future lookups
+                    let mut session_map = agent_manager.session_to_agent.lock().await;
+                    session_map.insert(input.session_id.clone(), id.clone());
+                    id
+                }
+                None => {
+                    // No agent_id available, just acknowledge
+                    return StatusCode::OK;
+                }
+            }
         }
     };
     drop(agent_manager); // Release lock early
@@ -116,6 +129,8 @@ async fn handle_pre_tool_use(
         .emit("agent:tool", serde_json::to_value(event).unwrap());
 
     // Emit enhanced activity event for UI status display
+    // Use "agent:activity:detail" channel to avoid collision with AgentActivityEvent
+    // which has different fields (is_processing, pending_input, last_activity)
     let activity = format_agent_activity(tool_name, &Some(tool_input_value));
     let activity_event = AgentActivityDetailEvent {
         agent_id: agent_id.to_string(),
@@ -124,7 +139,7 @@ async fn handle_pre_tool_use(
         timestamp: now,
     };
     let _ = state.app_handle.emit(
-        "agent:activity",
+        "agent:activity:detail",
         serde_json::to_value(activity_event).unwrap(),
     );
 }

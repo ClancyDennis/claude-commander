@@ -145,13 +145,13 @@
     gap: 8px;
     padding: 12px;
     background: var(--bg-tertiary, #252530);
-    border-bottom: 1px solid var(--border, rgba(124, 58, 237, 0.2));
+    border-bottom: 1px solid var(--border, rgba(240, 112, 90, 0.2));
     flex-wrap: wrap;
   }
 
   .filter-btn {
     padding: 6px 12px;
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.2));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.2));
     border-radius: 6px;
     background: transparent;
     color: var(--text-secondary, #999);
@@ -166,8 +166,8 @@
   }
 
   .filter-btn.active {
-    background: var(--accent, #7c3aed);
-    border-color: var(--accent, #7c3aed);
+    background: var(--accent, #f0705a);
+    border-color: var(--accent, #f0705a);
     color: white;
   }
 
@@ -186,7 +186,7 @@
 
   .output-item {
     background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.15));
     border-radius: 10px;
     padding: 12px;
     margin-bottom: 10px;
@@ -223,8 +223,8 @@
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--accent, #7c3aed);
-    background: rgba(124, 58, 237, 0.15);
+    color: var(--accent, #f0705a);
+    background: rgba(240, 112, 90, 0.15);
     padding: 4px 10px;
     border-radius: 6px;
   }
@@ -277,7 +277,7 @@
     font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 11px;
     margin: 0;
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.1));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.1));
     color: var(--text-secondary, #999);
     white-space: pre-wrap;
     word-break: break-word;
@@ -315,11 +315,11 @@
   }
 
   .output-list::-webkit-scrollbar-thumb {
-    background: var(--border, rgba(124, 58, 237, 0.3));
+    background: var(--border, rgba(240, 112, 90, 0.3));
     border-radius: 3px;
   }
 
   .output-list::-webkit-scrollbar-thumb:hover {
-    background: var(--accent, rgba(124, 58, 237, 0.5));
+    background: var(--accent, rgba(240, 112, 90, 0.5));
   }
 </style>

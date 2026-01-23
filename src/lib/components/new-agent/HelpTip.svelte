@@ -30,38 +30,34 @@
 
 <style>
   .help-tip {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
-    background: rgba(124, 58, 237, 0.16);
-    border: 1px solid rgba(124, 58, 237, 0.35);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 700;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: var(--font-semibold);
     line-height: 1;
     cursor: help;
     position: relative;
     user-select: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    opacity: 0.95;
     padding: 0;
+    transition: all var(--transition-fast);
   }
 
   .help-tip:hover {
     color: var(--text-primary);
-    border-color: var(--accent);
-    background: rgba(124, 58, 237, 0.22);
-    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
   }
 
   .help-tip:focus-visible {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 0 0 2px rgba(232, 102, 77, 0.3);
   }
 
   .help-tip::after {
@@ -73,36 +69,39 @@
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
+    font-size: var(--text-xs);
+    font-weight: var(--font-normal);
     width: max-content;
-    max-width: 320px;
+    max-width: 260px;
     white-space: normal;
+    line-height: 1.4;
     z-index: 50;
   }
 
   .help-tip[data-placement="top"]::after,
   .help-tip:not([data-placement])::after {
     left: 50%;
-    bottom: calc(100% + 10px);
+    bottom: calc(100% + 8px);
     transform: translateX(-50%) translateY(4px);
   }
 
   .help-tip[data-placement="right"]::after {
-    left: calc(100% + 10px);
+    left: calc(100% + 8px);
     top: 50%;
     transform: translateX(-4px) translateY(-50%);
   }
 
   .help-tip[data-placement="bottom"]::after {
     left: 50%;
-    top: calc(100% + 10px);
+    top: calc(100% + 8px);
     transform: translateX(-50%) translateY(-4px);
   }
 
   .help-tip[data-placement="left"]::after {
-    right: calc(100% + 10px);
+    right: calc(100% + 8px);
     top: 50%;
     left: auto;
     transform: translateX(4px) translateY(-50%);

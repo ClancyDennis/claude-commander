@@ -96,7 +96,7 @@
 
   .tool-item {
     background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.15));
     border-radius: 8px;
     padding: 10px 12px;
   }
@@ -140,7 +140,7 @@
 
   .tool-details summary {
     font-size: 11px;
-    color: var(--accent, #7c3aed);
+    color: var(--accent, #f0705a);
     cursor: pointer;
   }
 

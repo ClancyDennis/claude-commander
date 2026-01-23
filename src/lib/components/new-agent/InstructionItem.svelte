@@ -88,7 +88,7 @@
   }
 
   .instruction-item.selected {
-    background: rgba(124, 58, 237, 0.1);
+    background: rgba(240, 112, 90, 0.1);
     border-color: var(--accent);
   }
 

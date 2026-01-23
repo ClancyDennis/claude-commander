@@ -138,9 +138,7 @@ pub async fn cleanup_old_runs(
 /// Force reconciliation of stale runs (manual cleanup)
 /// Marks any "running" or "waiting_input" agents as "crashed"
 #[tauri::command]
-pub async fn reconcile_stale_runs(
-    state: tauri::State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn reconcile_stale_runs(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     state
         .agent_runs_db
         .reconcile_stale_runs()

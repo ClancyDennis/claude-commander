@@ -99,7 +99,7 @@
 
   .decision-item {
     background: var(--bg-primary, #0f0f13);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.15));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.15));
     border-radius: 8px;
     padding: 12px;
   }

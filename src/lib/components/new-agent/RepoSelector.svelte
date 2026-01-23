@@ -80,10 +80,7 @@
             class="repo-item"
             onclick={() => selectRepo(repo)}
           >
-            <div class="repo-header">
-              <span class="repo-name">{repo.nameWithOwner}</span>
-              <span class="repo-date">{new Date(repo.updatedAt).toLocaleDateString()}</span>
-            </div>
+            <span class="repo-name">{repo.nameWithOwner}</span>
           </button>
         {/each}
       </div>
@@ -99,57 +96,61 @@
   .label-text {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-    font-size: 15px;
-    font-weight: 600;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     color: var(--text-primary);
   }
 
   .label-text svg {
-    width: 18px;
-    height: 18px;
-    color: var(--accent);
+    width: 16px;
+    height: 16px;
+    color: var(--accent-hex);
+    flex-shrink: 0;
   }
 
   .input-group {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-2);
   }
 
   .input-group input {
     flex: 1;
-    padding: var(--space-md);
-    background: var(--bg-elevated);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 14px;
-    transition: all 0.2s ease;
+    font-size: var(--text-sm);
+    transition: all var(--transition-fast);
   }
 
   .input-group input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    border-color: var(--accent-hex);
+    box-shadow: 0 0 0 3px rgba(232, 102, 77, 0.15);
   }
 
   .dropdown-btn {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: 0 var(--space-sm);
-    min-width: 40px;
-    background: var(--bg-elevated);
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
-    transition: all 0.2s ease;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
   }
 
   .dropdown-btn:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
+    background: var(--bg-elevated);
+    border-color: var(--accent-hex);
     color: var(--text-primary);
   }
 
@@ -164,53 +165,42 @@
 
   .dropdown {
     position: absolute;
-    top: calc(100% + var(--space-xs));
+    top: calc(100% + var(--space-1));
     left: 0;
     right: 0;
-    max-height: 300px;
+    max-height: 240px;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
     z-index: 10;
-    padding: var(--space-xs);
+    padding: var(--space-1);
   }
 
   .repo-item {
     width: 100%;
-    padding: var(--space-md);
+    padding: var(--space-2) var(--space-3);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 8px;
+    border: none;
+    border-radius: var(--radius-sm);
     text-align: left;
-    transition: all 0.2s ease;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
+    transition: all var(--transition-fast);
+    min-width: 0;
   }
 
   .repo-item:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
-  }
-
-  .repo-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-md);
+    background: rgba(255, 255, 255, 0.05);
   }
 
   .repo-name {
-    font-weight: 600;
+    font-weight: var(--font-medium);
     color: var(--text-primary);
-    font-size: 14px;
-  }
-
-  .repo-date {
-    font-size: 12px;
-    color: var(--text-muted);
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    display: block;
   }
 </style>

@@ -1,81 +1,164 @@
-/* Status transitions */
-@keyframes status-change-flash {
+/* ============================================
+   APPLE HIG ANIMATIONS
+   Uses spring curves and subtle timing
+   ============================================ */
+
+/* Apple spring curve */
+:root {
+  --spring-bounce: cubic-bezier(0.16, 1, 0.3, 1);
+  --spring-gentle: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* ----------------------------------------
+   Status & State Transitions
+   ---------------------------------------- */
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes status-change {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
 
+/* ----------------------------------------
+   Badge & Notification Animations
+   ---------------------------------------- */
+
 @keyframes badge-pop {
   0% { transform: scale(0); opacity: 0; }
-  50% { transform: scale(1.2); }
+  60% { transform: scale(1.15); }
   100% { transform: scale(1); opacity: 1; }
 }
 
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 8px var(--warning), 0 0 16px var(--warning);
-    opacity: 1;
-  }
-  50% {
-    box-shadow: 0 0 16px var(--warning), 0 0 32px var(--warning);
-    opacity: 0.8;
-  }
+@keyframes badge-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
 
-/* Activity indicators */
-@keyframes typing-wave {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-8px); }
-}
+/* ----------------------------------------
+   Loading & Progress Indicators
+   ---------------------------------------- */
 
 @keyframes spinner-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
+@keyframes typing-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
 @keyframes progress-ring {
-  0% {
-    stroke-dasharray: 0 100;
-  }
-  100% {
-    stroke-dasharray: 100 100;
-  }
+  0% { stroke-dasharray: 0 100; }
+  100% { stroke-dasharray: 100 100; }
 }
 
-@keyframes activity-ring {
-  0% {
-    transform: rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    transform: rotate(360deg);
-    opacity: 0.6;
-  }
+/* ----------------------------------------
+   Enter/Exit Animations - Apple Style
+   ---------------------------------------- */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-/* User interactions */
-@keyframes ripple-effect {
-  0% {
-    transform: scale(0);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(4);
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slide-up {
+  from {
     opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@keyframes button-press {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(0.95); }
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-@keyframes shake-error {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
-  20%, 40%, 60%, 80% { transform: translateX(4px); }
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* Layout transitions */
+@keyframes scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Modal/Sheet animations */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modal-exit {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+}
+
+/* Backdrop fade */
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ----------------------------------------
+   Panel & Sidebar Transitions
+   ---------------------------------------- */
+
 @keyframes panel-slide-in {
   from {
     transform: translateX(-100%);
@@ -98,21 +181,81 @@
   }
 }
 
-@keyframes grid-item-expand {
+@keyframes panel-slide-in-right {
   from {
-    transform: scale(0.8);
+    transform: translateX(100%);
     opacity: 0;
   }
   to {
-    transform: scale(1);
+    transform: translateX(0);
     opacity: 1;
   }
 }
 
-/* Data animations */
+/* ----------------------------------------
+   Toast Notifications
+   ---------------------------------------- */
+
+@keyframes toast-enter {
+  from {
+    transform: translateX(100%) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-exit {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* ----------------------------------------
+   Interactive Feedback
+   ---------------------------------------- */
+
+@keyframes button-press {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+  20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* ----------------------------------------
+   Data Visualization
+   ---------------------------------------- */
+
+@keyframes bar-grow {
+  from { transform: scaleX(0); transform-origin: left; }
+  to { transform: scaleX(1); transform-origin: left; }
+}
+
 @keyframes count-up {
   from {
-    transform: translateY(20px);
+    transform: translateY(12px);
     opacity: 0;
   }
   to {
@@ -121,81 +264,119 @@
   }
 }
 
-@keyframes bar-fill {
-  from {
-    width: 0;
-  }
-  to {
-    width: 100%;
-  }
-}
-
-/* Toast notifications */
-@keyframes toast-slide-in {
-  from {
-    transform: translateX(400px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes toast-slide-out {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(400px);
-    opacity: 0;
-  }
-}
-
-/* Timeline animations */
 @keyframes draw-line {
-  from {
-    stroke-dashoffset: 100;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
 }
 
-/* Utility classes */
-.animate-status-flash {
-  animation: status-change-flash 0.5s ease-in-out;
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Basic animations */
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
 }
 
-.animate-badge-pop {
-  animation: badge-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+.animate-slide-up {
+  animation: slide-up 0.25s var(--spring-bounce);
+}
+
+.animate-slide-down {
+  animation: slide-down 0.25s var(--spring-bounce);
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s var(--spring-bounce);
+}
+
+/* Modal animations */
+.animate-modal-enter {
+  animation: modal-enter 0.25s var(--spring-bounce);
+}
+
+.animate-modal-exit {
+  animation: modal-exit 0.2s ease-in forwards;
+}
+
+.animate-backdrop {
+  animation: backdrop-fade-in 0.2s ease-out;
+}
+
+/* Status animations */
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
 }
 
 .animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
 }
 
-.animate-typing-wave {
-  animation: typing-wave 1.4s ease-in-out infinite;
+.animate-status-flash {
+  animation: status-change 0.5s ease-in-out;
 }
 
+/* Badge animations */
+.animate-badge-pop {
+  animation: badge-pop 0.3s var(--spring-gentle);
+}
+
+.animate-badge-bounce {
+  animation: badge-bounce 0.4s var(--spring-bounce);
+}
+
+/* Loading animations */
 .animate-spinner {
-  animation: spinner-rotate 1s linear infinite;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+.animate-typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+/* Panel animations */
+.animate-panel-slide-in {
+  animation: panel-slide-in 0.25s var(--spring-bounce);
+}
+
+.animate-panel-slide-in-right {
+  animation: panel-slide-in-right 0.25s var(--spring-bounce);
+}
+
+/* Toast animations */
+.animate-toast-enter {
+  animation: toast-enter 0.3s var(--spring-bounce);
+}
+
+.animate-toast-exit {
+  animation: toast-exit 0.2s ease-in forwards;
+}
+
+/* Interactive feedback */
+.animate-press {
+  animation: button-press 0.15s ease-out;
 }
 
 .animate-shake {
-  animation: shake-error 0.5s ease-in-out;
+  animation: shake 0.4s ease-in-out;
 }
 
 .animate-ripple {
-  animation: ripple-effect 0.6s ease-out;
+  animation: ripple 0.5s ease-out;
 }
 
-.animate-panel-slide-in {
-  animation: panel-slide-in 0.3s ease-out;
+/* Data animations */
+.animate-bar-grow {
+  animation: bar-grow 0.5s var(--ease-out-expo);
 }
 
-.animate-grid-expand {
-  animation: grid-item-expand 0.3s ease-out;
+.animate-count-up {
+  animation: count-up 0.3s var(--spring-bounce);
 }
+
+/* Animation delays for staggered effects */
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+.animation-delay-400 { animation-delay: 400ms; }
+.animation-delay-500 { animation-delay: 500ms; }

@@ -1,67 +1,46 @@
 <script lang="ts">
+  import { ViewHeader } from "$lib/components/ui/layout";
+  import { IconButton } from "$lib/components/ui/button";
+  import { Trash2 } from "$lib/components/ui/icons";
   import HelpTip from "../new-agent/HelpTip.svelte";
+  import VoiceButton from "../voice/VoiceButton.svelte";
 
   interface Props {
     isThinking: boolean;
     onClear: () => void;
+    hasOpenAiKey?: boolean;
   }
 
-  let { isThinking, onClear }: Props = $props();
+  let { isThinking, onClear, hasOpenAiKey = false }: Props = $props();
 </script>
 
-<div class="chat-header">
-  <div class="header-left">
-    <span class="header-icon">🎛️</span>
-    <span class="header-title">
-      System Commander
-      <HelpTip
-        text="Natural language control center. Create agents, send prompts, and manage your fleet."
-        placement="bottom"
-      />
-    </span>
+<ViewHeader emojiIcon="🎛️" title="System Commander">
+  {#snippet children()}
+    <HelpTip
+      text="Natural language control center. Create agents, send prompts, and manage your fleet."
+      placement="bottom"
+    />
     {#if isThinking}
       <span class="thinking-indicator">Thinking...</span>
     {/if}
-  </div>
-  <div class="header-actions">
-    <button onclick={onClear} class="action-btn" title="Clear chat">
-      Clear
-    </button>
-  </div>
-</div>
+  {/snippet}
+  {#snippet actions()}
+    {#if hasOpenAiKey}
+      <VoiceButton />
+    {/if}
+    <IconButton
+      icon={Trash2}
+      label="Clear"
+      variant="ghost"
+      onclick={onClear}
+    />
+  {/snippet}
+</ViewHeader>
 
 <style>
-  .chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    background: #1a1a1f;
-    border-bottom: 1px solid rgba(124, 58, 237, 0.2);
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .header-icon {
-    font-size: 24px;
-  }
-
-  .header-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #e0e0e0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
   .thinking-indicator {
     font-size: 12px;
-    color: #7c3aed;
+    color: var(--accent-hex);
     font-weight: 500;
     animation: pulse 1.5s ease-in-out infinite;
   }
@@ -73,27 +52,5 @@
     50% {
       opacity: 0.5;
     }
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .action-btn {
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid rgba(124, 58, 237, 0.3);
-    border-radius: 6px;
-    color: #7c3aed;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .action-btn:hover {
-    background: rgba(124, 58, 237, 0.1);
-    border-color: rgba(124, 58, 237, 0.5);
   }
 </style>

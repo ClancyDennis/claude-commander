@@ -152,7 +152,7 @@
     margin: 1em 0;
     padding-left: 1em;
     color: var(--text-secondary);
-    background: rgba(124, 58, 237, 0.05);
+    background: rgba(240, 112, 90, 0.05);
     padding: 0.5em 1em;
     border-radius: 0 4px 4px 0;
   }

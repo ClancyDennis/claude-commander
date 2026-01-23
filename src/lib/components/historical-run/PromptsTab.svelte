@@ -53,7 +53,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: var(--space-md);
+    padding: var(--space-4);
   }
 
   .prompts-list-wrapper {
@@ -71,26 +71,33 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
-    gap: var(--space-md);
+    padding: var(--space-8);
+    gap: var(--space-4);
     color: var(--text-muted);
     flex: 1;
     text-align: center;
   }
 
+  .loading p,
+  .error-message p,
+  .empty-state p {
+    font-size: var(--text-sm);
+    margin: 0;
+  }
+
   .error-message svg,
   .empty-state svg {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     opacity: 0.5;
   }
 
   .spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--border-hex);
+    border-top-color: var(--accent-hex);
+    border-radius: var(--radius-full);
     animation: spin 1s linear infinite;
   }
 

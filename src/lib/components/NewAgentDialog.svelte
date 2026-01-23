@@ -206,139 +206,152 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(4px);
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 100;
-    padding: var(--space-lg);
+    padding: var(--space-6);
   }
 
   .dialog {
-    width: 900px;
-    max-width: 100%;
-    max-height: 90vh;
+    width: 680px;
+    max-width: calc(100vw - var(--space-8));
+    max-height: calc(100vh - var(--space-12));
     display: flex;
     flex-direction: column;
     background-color: var(--bg-secondary);
-    border-radius: 20px;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg), 0 0 60px rgba(124, 58, 237, 0.1);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
   header {
     flex-shrink: 0;
-    padding: var(--space-lg);
+    padding: var(--space-5);
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
   }
 
   .header-content {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-3);
     align-items: center;
+    min-width: 0;
   }
 
   .dialog-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, var(--accent) 0%, #9333ea 100%);
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--accent-hex) 0%, #d55a42 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px var(--accent-glow);
+    flex-shrink: 0;
   }
 
   .dialog-icon svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     color: white;
   }
 
   h2 {
-    font-size: 20px;
-    font-weight: 700;
-    margin-bottom: 2px;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    margin-bottom: 1px;
+    color: var(--text-primary);
   }
 
   .subtitle {
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
   }
 
   .close-btn {
-    background: var(--bg-elevated);
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
-    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
   }
 
   .close-btn:hover {
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.08);
     color: var(--text-primary);
   }
 
   .close-btn svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
   }
 
   .content {
-    padding: var(--space-lg);
+    flex: 1;
+    padding: var(--space-5);
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .essential-fields {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
-    margin-bottom: var(--space-lg);
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
   :global(.advanced-section) {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-2);
   }
 
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-lg);
-    margin-top: var(--space-md);
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+  }
+
+  @media (max-width: 640px) {
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .col-left, .col-right {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-4);
+    min-width: 0;
   }
 
   .error {
-    margin-top: var(--space-md);
-    padding: var(--space-md);
-    background-color: var(--error-glow);
-    border: 1px solid var(--error);
-    border-radius: 12px;
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background-color: rgba(255, 59, 48, 0.1);
+    border: 1px solid rgba(255, 59, 48, 0.3);
+    border-radius: var(--radius-md);
     color: var(--error);
-    font-size: 14px;
+    font-size: var(--text-sm);
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+    align-items: flex-start;
+    gap: var(--space-2);
   }
 
   .error svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
+    margin-top: 1px;
   }
 </style>

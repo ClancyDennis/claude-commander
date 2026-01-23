@@ -10,6 +10,7 @@
     clearAgentOutput,
     markAgentViewed,
   } from "../stores/agents";
+  import { PageLayout } from "./ui/layout";
   import AgentHeader from "./agent-view/AgentHeader.svelte";
   import AgentInput from "./agent-view/AgentInput.svelte";
   import AgentOutputList from "./agent-view/AgentOutputList.svelte";
@@ -111,11 +112,11 @@
 </script>
 
 {#if agent}
-  <main class="agent-view" class:compact data-tutorial="agent-view">
+  <PageLayout class="agent-view {compact ? 'compact' : ''}" data-tutorial="agent-view">
     {#if showHeader}
-      <AgentHeader 
-        {agent} 
-        {activeSidePanel} 
+      <AgentHeader
+        {agent}
+        {activeSidePanel}
         onToggleSidePanel={toggleSidePanel}
         onClear={() => clearAgentOutput(effectiveAgentId!)}
         onStop={stopAgent}
@@ -142,9 +143,9 @@
           onClearFilter={() => { filteredOutputs = outputs.filter(o => o.type === DEFAULT_FILTER_TYPE); }}
         />
 
-        <AgentInput 
-          status={agent.status} 
-          onSend={sendPrompt} 
+        <AgentInput
+          status={agent.status}
+          onSend={sendPrompt}
         />
       </div>
 
@@ -170,9 +171,9 @@
         onClose={() => showExportDialog = false}
       />
     {/if}
-  </main>
+  </PageLayout>
 {:else}
-  <main class="agent-view empty">
+  <PageLayout variant="centered" class="agent-view empty">
     <div class="placeholder">
       <div class="placeholder-icon">
         <img src={appIcon} alt="Claude Commander" />
@@ -180,24 +181,10 @@
       <h2>Select an Agent</h2>
       <p>Choose an agent from the sidebar, or press <strong>New</strong> to create one</p>
     </div>
-  </main>
+  </PageLayout>
 {/if}
 
 <style>
-  .agent-view {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-    background-color: var(--bg-primary);
-  }
-
-  .agent-view.empty {
-    align-items: center;
-    justify-content: center;
-  }
-
   .placeholder {
     text-align: center;
     color: var(--text-secondary);

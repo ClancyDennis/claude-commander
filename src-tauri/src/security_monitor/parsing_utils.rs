@@ -47,11 +47,7 @@ pub(crate) fn parse_tool_input(
     let threats_detected: Vec<ThreatAssessment> = input
         .get("threats_detected")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(parse_threat_assessment)
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_threat_assessment).collect())
         .unwrap_or_default();
 
     // Parse overall_risk_level
@@ -71,11 +67,7 @@ pub(crate) fn parse_tool_input(
     let recommended_actions: Vec<RecommendedAction> = input
         .get("recommended_actions")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(parse_recommended_action)
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_recommended_action).collect())
         .unwrap_or_else(|| vec![RecommendedAction::Continue]);
 
     // Parse analysis_summary

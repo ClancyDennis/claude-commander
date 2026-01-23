@@ -124,7 +124,7 @@
       border-bottom: 2px solid #f0f0f0;
     }
     .output-type {
-      background: #7c3aed;
+      background: #f0705a;
       color: white;
       padding: 0.25rem 0.75rem;
       border-radius: 6px;
@@ -526,7 +526,7 @@
 
   .format-option.selected .format-card {
     border-color: var(--accent);
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(240, 112, 90, 0.1) 0%, rgba(240, 112, 90, 0.05) 100%);
   }
 
   .format-icon {

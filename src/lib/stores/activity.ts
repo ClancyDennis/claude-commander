@@ -7,6 +7,8 @@ export interface AgentActivity {
   pendingInput: boolean;
   lastActivity: Date;
   idleTime: number; // milliseconds
+  currentActivity?: string; // Human-readable activity like "Reading src/main.rs..."
+  currentToolName?: string; // Tool being used
 }
 
 export const agentActivities = writable<Map<string, AgentActivity>>(new Map());
@@ -53,6 +55,35 @@ export function updateActivity(agentId: string, activity: Partial<AgentActivity>
 export function clearActivity(agentId: string) {
   agentActivities.update((map) => {
     map.delete(agentId);
+    return new Map(map);
+  });
+}
+
+/**
+ * Update the current human-readable activity for an agent
+ * (e.g., "Reading src/main.rs...", "Running: npm install")
+ */
+export function updateActivityDetail(
+  agentId: string,
+  detail: { activity: string; toolName: string; timestamp: Date }
+) {
+  agentActivities.update((map) => {
+    const existing = map.get(agentId) || {
+      agentId,
+      isProcessing: true,
+      pendingInput: false,
+      lastActivity: detail.timestamp,
+      idleTime: 0,
+    };
+
+    map.set(agentId, {
+      ...existing,
+      currentActivity: detail.activity,
+      currentToolName: detail.toolName,
+      lastActivity: detail.timestamp,
+      isProcessing: true, // If we're getting activity updates, the agent is processing
+    });
+
     return new Map(map);
   });
 }

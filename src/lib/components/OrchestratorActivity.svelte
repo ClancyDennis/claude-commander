@@ -83,7 +83,7 @@
 <style>
   .orchestrator-activity {
     background: var(--bg-secondary, #1a1a1f);
-    border: 1px solid var(--border, rgba(124, 58, 237, 0.2));
+    border: 1px solid var(--border, rgba(240, 112, 90, 0.2));
     border-radius: 12px;
     overflow: hidden;
   }
@@ -173,7 +173,7 @@
 
   .activity-tabs {
     display: flex;
-    border-bottom: 1px solid var(--border, rgba(124, 58, 237, 0.2));
+    border-bottom: 1px solid var(--border, rgba(240, 112, 90, 0.2));
   }
 
   .tab {
@@ -195,8 +195,8 @@
   }
 
   .tab.active {
-    color: var(--accent, #7c3aed);
-    border-bottom-color: var(--accent, #7c3aed);
+    color: var(--accent, #f0705a);
+    border-bottom-color: var(--accent, #f0705a);
   }
 
   .activity-content {
@@ -215,11 +215,11 @@
   }
 
   .activity-content::-webkit-scrollbar-thumb {
-    background: var(--border, rgba(124, 58, 237, 0.3));
+    background: var(--border, rgba(240, 112, 90, 0.3));
     border-radius: 3px;
   }
 
   .activity-content::-webkit-scrollbar-thumb:hover {
-    background: var(--accent, rgba(124, 58, 237, 0.5));
+    background: var(--accent, rgba(240, 112, 90, 0.5));
   }
 </style>

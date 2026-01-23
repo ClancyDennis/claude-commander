@@ -30,9 +30,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    font-size: 13px;
+    gap: var(--space-4);
+    font-size: var(--text-sm);
     color: var(--text-secondary);
-    padding: 4px 0;
+    padding: var(--space-1) 0;
   }
 </style>

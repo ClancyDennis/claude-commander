@@ -290,52 +290,55 @@
   .label-text {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-    font-size: 15px;
-    font-weight: 600;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     color: var(--text-primary);
   }
 
   .label-text svg {
-    width: 18px;
-    height: 18px;
-    color: var(--accent);
+    width: 16px;
+    height: 16px;
+    color: var(--accent-hex);
+    flex-shrink: 0;
   }
 
   .label-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-2);
+    gap: var(--space-2);
   }
 
   .header-actions {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--space-1);
+    flex-shrink: 0;
   }
 
   .icon-btn.small {
-    padding: 4px 10px;
-    font-size: 12px;
-    border-radius: 6px;
-    background: var(--bg-elevated);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
     color: var(--text-secondary);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1);
     cursor: pointer;
+    transition: all var(--transition-fast);
   }
 
   .icon-btn.small:hover {
-    background: var(--bg-tertiary);
-    color: var(--accent);
+    background: var(--bg-elevated);
+    color: var(--accent-hex);
   }
 
   .icon-btn.small svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   }
 
   .instructions-section {
@@ -347,47 +350,50 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md);
-    background: var(--bg-elevated);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
   }
 
   .instructions-toggle:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
+    background: var(--bg-elevated);
+    border-color: rgba(255, 255, 255, 0.15);
     color: var(--text-primary);
   }
 
   .toggle-content {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-2);
+    min-width: 0;
   }
 
   .badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    background: var(--accent);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--accent-hex);
     color: white;
-    font-size: 12px;
-    font-weight: 600;
-    border-radius: 10px;
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
   }
 
   .instructions-toggle .chevron {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     transition: transform 0.2s ease;
+    flex-shrink: 0;
   }
 
   .instructions-toggle .chevron.rotated {
@@ -395,13 +401,14 @@
   }
 
   .instructions-dropdown {
-    margin-top: var(--space-sm);
-    padding: var(--space-sm);
-    background: var(--bg-elevated);
+    margin-top: var(--space-2);
+    padding: var(--space-1);
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    max-height: 200px;
+    border-radius: var(--radius-md);
+    max-height: 180px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .loading-state,
@@ -410,24 +417,24 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-md);
-    gap: var(--space-sm);
+    padding: var(--space-3);
+    gap: var(--space-2);
     text-align: center;
-    color: var(--text-secondary);
-    font-size: 13px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
   .instructions-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: 2px;
   }
 
   .spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--text-secondary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -437,21 +444,22 @@
   }
 
   .error {
-    margin-top: var(--space-md);
-    padding: var(--space-md);
-    background-color: var(--error-glow);
-    border: 1px solid var(--error);
-    border-radius: 12px;
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background-color: rgba(255, 59, 48, 0.1);
+    border: 1px solid rgba(255, 59, 48, 0.3);
+    border-radius: var(--radius-md);
     color: var(--error);
-    font-size: 14px;
+    font-size: var(--text-sm);
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+    align-items: flex-start;
+    gap: var(--space-2);
   }
 
   .error svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
+    margin-top: 1px;
   }
 </style>

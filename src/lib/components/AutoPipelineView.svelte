@@ -11,6 +11,7 @@
   import { autoPipelines } from '../stores/autoPipelines';
 
   // Import sub-components and utilities
+  import { PageLayout } from './ui/layout';
   import { PipelineHeader, StageIndicator, FilterBar, OutputList } from './auto-pipeline';
   import {
     processOutputs,
@@ -147,19 +148,21 @@
 </script>
 
 {#if loading}
-  <div class="loading-container">
-    <div class="loading-spinner"></div>
-    <span>Loading pipeline...</span>
-  </div>
+  <PageLayout variant="centered">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <span>Loading pipeline...</span>
+    </div>
+  </PageLayout>
 {:else if error}
-  <div class="error-container">
+  <PageLayout variant="centered">
     <div class="error-box">
       <h3>Error loading pipeline</h3>
       <p>{error}</p>
     </div>
-  </div>
+  </PageLayout>
 {:else if pipeline}
-  <div class="auto-pipeline-view">
+  <PageLayout>
     <PipelineHeader {pipeline} />
 
     <StageIndicator
@@ -190,32 +193,22 @@
       totalOutputs={allOutputs.length}
       onClearFilters={clearFilters}
     />
-  </div>
+  </PageLayout>
 {/if}
 
 <style>
-  .auto-pipeline-view {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .loading-container, .error-container {
-    height: 100%;
+  .loading-content {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     color: var(--text-muted);
   }
 
   .loading-spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
+    border: 3px solid var(--border-hex);
+    border-top-color: var(--accent-hex);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 16px;
