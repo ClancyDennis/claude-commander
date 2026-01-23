@@ -60,11 +60,6 @@ impl OutputEventBuilder {
         self
     }
 
-    pub fn language(mut self, language: Option<String>) -> Self {
-        self.language = language;
-        self
-    }
-
     pub fn session_context(
         mut self,
         session_id: Option<String>,
@@ -82,11 +77,6 @@ impl OutputEventBuilder {
     pub fn with_size_from_content(mut self) -> Self {
         self.byte_size = Some(self.content.len());
         self.line_count = Some(self.content.lines().count());
-        self
-    }
-
-    pub fn is_truncated(mut self, truncated: bool) -> Self {
-        self.is_truncated = truncated;
         self
     }
 

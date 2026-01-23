@@ -95,7 +95,7 @@ pub async fn process_agent_results(
                         }
                     }
                 }
-                formatted_output.push_str("\n");
+                formatted_output.push('\n');
             }
             _ => {}
         }

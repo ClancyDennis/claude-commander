@@ -182,20 +182,19 @@ pub async fn generate_skill_from_instruction(
             }
             Err(e) => {
                 // Check if this is a JSON parsing error that might be recoverable
-                if e.contains("Failed to parse AI response as JSON")
+                if (e.contains("Failed to parse AI response as JSON")
                     || e.contains("No JSON found")
-                    || e.contains("Could not find")
+                    || e.contains("Could not find"))
+                    && attempt < MAX_JSON_RETRIES
                 {
-                    if attempt < MAX_JSON_RETRIES {
-                        eprintln!(
-                            "  JSON parsing failed (attempt {}/{}), retrying...",
-                            attempt + 1,
-                            MAX_JSON_RETRIES + 1
-                        );
-                        last_error = Some(e);
-                        last_response = Some(ai_response);
-                        continue;
-                    }
+                    eprintln!(
+                        "  JSON parsing failed (attempt {}/{}), retrying...",
+                        attempt + 1,
+                        MAX_JSON_RETRIES + 1
+                    );
+                    last_error = Some(e);
+                    last_response = Some(ai_response);
+                    continue;
                 }
                 // Either not a JSON error or we've exhausted retries
                 // Include a snippet of the response for debugging
@@ -446,7 +445,7 @@ pub fn create_fallback_skill_from_instruction(
     // Create a basic SKILL.md with the instruction content
     let skill_md = format!(
         "# {}\n\n{}\n",
-        file_name.replace('_', " ").replace('-', " "),
+        file_name.replace(['_', '-'], " "),
         instruction_content
     );
 

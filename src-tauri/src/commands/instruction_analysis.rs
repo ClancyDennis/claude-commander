@@ -280,7 +280,7 @@ fn parse_analysis_response(content: &[ContentBlock]) -> Result<InstructionAnalys
 
     // Convert to our result type with generated IDs
     Ok(InstructionAnalysisResult {
-        quality_score: ai_response.quality_score.min(10).max(1),
+        quality_score: ai_response.quality_score.clamp(1, 10),
         quality_summary: ai_response.quality_summary,
         issues: ai_response
             .issues

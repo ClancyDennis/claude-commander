@@ -138,9 +138,8 @@ pub fn matches_glob_pattern(path: &str, pattern: &str, working_dir: &str) -> boo
             // Handle suffix with wildcards (e.g., "*.rs")
             let path_ends_ok = if suffix.is_empty() {
                 true
-            } else if suffix.starts_with('*') {
+            } else if let Some(ext) = suffix.strip_prefix('*') {
                 // Extract extension pattern (e.g., "*.rs" -> ".rs")
-                let ext = &suffix[1..];
                 path.ends_with(ext)
             } else {
                 path.ends_with(suffix)

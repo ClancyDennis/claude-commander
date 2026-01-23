@@ -89,28 +89,6 @@ pub fn emit_pipeline_completed(
     emit_step_event(app_handle, "auto_pipeline:completed", data);
 }
 
-/// Emit a pipeline decision event
-pub fn emit_decision(
-    app_handle: &Arc<dyn crate::events::AppEventEmitter>,
-    pipeline_id: &str,
-    decision: &str,
-    reasoning: &str,
-    issues: &[String],
-    suggestions: &[String],
-) {
-    emit_step_event(
-        app_handle,
-        "auto_pipeline:decision",
-        json!({
-            "pipeline_id": pipeline_id,
-            "decision": decision,
-            "reasoning": reasoning,
-            "issues": issues,
-            "suggestions": suggestions,
-        }),
-    );
-}
-
 /// Get data from a pipeline with a closure
 pub async fn with_pipeline<F, T>(
     pipelines: &Arc<Mutex<HashMap<String, AutoPipeline>>>,
@@ -162,32 +140,6 @@ pub async fn store_orchestrator_agent(
 ) {
     let mut agents_lock = agents.lock().await;
     agents_lock.insert(pipeline_id.to_string(), agent);
-}
-
-/// Remove an orchestrator agent (cleanup)
-pub async fn remove_orchestrator_agent(
-    agents: &Arc<Mutex<HashMap<String, OrchestratorAgent>>>,
-    pipeline_id: &str,
-) {
-    let mut agents_lock = agents.lock().await;
-    agents_lock.remove(pipeline_id);
-}
-
-/// Update orchestrator agent context
-pub async fn update_agent_context(
-    agents: &Arc<Mutex<HashMap<String, OrchestratorAgent>>>,
-    pipeline_id: &str,
-    role: &str,
-    context: &str,
-    increment_iteration: bool,
-) {
-    let mut agents_lock = agents.lock().await;
-    if let Some(agent) = agents_lock.get_mut(pipeline_id) {
-        agent.add_context(role, context);
-        if increment_iteration {
-            agent.increment_iteration();
-        }
-    }
 }
 
 /// Stop an agent by ID
@@ -273,22 +225,5 @@ pub async fn update_step_status(
         let index = (step_number - 1) as usize;
         pipeline.steps[index].status = status.clone();
         emit_step_status(app_handle, pipeline_id, step_number, &status);
-    }
-}
-
-/// Mark a step as completed with output
-pub async fn complete_step(
-    pipelines: &Arc<Mutex<HashMap<String, AutoPipeline>>>,
-    pipeline_id: &str,
-    step_index: usize,
-    output: Option<crate::auto_pipeline::types::StepOutput>,
-) {
-    let mut pipelines_lock = pipelines.lock().await;
-    if let Some(pipeline) = pipelines_lock.get_mut(pipeline_id) {
-        if let Some(out) = output {
-            pipeline.steps[step_index].output = Some(out);
-        }
-        pipeline.steps[step_index].status = StepStatus::Completed;
-        pipeline.steps[step_index].completed_at = Some(chrono::Utc::now().to_rfc3339());
     }
 }

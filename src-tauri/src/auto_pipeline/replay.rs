@@ -86,7 +86,7 @@ impl ReplayFile {
             output.push_str(&format!("**Previous Plan:**\n```\n{}\n```\n\n", plan));
         }
 
-        output.push_str(&format!("**Failure Analysis:**\n"));
+        output.push_str("**Failure Analysis:**\n");
         output.push_str(&format!(
             "- Primary Cause: {}\n",
             self.failure_analysis.primary_cause

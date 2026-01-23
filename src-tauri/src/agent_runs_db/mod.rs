@@ -212,7 +212,7 @@ impl AgentRunsDB {
         let mut stmt = db.prepare(&query)?;
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-        let runs = stmt.query_map(param_refs.as_slice(), |row| row_to_run(row))?;
+        let runs = stmt.query_map(param_refs.as_slice(), row_to_run)?;
 
         let mut result = Vec::new();
         for run in runs {
@@ -285,6 +285,24 @@ impl AgentRunsDB {
         db.execute(
             "DELETE FROM agent_runs WHERE started_at < ?1",
             params![cutoff_timestamp],
+        )
+    }
+
+    /// Mark all "running" or "waiting_input" agents as "crashed" - called on app startup
+    /// This handles orphaned runs from previous sessions that didn't terminate cleanly
+    pub async fn reconcile_stale_runs(&self) -> SqliteResult<usize> {
+        let db = self.db.lock().await;
+        let now = chrono::Utc::now().timestamp_millis();
+
+        db.execute(
+            "UPDATE agent_runs SET
+                status = 'crashed',
+                ended_at = ?1,
+                last_activity = ?1,
+                error_message = COALESCE(error_message, 'Process terminated unexpectedly (app restart)'),
+                can_resume = 1
+             WHERE status = 'running' OR status = 'waiting_input'",
+            params![now],
         )
     }
 
@@ -528,7 +546,7 @@ fn row_to_run(row: &rusqlite::Row) -> SqliteResult<AgentRun> {
         github_url: row.get(4)?,
         github_context: row.get(5)?,
         source: row.get(6)?,
-        status: RunStatus::from_str(&status_str),
+        status: RunStatus::parse(&status_str),
         started_at: row.get(8)?,
         ended_at: row.get(9)?,
         last_activity: row.get(10)?,

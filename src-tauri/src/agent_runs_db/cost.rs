@@ -156,7 +156,7 @@ impl<'a> CostOperations<'a> {
                     },
                     ended_at: row
                         .get::<_, Option<i64>>(4)?
-                        .and_then(|ts| DateTime::<Utc>::from_timestamp_millis(ts))
+                        .and_then(DateTime::<Utc>::from_timestamp_millis)
                         .map(|dt| dt.to_rfc3339()),
                     total_prompts: row.get::<_, i64>(5)? as u32,
                     total_tool_calls: row.get::<_, i64>(6)? as u32,

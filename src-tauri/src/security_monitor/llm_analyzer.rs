@@ -279,7 +279,7 @@ Analyze these events and call the `report_threat_analysis` tool with your findin
             if let Some(expected) = &anomaly.expected_context {
                 section.push_str(&format!("   Expected: {}\n", expected));
             }
-            section.push_str("\n");
+            section.push('\n');
         }
 
         section.push_str("Consider these anomalies in your analysis - they may indicate the agent is deviating from the intended task.\n\n");

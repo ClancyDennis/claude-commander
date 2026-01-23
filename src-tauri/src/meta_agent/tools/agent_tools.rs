@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::meta_agent::helpers::{error, get_optional_bool, get_optional_u64, shorten_id};
+use crate::meta_agent::helpers::{error, get_optional_bool, get_optional_u64};
 use crate::types::AgentSource;
 
 /// Create a new worker agent

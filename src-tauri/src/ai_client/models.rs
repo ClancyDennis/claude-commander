@@ -7,7 +7,7 @@ use crate::ai_client::error::{check_response_status, AIError};
 /// Priority: claude-sonnet-4-5 > claude-sonnet-4 > claude-3-5-sonnet
 pub fn get_default_claude_model() -> String {
     // Based on Anthropic's naming pattern, try latest versions first
-    let candidates = vec![
+    let candidates = [
         "claude-sonnet-4-5-20250929", // Latest Sonnet 4.5
         "claude-sonnet-4-20250514",   // Sonnet 4
         "claude-3-5-sonnet-20241022", // Latest 3.5

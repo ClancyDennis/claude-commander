@@ -131,10 +131,9 @@ pub fn generate_warnings(command: &str) -> Vec<String> {
             || cmd_lower.contains("|sh")
             || cmd_lower.contains("| bash")
             || cmd_lower.contains("| sh"))
+        && detect_known_installer(command).is_none()
     {
-        if detect_known_installer(command).is_none() {
-            warnings.push("Downloads and executes remote script".to_string());
-        }
+        warnings.push("Downloads and executes remote script".to_string());
     }
 
     // Check for compound commands

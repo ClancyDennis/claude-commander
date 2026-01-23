@@ -67,58 +67,17 @@ export async function createSingleAgent(
 
 /**
  * Creates a custom pipeline with detailed settings.
- * Builds the backend config from the pipeline settings and starts execution.
+ *
+ * TODO: Re-engineer custom pipeline without pool_manager.
+ * The old implementation used orchestrator/verification stubs that never actually worked.
+ * This will be rebuilt with direct agent management.
  */
 export async function createCustomPipeline(
-  params: CreateCustomPipelineParams
+  _params: CreateCustomPipelineParams
 ): Promise<CreatePipelineResult> {
-  const { workingDir, task, settings } = params;
-
-  // Build backend config from detailed settings
-  const config = {
-    // P-Thread
-    use_agent_pool: settings.useAgentPool,
-    pool_priority: settings.poolPriority,
-
-    // B-Thread
-    enable_orchestration: settings.enableOrchestration,
-    auto_decompose: settings.autoDecompose,
-    max_parallel_tasks: settings.maxParallelTasks,
-
-    // F-Thread
-    enable_verification: settings.enableVerification,
-    verification_strategy: settings.verificationStrategy,
-    verification_n: settings.verificationN,
-    confidence_threshold: settings.confidenceThreshold,
-
-    // C-Thread
-    require_plan_review: settings.requirePlanReview,
-    require_final_review: settings.requireFinalReview,
-    auto_validation_command: settings.autoValidationCommand,
-    auto_approve_on_verification: settings.autoApproveOnVerification,
-  };
-
-  // Create pipeline with task and config
-  const pipelineId = await invoke<string>("create_pipeline", {
-    userRequest: task.trim(),
-    config,
-  });
-
-  // Start pipeline execution immediately
-  await invoke("start_pipeline", {
-    pipelineId,
-    userRequest: task.trim(),
-  });
-
-  const pipeline: Pipeline = {
-    id: pipelineId,
-    workingDir,
-    userRequest: task.trim(),
-    status: "planning",
-    createdAt: new Date(),
-  };
-
-  return { pipeline, pipelineId };
+  throw new Error(
+    "Custom pipeline feature is being re-engineered. Use auto-pipeline (Ralphline) for now."
+  );
 }
 
 /**

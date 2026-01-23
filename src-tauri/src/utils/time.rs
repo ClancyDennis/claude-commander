@@ -19,7 +19,7 @@ pub fn start_of_day(timestamp: i64) -> i64 {
 
 /// Returns the timestamp for the start of the month (first day, 00:00:00 UTC) for a given timestamp
 pub fn start_of_month(timestamp: i64) -> i64 {
-    let datetime = DateTime::from_timestamp(timestamp / 1000, 0).unwrap_or_else(|| Utc::now());
+    let datetime = DateTime::from_timestamp(timestamp / 1000, 0).unwrap_or_else(Utc::now);
 
     let year = datetime.year();
     let month = datetime.month();

@@ -8,6 +8,7 @@ use crate::agent_runs_db::{AgentRun, AgentRunsDB, RunStatus};
 use crate::logger::Logger;
 
 /// Record a new agent run in the database
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn record_run_in_db(
     runs_db: &Option<Arc<AgentRunsDB>>,
     logger: &Option<Arc<Logger>>,

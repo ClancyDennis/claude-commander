@@ -11,11 +11,8 @@ pub mod events;
 pub mod instruction;
 pub mod instruction_analysis;
 pub mod logging;
-pub mod pipeline;
-pub mod pool;
 pub mod security;
 pub mod skill;
-pub mod workflow;
 
 // Re-export all command functions for registration in lib.rs
 pub use agent::*;
@@ -28,8 +25,5 @@ pub use events::*;
 pub use instruction::*;
 pub use instruction_analysis::*;
 pub use logging::*;
-pub use pipeline::*;
-pub use pool::*;
 pub use security::*;
 pub use skill::*;
-pub use workflow::*;

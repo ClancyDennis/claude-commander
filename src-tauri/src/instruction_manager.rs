@@ -219,11 +219,9 @@ pub fn cleanup_instruction_files(
 
         // Safety check: only delete files with instruction_ prefix
         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-            if filename.starts_with("instruction_") {
-                if path.exists() {
-                    fs::remove_file(path)
-                        .map_err(|e| format!("Failed to delete {}: {}", file_path, e))?;
-                }
+            if filename.starts_with("instruction_") && path.exists() {
+                fs::remove_file(path)
+                    .map_err(|e| format!("Failed to delete {}: {}", file_path, e))?;
             }
         }
     }

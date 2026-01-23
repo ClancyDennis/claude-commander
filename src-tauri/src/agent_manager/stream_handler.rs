@@ -3,15 +3,12 @@
 // This module manages the main stream reading loop and coordinates
 // message dispatching to appropriate handlers.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 use crate::agent_runs_db::{AgentOutputRecord, AgentRunsDB};
-use crate::types::{AgentOutputEvent, AgentStatistics};
 use crate::utils::time::now_millis;
 
 use super::event_handlers::{
@@ -19,7 +16,6 @@ use super::event_handlers::{
     handle_stream_event, handle_system_message, handle_unknown_message, handle_user_message,
 };
 use super::output_builder::OutputEventBuilder;
-use super::types::AgentProcess;
 
 // Re-export StreamContext for use by mod.rs
 pub use super::event_handlers::StreamContext;
@@ -138,36 +134,4 @@ pub fn spawn_stderr_handler(
             }
         }
     });
-}
-
-/// Create a new StreamContext for handlers
-///
-/// This is a convenience function for creating the context struct
-/// that gets passed to all stream handlers.
-pub fn create_stream_context(
-    agent_id: String,
-    agents: Arc<Mutex<HashMap<String, AgentProcess>>>,
-    session_map: Arc<Mutex<HashMap<String, String>>>,
-    app_handle: Arc<dyn crate::events::AppEventEmitter>,
-    last_activity: Arc<Mutex<Instant>>,
-    is_processing: Arc<Mutex<bool>>,
-    pending_input: Arc<Mutex<bool>>,
-    stats: Arc<Mutex<AgentStatistics>>,
-    output_buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
-    runs_db: Option<Arc<AgentRunsDB>>,
-    pipeline_id: Option<String>,
-) -> StreamContext {
-    StreamContext {
-        agent_id,
-        agents,
-        session_map,
-        app_handle,
-        last_activity,
-        is_processing,
-        pending_input,
-        stats,
-        output_buffer,
-        runs_db,
-        pipeline_id,
-    }
 }

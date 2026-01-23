@@ -185,6 +185,7 @@ impl Orchestrator {
     // =========================================================================
 
     /// Decide what to do based on verification results
+    #[allow(clippy::too_many_arguments)]
     pub async fn decide_on_verification(
         &self,
         user_request: &str,

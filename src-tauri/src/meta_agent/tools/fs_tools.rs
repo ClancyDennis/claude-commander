@@ -47,7 +47,7 @@ pub async fn list_directory(input: Value) -> Value {
 fn expand_home_dir(path: &str) -> String {
     if path.starts_with('~') {
         if let Some(home) = dirs::home_dir() {
-            path.replacen('~', &home.to_string_lossy().as_ref(), 1)
+            path.replacen('~', home.to_string_lossy().as_ref(), 1)
         } else {
             path.to_string()
         }

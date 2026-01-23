@@ -49,7 +49,7 @@ pub(crate) fn parse_tool_input(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|t| parse_threat_assessment(t))
+                .filter_map(parse_threat_assessment)
                 .collect()
         })
         .unwrap_or_default();
@@ -73,7 +73,7 @@ pub(crate) fn parse_tool_input(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|a| parse_recommended_action(a))
+                .filter_map(parse_recommended_action)
                 .collect()
         })
         .unwrap_or_else(|| vec![RecommendedAction::Continue]);

@@ -135,6 +135,7 @@ impl AgentManager {
     }
 
     /// Create a new agent with optional pipeline linkage and title
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_agent_with_pipeline(
         &self,
         working_dir: String,

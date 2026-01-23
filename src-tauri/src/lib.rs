@@ -13,17 +13,12 @@ pub mod hook_server;
 pub mod instruction_manager;
 pub mod logger;
 pub mod meta_agent;
-pub mod orchestrator;
-pub mod pipeline_manager;
-pub mod pool_manager;
 pub mod security_monitor;
 pub mod skill_generator;
 pub mod subagent_generator;
-pub mod thread_controller;
 pub mod tool_registry;
 pub mod types;
 pub mod utils;
-pub mod verification;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,24 +30,14 @@ use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
 use logger::Logger;
 use meta_agent::MetaAgent;
-use orchestrator::TaskOrchestrator;
-use pipeline_manager::PipelineManager;
-use pool_manager::{AgentPool, PoolConfig};
 use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
-use thread_controller::ThreadController;
 use types::PendingElevatedCommand;
-use verification::VerificationEngine;
 
 // Make AppState public so commands module can access it
 pub struct AppState {
     pub agent_manager: Arc<Mutex<AgentManager>>,
     pub meta_agent: Arc<Mutex<MetaAgent>>,
     pub logger: Arc<Logger>,
-    pub agent_pool: Option<Arc<Mutex<AgentPool>>>,
-    pub orchestrator: Arc<Mutex<TaskOrchestrator>>,
-    pub thread_controller: Arc<Mutex<ThreadController>>,
-    pub pipeline_manager: Arc<Mutex<PipelineManager>>,
-    pub verification_engine: Arc<Mutex<VerificationEngine>>,
     pub agent_runs_db: Arc<AgentRunsDB>,
     pub auto_pipeline_manager: Option<Arc<Mutex<AutoPipelineManager>>>,
     pub security_monitor: Option<Arc<SecurityMonitor>>,
@@ -157,6 +142,19 @@ pub fn run() {
                 }
             };
 
+            // Reconcile stale runs from previous session
+            // This marks any "running" agents as "crashed" since the app just started
+            let runs_db_for_reconcile = agent_runs_db.clone();
+            tauri::async_runtime::spawn(async move {
+                match runs_db_for_reconcile.reconcile_stale_runs().await {
+                    Ok(count) if count > 0 => {
+                        println!("✓ Reconciled {} stale agent runs from previous session", count);
+                    }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("⚠ Warning: Failed to reconcile stale runs: {}", e),
+                }
+            });
+
             let agent_manager = Arc::new(Mutex::new(AgentManager::with_logger_and_db(
                 hook_port,
                 logger.clone(),
@@ -210,7 +208,7 @@ pub fn run() {
                     // Start background analysis loop inside async context
                     let monitor_for_bg = monitor.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = monitor_for_bg.start_background_analysis();
+                        let _ = monitor_for_bg.start_background_analysis().await;
                     });
                     println!("✓ Security monitor initialized");
                     Some(monitor)
@@ -251,66 +249,6 @@ pub fn run() {
                 }
             });
 
-            // Initialize agent pool in tracking-only mode (no auto-spawn)
-            let pool_config = PoolConfig::default();
-            let app_handle_for_pool = app.handle().clone();
-            let agent_pool = Some(AgentPool::new_tracking_only(
-                pool_config,
-                agent_manager.clone(),
-                Some(app_handle_for_pool),
-            ));
-            println!("✓ Agent pool initialized in tracking mode");
-
-            // Wire up auto-registration callback
-            if let Some(pool) = &agent_pool {
-                let pool_clone = pool.clone();
-                let mut manager = tauri::async_runtime::block_on(agent_manager.lock());
-                manager.set_on_agent_created(move |agent_id, source| {
-                    let pool = pool_clone.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let mut pool_lock = pool.lock().await;
-                        if let Err(e) = pool_lock.register_agent(agent_id.clone(), source).await {
-                            eprintln!("Failed to register agent {}: {}", agent_id, e);
-                        }
-                    });
-                });
-                println!("✓ Agent auto-registration callback configured");
-            }
-
-            // Initialize orchestrator
-            let orchestrator = Arc::new(Mutex::new(TaskOrchestrator::new(agent_pool.clone())));
-            println!("✓ Task orchestrator initialized");
-
-            // Initialize thread controller
-            let thread_controller = Arc::new(Mutex::new(ThreadController::new(
-                agent_pool.clone(),
-                orchestrator.clone(),
-            )));
-            println!("✓ Thread controller initialized");
-
-            // Start stats update loop
-            let thread_controller_clone = thread_controller.clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                    let controller = thread_controller_clone.lock().await;
-                    controller.update_stats().await;
-                }
-            });
-
-            // Initialize verification engine first
-            let verification_engine =
-                Arc::new(Mutex::new(VerificationEngine::new(agent_pool.clone())));
-            println!("✓ Verification engine initialized");
-
-            // Initialize pipeline manager with verification engine
-            let pipeline_manager = Arc::new(Mutex::new(PipelineManager::new(
-                agent_manager.clone(),
-                orchestrator.clone(),
-                verification_engine.clone(),
-            )));
-            println!("✓ Pipeline manager initialized");
-
             // Initialize auto-pipeline manager (optional - requires API key)
             let auto_pipeline_manager = match AutoPipelineManager::new() {
                 Ok(manager) => {
@@ -327,11 +265,6 @@ pub fn run() {
                 agent_manager,
                 meta_agent,
                 logger,
-                agent_pool,
-                orchestrator,
-                thread_controller,
-                pipeline_manager,
-                verification_engine,
                 agent_runs_db,
                 auto_pipeline_manager,
                 security_monitor,
@@ -356,29 +289,6 @@ pub fn run() {
             commands::get_chat_history,
             commands::clear_chat_history,
             commands::process_agent_results,
-            // Pool commands
-            commands::get_pool_stats,
-            commands::configure_pool,
-            commands::request_pool_agent,
-            commands::release_pool_agent,
-            // Workflow commands
-            commands::create_workflow_from_request,
-            commands::execute_workflow,
-            commands::get_workflow,
-            commands::list_workflows,
-            commands::get_thread_config,
-            commands::update_thread_config,
-            commands::get_thread_stats,
-            commands::emergency_shutdown_threads,
-            // Pipeline commands
-            commands::create_pipeline,
-            commands::start_pipeline,
-            commands::get_pipeline,
-            commands::list_pipelines,
-            commands::approve_pipeline_checkpoint,
-            commands::get_pipeline_config,
-            commands::update_pipeline_config,
-            commands::run_best_of_n_verification,
             // Cost commands
             commands::get_cost_summary,
             commands::get_cost_by_date_range,
@@ -417,6 +327,7 @@ pub fn run() {
             commands::get_run_prompts,
             commands::get_run_stats,
             commands::cleanup_old_runs,
+            commands::reconcile_stale_runs,
             // Auto-pipeline commands
             commands::create_auto_pipeline,
             commands::start_auto_pipeline,

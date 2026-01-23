@@ -121,6 +121,12 @@ impl Default for InitialExpectations {
     }
 }
 
+impl Default for SessionExpectations {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionExpectations {
     pub fn new() -> Self {
         Self {

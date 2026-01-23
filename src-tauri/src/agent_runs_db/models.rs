@@ -28,7 +28,7 @@ impl RunStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "running" => RunStatus::Running,
             "completed" => RunStatus::Completed,
