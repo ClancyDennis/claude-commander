@@ -13,7 +13,7 @@
 Organize your cloud files. Send emails. Deploy websites. Generate images. Search your messages. Control cloud infrastructure. If you can do it from a terminal, Claude Commander can do it for you — through natural language.
 
 ![Claude Commander](hero-screenshot.png)
-
+New UI theme
 ---
 
 ## What Can It Do?
@@ -34,6 +34,7 @@ Organize your cloud files. Send emails. Deploy websites. Generate images. Search
 ## Key Features
 
 - **Run many Claude Code agents simultaneously** — parallelize any task across directories
+- **Voice mode (beta)** — talk to your agents using real-time voice interaction powered by OpenAI Realtime API
 - **Guided instruction files** — walks you through connecting any service (OneDrive, Gmail, Azure, etc.)
 - **Automatic security detection** — catches prompt injection and dangerous commands before they run
 - **Sudo command approval** — agents can request elevated privileges with your explicit approval
@@ -411,12 +412,13 @@ Claude Commander builds on ideas from the AI agent community:
 - Sudo command approval with native OS elevation (Linux/macOS/Windows)
 - Cost tracking across all agents
 - Instruction file → Skills → Sub-agents transformation
+- Revised UI with streamlined settings and modern design
+- Voice mode (beta) — Real-time voice interaction using OpenAI Realtime API
 
 **In Progress:**
 - Pre-built binaries for Windows, macOS, Linux
 
 **Planned:**
-- Voice input (STT) — Speak commands using OpenAI Whisper API
 - Plugin system for community extensions
 - Import/export for instruction files and configurations
 

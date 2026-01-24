@@ -128,6 +128,7 @@ pub async fn get_config_status() -> Result<ConfigStatus, String> {
                     // Return current models as fallback
                     vec![
                         "gpt-5.2".to_string(),
+                        "gpt-5.1".to_string(),
                         "gpt-5".to_string(),
                         "gpt-5-mini".to_string(),
                         "gpt-5-nano".to_string(),

@@ -25,7 +25,12 @@ impl VoiceSession {
     }
 
     /// Connect to OpenAI Realtime API
-    pub async fn connect<F, R>(&mut self, api_key: &str, on_transcript: F, on_response: R) -> Result<(), String>
+    pub async fn connect<F, R>(
+        &mut self,
+        api_key: &str,
+        on_transcript: F,
+        on_response: R,
+    ) -> Result<(), String>
     where
         F: Fn(String) + Send + Sync + 'static,
         R: Fn(String) + Send + Sync + 'static,
@@ -141,15 +146,25 @@ impl VoiceSession {
                         // Try parsing with async-openai first, fall back to raw JSON
                         match serde_json::from_str::<ServerEvent>(&text) {
                             Ok(event) => {
-                                Self::handle_server_event(event, &transcript, &on_transcript_clone, &on_response_clone)
-                                    .await;
+                                Self::handle_server_event(
+                                    event,
+                                    &transcript,
+                                    &on_transcript_clone,
+                                    &on_response_clone,
+                                )
+                                .await;
                             }
                             Err(_) => {
                                 // async-openai types don't match all API responses
                                 // Handle events manually via raw JSON
                                 if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    Self::handle_raw_event(&raw, &transcript, &on_transcript_clone, &on_response_clone)
-                                        .await;
+                                    Self::handle_raw_event(
+                                        &raw,
+                                        &transcript,
+                                        &on_transcript_clone,
+                                        &on_response_clone,
+                                    )
+                                    .await;
                                 }
                             }
                         }

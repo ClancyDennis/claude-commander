@@ -27,13 +27,6 @@ pub async fn list_claude_models(_api_key: &str) -> Result<Vec<String>, AIError> 
         "claude-haiku-4-5-20251101".to_string(),
         // Claude 4 family
         "claude-sonnet-4-20250514".to_string(),
-        // Claude 3.5 family (being deprecated)
-        "claude-3-5-sonnet-20241022".to_string(),
-        "claude-3-5-haiku-20241022".to_string(),
-        // Claude 3 family (legacy)
-        "claude-3-opus-20240229".to_string(),
-        "claude-3-sonnet-20240229".to_string(),
-        "claude-3-haiku-20240307".to_string(),
     ])
 }
 
@@ -57,7 +50,7 @@ pub async fn list_openai_models(api_key: &str) -> Result<Vec<String>, AIError> {
     let chat_models: Vec<String> = models_response
         .data
         .into_iter()
-        .filter(|m| m.id.starts_with("gpt-4") || m.id.starts_with("gpt-3.5"))
+        .filter(|m| m.id.starts_with("gpt-5"))
         .map(|m| m.id)
         .collect();
 
