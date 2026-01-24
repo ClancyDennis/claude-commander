@@ -13,6 +13,10 @@ export interface VoiceTranscriptEvent {
   transcript: string;
 }
 
+export interface VoiceResponseEvent {
+  delta: string;
+}
+
 export interface VoiceStatus {
   is_active: boolean;
   transcript: string;
@@ -23,6 +27,7 @@ export interface VoiceState {
   isConnecting: boolean;
   transcript: string;
   segments: string[];
+  response: string;
   error: string | null;
 }
 
@@ -32,12 +37,27 @@ export const voiceState = writable<VoiceState>({
   isConnecting: false,
   transcript: "",
   segments: [],
+  response: "",
   error: null,
 });
+
+// Store for pending chat input (text to insert into chat input)
+export const pendingChatInput = writable<string | null>(null);
+
+// Insert transcript into chat input
+export function insertTranscriptToChat(): void {
+  const state = get(voiceState);
+  if (state.transcript) {
+    pendingChatInput.set(state.transcript);
+    // Clear the voice transcript after inserting
+    voiceState.update((s) => ({ ...s, transcript: "", segments: [] }));
+  }
+}
 
 // Derived stores
 export const isVoiceActive = derived(voiceState, ($state) => $state.isRecording);
 export const voiceTranscript = derived(voiceState, ($state) => $state.transcript);
+export const voiceResponse = derived(voiceState, ($state) => $state.response);
 export const voiceError = derived(voiceState, ($state) => $state.error);
 
 // Event listeners (initialized once)
@@ -47,7 +67,7 @@ export async function initVoiceListeners() {
   if (listenersInitialized) return;
   listenersInitialized = true;
 
-  // Listen for transcript events from Rust backend
+  // Listen for transcript events from Rust backend (user's speech)
   await listen<VoiceTranscriptEvent>("voice:transcript", (event) => {
     const { transcript } = event.payload;
     voiceState.update((state) => ({
@@ -56,6 +76,15 @@ export async function initVoiceListeners() {
         ? `${state.transcript} ${transcript}`
         : transcript,
       segments: [...state.segments, transcript],
+    }));
+  });
+
+  // Listen for response events from the model
+  await listen<VoiceResponseEvent>("voice:response", (event) => {
+    const { delta } = event.payload;
+    voiceState.update((state) => ({
+      ...state,
+      response: state.response + delta,
     }));
   });
 
@@ -83,6 +112,7 @@ export async function startVoiceSession(): Promise<void> {
     error: null,
     transcript: "",
     segments: [],
+    response: "",
   }));
 
   try {
@@ -144,6 +174,7 @@ export function clearVoiceState(): void {
     isConnecting: false,
     transcript: "",
     segments: [],
+    response: "",
     error: null,
   });
 }

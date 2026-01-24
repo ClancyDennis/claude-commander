@@ -17,6 +17,11 @@ struct VoiceTranscriptEvent {
 }
 
 #[derive(Clone, serde::Serialize)]
+struct VoiceResponseEvent {
+    delta: String,
+}
+
+#[derive(Clone, serde::Serialize)]
 pub struct VoiceStatus {
     pub is_active: bool,
     pub transcript: String,
@@ -41,20 +46,33 @@ pub async fn start_voice_session(app_handle: tauri::AppHandle) -> Result<(), Str
     // Create new session
     let mut session = VoiceSession::new();
 
-    // Clone app_handle for the callback
-    let app_handle_clone = app_handle.clone();
+    // Clone app_handle for the callbacks
+    let app_handle_transcript = app_handle.clone();
+    let app_handle_response = app_handle.clone();
 
-    // Connect with transcript callback
+    // Connect with transcript and response callbacks
     session
-        .connect(&api_key, move |transcript| {
-            // Emit transcript event to frontend
-            let _ = app_handle_clone.emit(
-                "voice:transcript",
-                VoiceTranscriptEvent {
-                    transcript: transcript.clone(),
-                },
-            );
-        })
+        .connect(
+            &api_key,
+            move |transcript| {
+                // Emit transcript event to frontend (user's speech)
+                let _ = app_handle_transcript.emit(
+                    "voice:transcript",
+                    VoiceTranscriptEvent {
+                        transcript: transcript.clone(),
+                    },
+                );
+            },
+            move |delta| {
+                // Emit response event to frontend (model's response)
+                let _ = app_handle_response.emit(
+                    "voice:response",
+                    VoiceResponseEvent {
+                        delta: delta.clone(),
+                    },
+                );
+            },
+        )
         .await?;
 
     *session_guard = Some(session);

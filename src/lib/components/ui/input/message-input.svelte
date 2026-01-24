@@ -24,6 +24,7 @@
     getImageFileFromPaste,
     SUPPORTED_TYPES,
   } from "./image-utils";
+  import { pendingChatInput } from "$lib/stores/voice";
   import type { Snippet } from "svelte";
 
   let {
@@ -147,6 +148,19 @@
 
   $effect(() => {
     if (input !== undefined) adjustInputHeight();
+  });
+
+  // Watch for pending chat input from voice transcription
+  $effect(() => {
+    const pending = $pendingChatInput;
+    if (pending) {
+      input = pending;
+      pendingChatInput.set(null);
+      // Focus the textarea
+      if (textarea) {
+        textarea.focus();
+      }
+    }
   });
 
   const canSend = $derived(!disabled && (!!input.trim() || !!attachedImage));

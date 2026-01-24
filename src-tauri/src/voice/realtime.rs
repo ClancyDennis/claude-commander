@@ -25,11 +25,13 @@ impl VoiceSession {
     }
 
     /// Connect to OpenAI Realtime API
-    pub async fn connect<F>(&mut self, api_key: &str, on_transcript: F) -> Result<(), String>
+    pub async fn connect<F, R>(&mut self, api_key: &str, on_transcript: F, on_response: R) -> Result<(), String>
     where
         F: Fn(String) + Send + Sync + 'static,
+        R: Fn(String) + Send + Sync + 'static,
     {
         let on_transcript = Arc::new(on_transcript);
+        let on_response = Arc::new(on_response);
         let model = std::env::var("OPENAI_REALTIME_MODEL")
             .unwrap_or_else(|_| "gpt-realtime-mini".to_string());
 
@@ -72,7 +74,7 @@ impl VoiceSession {
                 "modalities": ["text", "audio"],
                 "input_audio_format": "pcm16",
                 "input_audio_transcription": {
-                    "model": "whisper-1"
+                    "model": "gpt-4o-transcribe"
                 },
                 "turn_detection": {
                     "type": "server_vad",
@@ -127,6 +129,7 @@ impl VoiceSession {
 
         // Spawn task to handle incoming messages
         let on_transcript_clone = on_transcript.clone();
+        let on_response_clone = on_response.clone();
         tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 if !*is_active.lock().await {
@@ -138,14 +141,14 @@ impl VoiceSession {
                         // Try parsing with async-openai first, fall back to raw JSON
                         match serde_json::from_str::<ServerEvent>(&text) {
                             Ok(event) => {
-                                Self::handle_server_event(event, &transcript, &on_transcript_clone)
+                                Self::handle_server_event(event, &transcript, &on_transcript_clone, &on_response_clone)
                                     .await;
                             }
                             Err(_) => {
                                 // async-openai types don't match all API responses
                                 // Handle events manually via raw JSON
                                 if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    Self::handle_raw_event(&raw, &transcript, &on_transcript_clone)
+                                    Self::handle_raw_event(&raw, &transcript, &on_transcript_clone, &on_response_clone)
                                         .await;
                                 }
                             }
@@ -167,12 +170,14 @@ impl VoiceSession {
         Ok(())
     }
 
-    async fn handle_server_event<F>(
+    async fn handle_server_event<F, R>(
         event: ServerEvent,
         transcript: &Arc<Mutex<String>>,
         on_transcript: &Arc<F>,
+        _on_response: &Arc<R>,
     ) where
         F: Fn(String) + Send + Sync,
+        R: Fn(String) + Send + Sync,
     {
         match event {
             ServerEvent::ConversationItemInputAudioTranscriptionCompleted(e) => {
@@ -209,12 +214,14 @@ impl VoiceSession {
     }
 
     /// Handle events that async-openai types can't parse correctly
-    async fn handle_raw_event<F>(
+    async fn handle_raw_event<F, R>(
         raw: &serde_json::Value,
         transcript: &Arc<Mutex<String>>,
         on_transcript: &Arc<F>,
+        on_response: &Arc<R>,
     ) where
         F: Fn(String) + Send + Sync,
+        R: Fn(String) + Send + Sync,
     {
         let event_type = raw.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
@@ -258,6 +265,25 @@ impl VoiceSession {
                     .unwrap_or("unknown error");
                 eprintln!("[Voice] Error: {}", error);
             }
+            // Handle input audio transcription delta - provides incremental transcription
+            // For whisper-1: contains full transcript (same as completed)
+            // For gpt-4o-transcribe: contains streaming incremental text
+            "conversation.item.input_audio_transcription.delta" => {
+                if let Some(delta) = raw.get("delta").and_then(|d| d.as_str()) {
+                    if !delta.is_empty() {
+                        println!("[Voice] Transcript delta: {}", delta);
+                    }
+                }
+            }
+            // Handle model response transcript (streaming text)
+            "response.audio_transcript.delta" => {
+                if let Some(delta) = raw.get("delta").and_then(|d| d.as_str()) {
+                    if !delta.is_empty() {
+                        println!("[Voice] Response delta: {}", delta);
+                        (on_response)(delta.to_string());
+                    }
+                }
+            }
             // Silently ignore common events we don't need to handle
             "response.created"
             | "response.done"
@@ -267,7 +293,6 @@ impl VoiceSession {
             | "response.content_part.done"
             | "response.audio.delta"
             | "response.audio.done"
-            | "response.audio_transcript.delta"
             | "response.audio_transcript.done"
             | "rate_limits.updated"
             | "input_audio_buffer.committed"
