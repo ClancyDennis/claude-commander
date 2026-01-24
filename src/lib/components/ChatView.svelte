@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
+  import { voiceSidebarOpen } from "../stores/voice";
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
 
   // Import sub-components
@@ -12,8 +13,7 @@
   import ChatLockedState from "./chat/ChatLockedState.svelte";
   import ChatMessageList from "./chat/ChatMessageList.svelte";
   import AgentResultsSection from "./chat/AgentResultsSection.svelte";
-  import VoicePanel from "./voice/VoicePanel.svelte";
-  import { voiceState } from "../stores/voice";
+  import VoiceSidebar from "./voice/VoiceSidebar.svelte";
 
   // State
   let hasApiKey = $state(true); // Default to true to avoid flash
@@ -85,6 +85,16 @@
     }
   }
 
+  function handleVoiceClick() {
+    voiceSidebarOpen.set(true);
+  }
+
+  function handleSendToChat(text: string) {
+    // Close sidebar and send the text to chat
+    voiceSidebarOpen.set(false);
+    handleSendMessage(text, null);
+  }
+
   async function handleProcessResults(agentId: string) {
     if (processingAgentId || $metaAgentThinking) return;
 
@@ -108,13 +118,12 @@
 </script>
 
 <PageLayout>
-  <ChatHeader isThinking={$metaAgentThinking} onClear={handleClear} {hasOpenAiKey} />
-
-  {#if $voiceState.isRecording || $voiceState.transcript}
-    <div class="voice-panel-wrapper">
-      <VoicePanel />
-    </div>
-  {/if}
+  <ChatHeader
+    isThinking={$metaAgentThinking}
+    onClear={handleClear}
+    {hasOpenAiKey}
+    onVoiceClick={handleVoiceClick}
+  />
 
   <div class="messages-wrapper">
     {#if configLoaded && !hasApiKey}
@@ -142,12 +151,9 @@
   />
 </PageLayout>
 
-<style>
-  .voice-panel-wrapper {
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border-hex);
-  }
+<VoiceSidebar onSendToChat={handleSendToChat} />
 
+<style>
   .messages-wrapper {
     flex: 1;
     overflow: hidden;

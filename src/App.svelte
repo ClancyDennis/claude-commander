@@ -22,6 +22,7 @@
   import AutoPipelineView from "./lib/components/AutoPipelineView.svelte";
   import {
     agents,
+    agentOutputs,
     appendOutput,
     appendToolEvent,
     addAgent,
@@ -79,6 +80,8 @@
   import { tutorialStore } from "$lib/stores/tutorial.svelte";
   import { HelpCircle } from "lucide-svelte";
   import type { Agent, AutoPipeline } from "./lib/types";
+  import AttentionOverlay from "$lib/components/voice/AttentionOverlay.svelte";
+  import { startAttentionSession, initAttentionListeners, attentionEnabled } from "$lib/stores/voice";
 
   let showNewAgentDialog = $state(false);
   let showDatabaseStats = $state(false);
@@ -107,16 +110,55 @@
   }
 
   function handleInputRequired(agentId: string) {
-    showToast({
-      type: "warning",
-      message: "Agent is waiting for input",
-      action: {
-        label: "View",
-        onClick: () => {
-          selectedAgentId.set(agentId);
+    // Only show toast if attention mode is disabled (otherwise voice notification handles it)
+    const isAttentionEnabled = get(attentionEnabled);
+    if (!isAttentionEnabled) {
+      showToast({
+        type: "warning",
+        message: "Agent is waiting for input",
+        action: {
+          label: "View",
+          onClick: () => {
+            selectedAgentId.set(agentId);
+          },
         },
-      },
-    });
+      });
+    }
+
+    // Trigger attention mode with actual agent result
+    const currentAgents = get(agents);
+    const agent = currentAgents.get(agentId);
+    const title = agent?.title || agentId;
+    const result = getAgentResult(agentId);
+    startAttentionSession(agentId, title, result);
+  }
+
+  // Get the agent's actual result output to read aloud
+  function getAgentResult(agentId: string): string {
+    // Outputs are stored in a separate store, not on the agent object
+    const outputs = get(agentOutputs).get(agentId) || [];
+    console.log("[getAgentResult] Agent:", agentId, "outputs count:", outputs.length);
+    console.log("[getAgentResult] Output types:", outputs.map((o: any) => o.type));
+
+    if (outputs.length === 0) return "Task completed successfully";
+
+    // Find the most recent "result" type output
+    const resultOutput = outputs.slice().reverse().find((o: any) => o.type === "result");
+    if (resultOutput?.content) {
+      console.log("[getAgentResult] Found result output:", resultOutput.content.slice(0, 100));
+      // Truncate long results for voice reading
+      return resultOutput.content.slice(0, 500);
+    }
+    // Fallback to last text output
+    const textOutput = outputs.slice().reverse().find((o: any) => o.type === "text");
+    if (textOutput?.content) {
+      console.log("[getAgentResult] Found text output:", textOutput.content.slice(0, 100));
+      return textOutput.content.slice(0, 500);
+    }
+    // Final fallback to last output
+    const lastOutput = outputs.slice(-1)[0];
+    console.log("[getAgentResult] Last output:", lastOutput);
+    return lastOutput?.content?.slice(0, 500) || "Task completed successfully";
   }
 
   onMount(() => {
@@ -273,6 +315,12 @@
           type: "success",
           message: "Auto-pipeline completed successfully!",
         });
+
+        // Trigger attention mode with orchestrator summary
+        const currentPipelines = get(autoPipelines);
+        const pipeline = currentPipelines.get(pipelineId);
+        const summary = pipeline?.final_summary || "Pipeline completed successfully";
+        startAttentionSession(pipelineId, "Pipeline", summary);
       },
       onStepStatus: async (pipelineId, _stepNumber, _status) => {
         await refreshAutoPipeline(pipelineId, autoPipelines.update);
@@ -439,6 +487,9 @@
       },
     });
 
+    // Initialize attention mode listeners
+    initAttentionListeners();
+
     return () => {
       cleanupResize();
       cleanupKeyboard();
@@ -505,6 +556,7 @@
 <!-- Global overlays -->
 <InteractiveTutorial />
 <ContextualHelpPanel bind:open={helpOpen} />
+<AttentionOverlay />
 
 <svelte:window onkeydown={handleKeydown} />
 

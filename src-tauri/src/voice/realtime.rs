@@ -25,18 +25,21 @@ impl VoiceSession {
     }
 
     /// Connect to OpenAI Realtime API
-    pub async fn connect<F, R>(
+    pub async fn connect<F, R, A>(
         &mut self,
         api_key: &str,
         on_transcript: F,
         on_response: R,
+        on_audio: A,
     ) -> Result<(), String>
     where
         F: Fn(String) + Send + Sync + 'static,
         R: Fn(String) + Send + Sync + 'static,
+        A: Fn(String) + Send + Sync + 'static,
     {
         let on_transcript = Arc::new(on_transcript);
         let on_response = Arc::new(on_response);
+        let on_audio = Arc::new(on_audio);
         let model = std::env::var("OPENAI_REALTIME_MODEL")
             .unwrap_or_else(|_| "gpt-realtime-mini".to_string());
 
@@ -78,6 +81,7 @@ impl VoiceSession {
             "session": {
                 "modalities": ["text", "audio"],
                 "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
                 "input_audio_transcription": {
                     "model": "gpt-4o-transcribe"
                 },
@@ -135,6 +139,7 @@ impl VoiceSession {
         // Spawn task to handle incoming messages
         let on_transcript_clone = on_transcript.clone();
         let on_response_clone = on_response.clone();
+        let on_audio_clone = on_audio.clone();
         tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 if !*is_active.lock().await {
@@ -163,6 +168,7 @@ impl VoiceSession {
                                         &transcript,
                                         &on_transcript_clone,
                                         &on_response_clone,
+                                        &on_audio_clone,
                                     )
                                     .await;
                                 }
@@ -229,14 +235,16 @@ impl VoiceSession {
     }
 
     /// Handle events that async-openai types can't parse correctly
-    async fn handle_raw_event<F, R>(
+    async fn handle_raw_event<F, R, A>(
         raw: &serde_json::Value,
         transcript: &Arc<Mutex<String>>,
         on_transcript: &Arc<F>,
         on_response: &Arc<R>,
+        on_audio: &Arc<A>,
     ) where
         F: Fn(String) + Send + Sync,
         R: Fn(String) + Send + Sync,
+        A: Fn(String) + Send + Sync,
     {
         let event_type = raw.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
@@ -299,6 +307,15 @@ impl VoiceSession {
                     }
                 }
             }
+            // Handle audio output from the model
+            "response.audio.delta" => {
+                if let Some(delta) = raw.get("delta").and_then(|d| d.as_str()) {
+                    if !delta.is_empty() {
+                        // Emit audio chunk for playback (base64-encoded PCM16)
+                        (on_audio)(delta.to_string());
+                    }
+                }
+            }
             // Silently ignore common events we don't need to handle
             "response.created"
             | "response.done"
@@ -306,7 +323,6 @@ impl VoiceSession {
             | "response.output_item.done"
             | "response.content_part.added"
             | "response.content_part.done"
-            | "response.audio.delta"
             | "response.audio.done"
             | "response.audio_transcript.done"
             | "rate_limits.updated"
