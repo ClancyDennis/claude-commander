@@ -18,9 +18,11 @@ pub use elevated_commands::{
     approve_elevated_request, deny_elevated_request, get_pending_elevated_commands,
 };
 
+/// Type alias for agent todo storage
+type AgentTodoStorage = Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>;
+
 /// Global storage for agent todo lists (accessible by meta-agent tools)
-static AGENT_TODOS: std::sync::OnceLock<Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>> =
-    std::sync::OnceLock::new();
+static AGENT_TODOS: std::sync::OnceLock<AgentTodoStorage> = std::sync::OnceLock::new();
 
 /// Initialize the global todo storage (called from start_hook_server)
 pub fn init_agent_todos(todos: Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>) {

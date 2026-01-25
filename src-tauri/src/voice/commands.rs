@@ -194,7 +194,6 @@ struct DiscussToolCallEvent {
     args: String,
 }
 
-
 /// Start a discuss mode session
 #[tauri::command]
 pub async fn start_discuss_session(

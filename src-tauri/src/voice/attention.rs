@@ -258,6 +258,7 @@ impl AttentionSession {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_event<F, R, A, T>(
         raw: &Value,
         messages: &Arc<Mutex<Vec<Value>>>,
@@ -335,11 +336,8 @@ impl AttentionSession {
                     Self::touch_activity(last_activity).await;
 
                     // Execute the tool call via callback
-                    let result = (on_tool_call)(
-                        name.to_string(),
-                        call_id.to_string(),
-                        args.to_string(),
-                    );
+                    let result =
+                        (on_tool_call)(name.to_string(), call_id.to_string(), args.to_string());
 
                     println!("[Attention] Tool result: {}", result);
 

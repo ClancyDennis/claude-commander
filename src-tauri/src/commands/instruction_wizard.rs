@@ -165,7 +165,7 @@ pub async fn create_test_agent(
                 Vec::new(), // No pre-generated skills
                 AgentSource::TestWizard,
                 Arc::new(app_handle.clone()),
-                None, // No pipeline ID
+                None,                                        // No pipeline ID
                 Some(format!("Test: {}", &session_id[..8])), // Title
             )
             .await
@@ -207,13 +207,7 @@ pub async fn analyze_test_results(
     // Get agent outputs from the agent manager (handle case where agent may be gone)
     let outputs = {
         let manager = state.agent_manager.lock().await;
-        match manager.get_agent_outputs(&agent_id, 0).await {
-            Ok(outputs) => outputs,
-            Err(_) => {
-                // Agent might have been removed - return empty outputs
-                Vec::new()
-            }
-        }
+        manager.get_agent_outputs(&agent_id, 0).await.unwrap_or_default()
     };
 
     // Combine all outputs for analysis
@@ -533,7 +527,8 @@ fn analyze_output_for_findings(output: &str) -> Vec<TestFinding> {
                     pattern
                 ),
                 resolution_hint: Some(
-                    "Check file/directory permissions or run with appropriate privileges.".to_string(),
+                    "Check file/directory permissions or run with appropriate privileges."
+                        .to_string(),
                 ),
             });
             break;

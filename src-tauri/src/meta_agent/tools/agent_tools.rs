@@ -309,8 +309,8 @@ pub async fn get_agent_todo_list(input: Value, agent_manager: Arc<Mutex<AgentMan
 
 /// Search through historical agent runs
 pub async fn search_run_history(input: Value, agent_manager: Arc<Mutex<AgentManager>>) -> Value {
-    use chrono::{Duration, Utc};
     use crate::agent_runs_db::{RunQueryFilters, RunStatus};
+    use chrono::{Duration, Utc};
 
     let manager = agent_manager.lock().await;
     let runs_db = match &manager.runs_db {
@@ -328,15 +328,13 @@ pub async fn search_run_history(input: Value, agent_manager: Arc<Mutex<AgentMana
     let status = input["status"].as_str().map(RunStatus::parse);
     // working_dir filtering done in post-processing for partial match support
     let working_dir_filter = input["working_dir"].as_str().map(|s| s.to_lowercase());
-    let source = input["source"].as_str().and_then(|s| {
-        match s {
-            "ui" => Some(AgentSource::UI),
-            "meta" => Some(AgentSource::Meta),
-            "pipeline" => Some(AgentSource::Pipeline),
-            "pool" => Some(AgentSource::Pool),
-            "manual" => Some(AgentSource::Manual),
-            _ => None,
-        }
+    let source = input["source"].as_str().and_then(|s| match s {
+        "ui" => Some(AgentSource::UI),
+        "meta" => Some(AgentSource::Meta),
+        "pipeline" => Some(AgentSource::Pipeline),
+        "pool" => Some(AgentSource::Pool),
+        "manual" => Some(AgentSource::Manual),
+        _ => None,
     });
 
     let date_from = Some(Utc::now() - Duration::days(days_back));
@@ -397,7 +395,7 @@ pub async fn search_run_history(input: Value, agent_manager: Arc<Mutex<AgentMana
         .map(|run| {
             // Calculate duration if ended
             let duration_mins = run.ended_at.map(|ended| {
-                ((ended - run.started_at) / 60000) as i64 // Convert ms to minutes
+                (ended - run.started_at) / 60000 // Convert ms to minutes
             });
 
             // Format timestamp as readable string

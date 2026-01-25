@@ -25,6 +25,7 @@ impl DiscussSession {
     }
 
     /// Connect to OpenAI Realtime API in discuss mode
+    #[allow(clippy::too_many_arguments)]
     pub async fn connect<F, R, A, T, U, V>(
         &mut self,
         api_key: &str,
@@ -224,6 +225,7 @@ impl DiscussSession {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_event<F, R, A, T, U, V>(
         raw: &Value,
         messages: &Arc<Mutex<Vec<Value>>>,
@@ -299,11 +301,8 @@ impl DiscussSession {
                     println!("[Discuss] Tool call: {} with args: {}", name, args);
 
                     // Execute the tool call via callback
-                    let result = (on_tool_call)(
-                        name.to_string(),
-                        call_id.to_string(),
-                        args.to_string(),
-                    );
+                    let result =
+                        (on_tool_call)(name.to_string(), call_id.to_string(), args.to_string());
 
                     println!("[Discuss] Tool result: {}", result);
 
@@ -394,11 +393,7 @@ impl DiscussSession {
     }
 
     /// Send a tool result back to the session
-    pub async fn send_tool_result(
-        &self,
-        call_id: &str,
-        result: &str,
-    ) -> Result<(), String> {
+    pub async fn send_tool_result(&self, call_id: &str, result: &str) -> Result<(), String> {
         if let Some(sender) = &self.ws_sender {
             let event = json!({
                 "type": "conversation.item.create",
