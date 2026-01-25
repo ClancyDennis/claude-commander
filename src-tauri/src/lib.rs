@@ -5,7 +5,9 @@ pub mod auto_pipeline;
 pub mod claude_client;
 pub mod claudemd_generator;
 pub mod commands;
+pub mod db_utils;
 pub mod elevation;
+pub mod error;
 pub mod events;
 pub mod first_run;
 pub mod github;
@@ -321,6 +323,7 @@ pub fn run() {
             commands::create_test_agent,
             commands::analyze_test_results,
             commands::stop_test_agent,
+            commands::enhance_instruction_from_test,
             // Skill commands
             commands::generate_skill_from_instruction,
             commands::list_generated_skills,

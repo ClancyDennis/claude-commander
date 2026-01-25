@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { ArrowLeft, ArrowRight } from "lucide-svelte";
+  import { ChevronLeft } from "lucide-svelte";
 
   interface Props {
     onBack?: () => void;
@@ -47,8 +47,8 @@
 
 <Dialog.Footer class={justifyClass}>
   {#if showBack && onBack}
-    <Button variant="ghost" onclick={onBack} class="gap-2">
-      <ArrowLeft class="w-4 h-4" />
+    <Button variant="ghost" onclick={onBack} class="gap-1">
+      <ChevronLeft class="w-4 h-4" />
       {backLabel}
     </Button>
   {:else if layout === "between"}
@@ -71,15 +71,11 @@
         variant={nextVariant}
         onclick={onNext}
         disabled={nextDisabled || nextLoading}
-        class="gap-2"
       >
         {#if nextLoading}
           <span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
         {/if}
         {nextLabel}
-        {#if !nextLoading}
-          <ArrowRight class="w-4 h-4" />
-        {/if}
       </Button>
     {/if}
   </div>

@@ -46,11 +46,11 @@
     <div class="flex items-center justify-center gap-2 pt-6 pb-2">
       {#each Array(totalSteps) as _, i}
         <div
-          class="h-2 rounded-full transition-all duration-300 {i + 1 === currentStep
-            ? 'w-8 bg-primary'
+          class="w-2 h-2 rounded-full transition-all duration-300 {i + 1 === currentStep
+            ? 'bg-primary'
             : i + 1 < currentStep
-              ? 'w-2 bg-primary/60'
-              : 'w-2 bg-muted'}"
+              ? 'bg-primary/60'
+              : 'bg-muted'}"
         ></div>
       {/each}
     </div>

@@ -16,6 +16,7 @@ import type {
   AgentStatsEvent,
   MetaAgentThinkingEvent,
   MetaAgentToolCallEvent,
+  MetaTodoUpdatedEvent,
   AutoPipeline,
   OrchestratorToolCall,
   OrchestratorStateChange,
@@ -66,6 +67,7 @@ export interface EventHandlerCallbacks {
   // Meta-agent callbacks
   onMetaAgentThinking: (isThinking: boolean) => void;
   onMetaAgentToolCall: (toolCall: MetaAgentToolCallEvent) => void;
+  onMetaAgentTodos?: (event: MetaTodoUpdatedEvent) => void;
   onNavigate: (agentId: string) => void;
 
   // Pipeline callbacks
@@ -289,6 +291,15 @@ async function setupNavigateListener(
 ): Promise<UnlistenFn> {
   return listen<{ agent_id: string }>("agent:navigate", (event) => {
     onNavigate(event.payload.agent_id);
+  });
+}
+
+async function setupMetaAgentTodosListener(
+  onMetaAgentTodos: EventHandlerCallbacks['onMetaAgentTodos']
+): Promise<UnlistenFn> {
+  return listen<MetaTodoUpdatedEvent>("meta-agent:todos", (event) => {
+    console.log("[Frontend] Meta-agent todos updated:", event.payload.todos.length, "items");
+    onMetaAgentTodos?.(event.payload);
   });
 }
 
@@ -608,9 +619,10 @@ export async function setupEventListeners(
     setupStatsListener(callbacks.onAgentStats),
     setupActivityDetailListener(callbacks.onAgentActivityDetail),
 
-    // Meta-agent events (3)
+    // Meta-agent events (4)
     setupThinkingListener(callbacks.onMetaAgentThinking),
     setupMetaAgentToolCallListener(callbacks.onMetaAgentToolCall),
+    setupMetaAgentTodosListener(callbacks.onMetaAgentTodos),
     setupNavigateListener(callbacks.onNavigate),
 
     // Pipeline events (4)

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
+  import { metaAgentTodos } from "../stores/metaTodos";
   import { voiceSidebarOpen } from "../stores/voice";
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
 
@@ -13,6 +14,7 @@
   import ChatLockedState from "./chat/ChatLockedState.svelte";
   import ChatMessageList from "./chat/ChatMessageList.svelte";
   import AgentResultsSection from "./chat/AgentResultsSection.svelte";
+  import MetaTaskProgress from "./chat/MetaTaskProgress.svelte";
   import VoiceSidebar from "./voice/VoiceSidebar.svelte";
 
   // State
@@ -22,6 +24,7 @@
   let configPath = $state("");
   let processingAgentId = $state<string | null>(null);
   let error = $state<string | null>(null);
+  let showTodoPanel = $state(false);
 
   onMount(async () => {
     try {
@@ -124,42 +127,92 @@
     onClear={handleClear}
     {hasOpenAiKey}
     onVoiceClick={handleVoiceClick}
+    {showTodoPanel}
+    onToggleTodoPanel={() => showTodoPanel = !showTodoPanel}
+    hasTodos={$metaAgentTodos.length > 0}
   />
 
-  <div class="messages-wrapper">
-    {#if configLoaded && !hasApiKey}
-      <ChatLockedState {configPath} onOpenConfigDir={openConfigDir} />
-    {:else if $metaAgentChat.length === 0}
-      <ChatEmptyState />
-    {:else}
-      <ChatMessageList messages={$metaAgentChat} isThinking={$metaAgentThinking} />
+  <div class="content-wrapper">
+    <div class="messages-panel">
+      <div class="messages-wrapper">
+        {#if configLoaded && !hasApiKey}
+          <ChatLockedState {configPath} onOpenConfigDir={openConfigDir} />
+        {:else if $metaAgentChat.length === 0}
+          <ChatEmptyState />
+        {:else}
+          <ChatMessageList messages={$metaAgentChat} isThinking={$metaAgentThinking} />
+        {/if}
+      </div>
+
+      {#if $agentsWithOutputs.length > 0}
+        <AgentResultsSection
+          agents={$agentsWithOutputs}
+          {processingAgentId}
+          disabled={$metaAgentThinking}
+          onProcessResults={handleProcessResults}
+        />
+      {/if}
+
+      <ChatInput
+        disabled={$metaAgentThinking}
+        {hasApiKey}
+        onSend={handleSendMessage}
+      />
+    </div>
+
+    {#if showTodoPanel}
+      <div class="side-panel">
+        <MetaTaskProgress />
+      </div>
     {/if}
   </div>
-
-  {#if $agentsWithOutputs.length > 0}
-    <AgentResultsSection
-      agents={$agentsWithOutputs}
-      {processingAgentId}
-      disabled={$metaAgentThinking}
-      onProcessResults={handleProcessResults}
-    />
-  {/if}
-
-  <ChatInput
-    disabled={$metaAgentThinking}
-    {hasApiKey}
-    onSend={handleSendMessage}
-  />
 </PageLayout>
 
 <VoiceSidebar onSendToChat={handleSendToChat} />
 
 <style>
+  .content-wrapper {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .messages-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
   .messages-wrapper {
     flex: 1;
     overflow: hidden;
     position: relative;
     display: flex;
     flex-direction: column;
+  }
+
+  .side-panel {
+    width: min(350px, 40%);
+    min-width: 250px;
+    flex-shrink: 0;
+    background-color: var(--bg-secondary);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideLeft 0.2s ease;
+  }
+
+  @keyframes slideLeft {
+    from {
+      transform: translateX(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
 </style>

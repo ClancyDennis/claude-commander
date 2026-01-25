@@ -20,8 +20,6 @@
   let unlistenStatus: (() => void) | null = null;
   let timer: number | null = null;
 
-  const MAX_TIMEOUT_SECONDS = 120; // 2 minutes
-
   onMount(async () => {
     // Listen for agent output
     unlistenOutput = await listen<AgentOutputEvent>("agent:output", (event) => {
@@ -44,14 +42,9 @@
       }
     });
 
-    // Start timer
+    // Start timer (no timeout - user controls when to stop)
     timer = window.setInterval(() => {
       elapsedSeconds = Math.floor((Date.now() - session.startedAt) / 1000);
-
-      // Auto-stop after timeout
-      if (elapsedSeconds >= MAX_TIMEOUT_SECONDS) {
-        onStop();
-      }
     }, 1000);
   });
 
@@ -66,23 +59,13 @@
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
-
-  let progressPercent = $derived(Math.min(100, (elapsedSeconds / MAX_TIMEOUT_SECONDS) * 100));
 </script>
 
 <div class="space-y-4">
-  <!-- Progress bar -->
-  <div class="space-y-2">
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-muted-foreground">Elapsed: {formatTime(elapsedSeconds)}</span>
-      <span class="text-muted-foreground">Max: {formatTime(MAX_TIMEOUT_SECONDS)}</span>
-    </div>
-    <div class="h-2 w-full bg-muted rounded-full overflow-hidden">
-      <div
-        class="h-full bg-primary transition-all duration-1000"
-        style="width: {progressPercent}%"
-      ></div>
-    </div>
+  <!-- Timer display -->
+  <div class="flex items-center justify-between text-sm px-1">
+    <span class="text-muted-foreground">Elapsed: {formatTime(elapsedSeconds)}</span>
+    <span class="text-xs text-muted-foreground/60">Stop when the agent completes its task</span>
   </div>
 
   <!-- Output display -->

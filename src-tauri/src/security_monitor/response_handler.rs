@@ -1,14 +1,98 @@
 //! Response handler for executing security actions based on threat analysis.
+//!
+//! This module handles the execution of security responses based on threat analysis
+//! results. It includes retry logic with exponential backoff for resilient operation.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 use crate::agent_manager::AgentManager;
 use crate::events::AppEventEmitter;
 use crate::logger::Logger;
 
 use super::llm_analyzer::{AnalysisResult, RecommendedAction, RiskLevel, ThreatAssessment};
+
+/// Configuration for retry behavior with exponential backoff.
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Initial delay between retries (in milliseconds)
+    pub initial_delay_ms: u64,
+    /// Maximum delay between retries (in milliseconds)
+    pub max_delay_ms: u64,
+    /// Multiplier for exponential backoff (e.g., 2.0 doubles delay each retry)
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay_ms: 100,
+            max_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+/// Execute an async operation with exponential backoff retry.
+///
+/// # Arguments
+/// * `config` - Retry configuration
+/// * `operation_name` - Name of the operation for logging
+/// * `f` - Async function that returns Result<T, String>
+///
+/// # Returns
+/// The result of the operation, or the last error if all retries fail.
+pub async fn with_retry<F, Fut, T>(
+    config: &RetryConfig,
+    operation_name: &str,
+    f: F,
+) -> Result<T, String>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_error = String::new();
+    let mut delay_ms = config.initial_delay_ms;
+
+    for attempt in 0..=config.max_retries {
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = e;
+
+                if attempt < config.max_retries {
+                    eprintln!(
+                        "Retry {}/{} for '{}' after error: {}. Waiting {}ms...",
+                        attempt + 1,
+                        config.max_retries,
+                        operation_name,
+                        last_error,
+                        delay_ms
+                    );
+
+                    sleep(Duration::from_millis(delay_ms)).await;
+
+                    // Calculate next delay with exponential backoff
+                    delay_ms = ((delay_ms as f64) * config.backoff_multiplier) as u64;
+                    delay_ms = delay_ms.min(config.max_delay_ms);
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Operation '{}' failed after {} retries: {}",
+        operation_name,
+        config.max_retries + 1,
+        last_error
+    ))
+}
 
 /// Detailed threat information for UI display
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +155,9 @@ pub struct ResponseConfig {
     pub log_all_events: bool,
     /// Require human review before executing actions
     pub human_review_required_for_actions: bool,
+    /// Configuration for retry behavior (not serialized)
+    #[serde(skip)]
+    pub retry_config: RetryConfig,
 }
 
 impl Default for ResponseConfig {
@@ -81,6 +168,7 @@ impl Default for ResponseConfig {
             alert_on_medium: true,
             log_all_events: true,
             human_review_required_for_actions: true,
+            retry_config: RetryConfig::default(),
         }
     }
 }
@@ -221,10 +309,23 @@ impl ResponseHandler {
         }
     }
 
-    /// Terminate an agent due to security threat
+    /// Terminate an agent due to security threat.
+    ///
+    /// Uses exponential backoff retry for resilient operation.
     async fn terminate_agent(&self, agent_id: &str, batch_id: &str) -> Result<(), String> {
-        let manager = self.agent_manager.lock().await;
-        manager.stop_agent(agent_id).await?;
+        let agent_id_owned = agent_id.to_string();
+        let agent_manager = Arc::clone(&self.agent_manager);
+
+        // Retry the stop operation with exponential backoff
+        with_retry(&self.config.retry_config, "terminate_agent", || {
+            let agent_id = agent_id_owned.clone();
+            let manager = Arc::clone(&agent_manager);
+            async move {
+                let mgr = manager.lock().await;
+                mgr.stop_agent(&agent_id).await
+            }
+        })
+        .await?;
 
         self.logger
             .error(
@@ -252,23 +353,36 @@ impl ResponseHandler {
         Ok(())
     }
 
-    /// Suspend an agent pending review
+    /// Suspend an agent pending review.
+    ///
+    /// Uses exponential backoff retry for resilient operation.
+    /// Note: Full suspension implementation would pause the agent's ability to receive prompts.
     async fn suspend_agent(&self, agent_id: &str, batch_id: &str) -> Result<(), String> {
-        // For now, suspension is just logging + alerting
-        // A full implementation would pause the agent's ability to receive prompts
+        // Log with retry (in case of I/O issues)
+        let agent_id_owned = agent_id.to_string();
+        let logger = Arc::clone(&self.logger);
 
-        self.logger
-            .warning(
-                "security_monitor",
-                &format!(
-                    "SECURITY: Suspended agent {} pending review (batch: {})",
-                    agent_id, batch_id
-                ),
-                Some(agent_id.to_string()),
-                None,
-            )
-            .await
-            .ok();
+        let batch_id_for_log = batch_id.to_string();
+        with_retry(&self.config.retry_config, "suspend_agent_log", || {
+            let agent_id = agent_id_owned.clone();
+            let batch_id = batch_id_for_log.clone();
+            let log = Arc::clone(&logger);
+            async move {
+                log.warning(
+                    "security_monitor",
+                    &format!(
+                        "SECURITY: Suspended agent {} pending review (batch: {})",
+                        agent_id, batch_id
+                    ),
+                    Some(agent_id),
+                    None,
+                )
+                .await
+                .map_err(|e| e.to_string())
+            }
+        })
+        .await
+        .ok(); // Don't fail the whole operation if logging fails
 
         // Emit suspension event
         let _ = self.app_handle.emit(

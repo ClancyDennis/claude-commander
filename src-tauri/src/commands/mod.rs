@@ -2,18 +2,26 @@
 // Splits lib.rs command handlers into domain-specific modules
 
 pub mod agent;
+pub mod api_validator;
 pub mod auto_pipeline;
 pub mod chat;
 pub mod config;
+pub mod config_loader;
 pub mod cost;
 pub mod database;
 pub mod events;
 pub mod instruction;
 pub mod instruction_analysis;
-pub mod instruction_wizard;
 pub mod logging;
 pub mod security;
 pub mod skill;
+
+// Instruction wizard and its extracted submodules
+pub mod findings_analyzer;
+pub mod instruction_generator;
+pub mod instruction_wizard;
+pub mod markdown_parser;
+pub mod validation_patterns;
 
 // Re-export all command functions for registration in lib.rs
 pub use agent::*;

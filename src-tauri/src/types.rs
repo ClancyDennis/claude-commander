@@ -540,3 +540,34 @@ pub struct ElevatedCommandStatusEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+// ============================================================================
+// Meta-Agent Todo Types
+// ============================================================================
+
+/// Status of a meta-agent todo item
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetaTodoStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// A todo item for the meta-agent's orchestration task list
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaTodoItem {
+    pub content: String,
+    pub status: MetaTodoStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_form: Option<String>,
+}
+
+/// Event emitted when meta-agent todos are updated
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaTodoUpdatedEvent {
+    pub todos: Vec<MetaTodoItem>,
+    pub timestamp: i64,
+}

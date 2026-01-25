@@ -684,3 +684,20 @@ export interface ElevatedCommandStatusEvent {
   status: ElevatedCommandStatus;
   error?: string;
 }
+
+// ============================================================================
+// Meta-Agent Todo Types
+// ============================================================================
+
+export type MetaTodoStatus = "pending" | "in_progress" | "completed";
+
+export interface MetaTodoItem {
+  content: string;
+  status: MetaTodoStatus;
+  activeForm?: string;
+}
+
+export interface MetaTodoUpdatedEvent {
+  todos: MetaTodoItem[];
+  timestamp: number;
+}

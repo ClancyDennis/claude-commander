@@ -1,10 +1,8 @@
 // Tool implementations for MetaAgent
 
 pub mod agent_tools;
-pub mod data_tools;
 pub mod fs_tools;
-pub mod quick_actions;
-pub mod ui_tools;
+pub mod todo_tools;
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -21,7 +19,7 @@ pub async fn execute_tool(
     input: Value,
     agent_manager: Arc<Mutex<AgentManager>>,
     app_handle: AppHandle,
-    queue_status_fn: impl Fn() -> crate::types::QueueStatus,
+    _queue_status_fn: impl Fn() -> crate::types::QueueStatus,
 ) -> Value {
     let result = match tool_name {
         "CreateWorkerAgent" => {
@@ -41,24 +39,9 @@ pub async fn execute_tool(
             agent_tools::get_agent_todo_list(input.clone(), agent_manager.clone()).await
         }
         "SearchRunHistory" => agent_tools::search_run_history(input.clone(), agent_manager).await,
-        "NavigateToAgent" => ui_tools::navigate_to_agent(input.clone(), app_handle.clone()).await,
-        "ToggleToolPanel" => ui_tools::toggle_tool_panel(input.clone(), app_handle.clone()).await,
-        "ShowNotification" => ui_tools::show_notification(input.clone(), app_handle.clone()).await,
         "ListDirectory" => fs_tools::list_directory(input.clone()).await,
-        "ShipDataToAgent" => {
-            data_tools::ship_data_to_agent(input.clone(), agent_manager, app_handle.clone()).await
-        }
-        "CreateChainedAgent" => {
-            data_tools::create_chained_agent(input.clone(), agent_manager, app_handle.clone()).await
-        }
-        "QuickAction" => {
-            quick_actions::quick_action(
-                input.clone(),
-                agent_manager,
-                app_handle.clone(),
-                queue_status_fn,
-            )
-            .await
+        "UpdateMetaTodoList" => {
+            todo_tools::update_meta_todo_list(input.clone(), app_handle.clone()).await
         }
         _ => json!({
             "success": false,

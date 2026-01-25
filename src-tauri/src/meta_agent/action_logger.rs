@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::types::CommanderAction;
 
-use super::helpers::{shorten_id, shorten_message, shorten_path};
+use super::helpers::{shorten_id, shorten_path};
 
 /// Emit a commander action event for the action log sidebar
 pub fn emit_action(tool_name: &str, input: &Value, result: &Value, app_handle: &AppHandle) {
@@ -53,42 +53,13 @@ pub fn format_action_description(tool_name: &str, input: &Value, result: &Value)
             let agent_id = input["agent_id"].as_str().unwrap_or("?");
             format!("Retrieved output from agent {}", shorten_id(agent_id))
         }
-        "NavigateToAgent" => {
-            let agent_id = input["agent_id"].as_str().unwrap_or("?");
-            format!("Navigated to agent {}", shorten_id(agent_id))
-        }
-        "ToggleToolPanel" => {
-            let show = input["show"].as_bool().unwrap_or(true);
-            if show {
-                "Showed tool panel".to_string()
-            } else {
-                "Hid tool panel".to_string()
-            }
-        }
-        "ShowNotification" => {
-            let msg = input["message"].as_str().unwrap_or("");
-            format!("Notification: {}", shorten_message(msg, 30))
-        }
         "ListDirectory" => {
             let path = input["path"].as_str().unwrap_or("?");
             format!("Listed directory {}", path)
         }
-        "ShipDataToAgent" => {
-            let source = input["source_agent_id"].as_str().unwrap_or("?");
-            let target = input["target_agent_id"].as_str().unwrap_or("?");
-            format!(
-                "Shipped data {} → {}",
-                shorten_id(source),
-                shorten_id(target)
-            )
-        }
-        "CreateChainedAgent" => {
-            let source = input["source_agent_id"].as_str().unwrap_or("?");
-            format!("Created chained agent from {}", shorten_id(source))
-        }
-        "QuickAction" => {
-            let action = input["action"].as_str().unwrap_or("unknown");
-            format!("Quick action: {}", action)
+        "UpdateMetaTodoList" => {
+            let count = input["todos"].as_array().map(|a| a.len()).unwrap_or(0);
+            format!("Updated task list ({} items)", count)
         }
         _ => format!("Executed {}", tool_name),
     }

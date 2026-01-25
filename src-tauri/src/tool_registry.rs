@@ -152,57 +152,6 @@ impl ToolRegistry {
             }),
         });
 
-        // UI Control Tools
-        tools.push(Tool {
-            name: "NavigateToAgent".to_string(),
-            description: "Switches the UI view to show a specific worker agent. The user will see that agent's output and can interact with it.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "agent_id": {
-                        "type": "string",
-                        "description": "The unique ID of the agent to navigate to"
-                    }
-                },
-                "required": ["agent_id"]
-            }),
-        });
-
-        tools.push(Tool {
-            name: "ToggleToolPanel".to_string(),
-            description: "Shows or hides the tool activity panel in the UI. The tool panel displays which tools agents are using in real-time.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "show": {
-                        "type": "boolean",
-                        "description": "true to show the panel, false to hide it"
-                    }
-                },
-                "required": ["show"]
-            }),
-        });
-
-        tools.push(Tool {
-            name: "ShowNotification".to_string(),
-            description: "Displays a notification/toast message to the user in the UI. Useful for alerting the user about important events or status changes.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "The message to display to the user"
-                    },
-                    "type": {
-                        "type": "string",
-                        "enum": ["info", "success", "error", "warning"],
-                        "description": "The type of notification (affects styling and icon)"
-                    }
-                },
-                "required": ["message", "type"]
-            }),
-        });
-
         // Filesystem Tools
         tools.push(Tool {
             name: "ListDirectory".to_string(),
@@ -219,72 +168,38 @@ impl ToolRegistry {
             }),
         });
 
-        // Data Shipping Tools - Chain agent work together
+        // Meta-Agent Todo List
         tools.push(Tool {
-            name: "ShipDataToAgent".to_string(),
-            description: "Send data from one agent's output to another agent as context. Use this to chain agent work together - e.g., Agent A analyzes code, then you ship that analysis to Agent B to write tests based on it. The source agent's output becomes context for the target agent's next task.".to_string(),
+            name: "UpdateMetaTodoList".to_string(),
+            description: "Update the System Commander's own task list. Use this to track orchestration tasks, agent coordination goals, and overall progress. The todo list will be visible to the user in the UI. Each todo item has: content (what needs to be done), status (pending/in_progress/completed), and optionally activeForm (present tense description like 'Creating agent...'). Call this at the start of multi-step operations to show the user what you're planning, and update it as you complete each step.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "source_agent_id": {
-                        "type": "string",
-                        "description": "The agent ID to get data from (the agent whose output you want to share)"
-                    },
-                    "target_agent_id": {
-                        "type": "string",
-                        "description": "The agent ID to send data to (the agent that will receive the context)"
-                    },
-                    "prompt_with_context": {
-                        "type": "string",
-                        "description": "The new task/prompt to send to the target agent. The source agent's output will be prepended as context."
-                    },
-                    "data_selector": {
-                        "type": "string",
-                        "enum": ["last_output", "all_outputs", "final_result"],
-                        "description": "What data to ship from source agent. 'last_output' = most recent text output, 'all_outputs' = all text outputs, 'final_result' = the final result summary. Default: last_output"
+                    "todos": {
+                        "type": "array",
+                        "description": "The complete updated todo list. Each call replaces the previous list.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {
+                                    "type": "string",
+                                    "description": "The task description (imperative form, e.g., 'Create worker agent for tests')"
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed"],
+                                    "description": "Current status of this task"
+                                },
+                                "activeForm": {
+                                    "type": "string",
+                                    "description": "Optional: Present continuous form shown during execution (e.g., 'Creating worker agent for tests')"
+                                }
+                            },
+                            "required": ["content", "status"]
+                        }
                     }
                 },
-                "required": ["source_agent_id", "target_agent_id", "prompt_with_context"]
-            }),
-        });
-
-        tools.push(Tool {
-            name: "CreateChainedAgent".to_string(),
-            description: "Create a new agent that automatically receives context from an existing agent's output. This is a convenience tool that combines creating an agent and shipping data in one step. The new agent starts working immediately with the previous agent's results as context.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "source_agent_id": {
-                        "type": "string",
-                        "description": "The agent ID to get context from (the agent whose output the new agent should know about)"
-                    },
-                    "working_dir": {
-                        "type": "string",
-                        "description": "The working directory for the new agent"
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "The task for the new agent. The source agent's output will be automatically included as context."
-                    }
-                },
-                "required": ["source_agent_id", "working_dir", "prompt"]
-            }),
-        });
-
-        // Quick Actions - Common operations
-        tools.push(Tool {
-            name: "QuickAction".to_string(),
-            description: "Execute common quick actions. Available actions: 'status' (list all agents and their status), 'stop_all' (stop all running agents), 'queue' (show the result queue status), 'clear_completed' (clear completed agents from display).".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["status", "stop_all", "queue", "clear_completed"],
-                        "description": "The quick action to execute"
-                    }
-                },
-                "required": ["action"]
+                "required": ["todos"]
             }),
         });
 

@@ -1,9 +1,62 @@
 //! Fast regex-based pattern matching for known security threats.
+//!
+//! This module provides regex-based pattern matching with caching for performance.
+//! Common regex patterns are compiled once and cached using `OnceLock`.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 use super::collector::{SecurityEvent, SecurityEventType};
+
+/// Cache for compiled regex patterns by pattern string.
+/// This avoids recompiling the same regex multiple times.
+static REGEX_CACHE: OnceLock<RegexCache> = OnceLock::new();
+
+/// Thread-safe cache for compiled regex patterns.
+struct RegexCache {
+    patterns: std::sync::RwLock<std::collections::HashMap<String, Regex>>,
+}
+
+impl RegexCache {
+    fn new() -> Self {
+        Self {
+            patterns: std::sync::RwLock::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// Get or compile a regex pattern.
+    fn get_or_compile(&self, pattern: &str) -> Result<Regex, regex::Error> {
+        // Try to get from cache first (read lock)
+        {
+            let cache = self.patterns.read().unwrap();
+            if let Some(regex) = cache.get(pattern) {
+                return Ok(regex.clone());
+            }
+        }
+
+        // Compile the regex
+        let regex = Regex::new(pattern)?;
+
+        // Store in cache (write lock)
+        {
+            let mut cache = self.patterns.write().unwrap();
+            cache.insert(pattern.to_string(), regex.clone());
+        }
+
+        Ok(regex)
+    }
+}
+
+/// Get or initialize the global regex cache.
+fn regex_cache() -> &'static RegexCache {
+    REGEX_CACHE.get_or_init(RegexCache::new)
+}
+
+/// Compile a regex pattern, using the cache if available.
+pub fn compile_regex(pattern: &str) -> Result<Regex, regex::Error> {
+    regex_cache().get_or_compile(pattern)
+}
 
 /// Detection rule for pattern matching
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -77,7 +130,10 @@ pub struct PatternMatcher {
 }
 
 impl PatternMatcher {
-    /// Create a new pattern matcher with the given rules
+    /// Create a new pattern matcher with the given rules.
+    ///
+    /// Regex patterns are compiled using the global cache, so creating
+    /// multiple PatternMatchers with the same rules is efficient.
     pub fn new(rules: Vec<DetectionRule>) -> Result<Self, String> {
         let compiled = rules
             .into_iter()
@@ -87,7 +143,8 @@ impl PatternMatcher {
                     .patterns
                     .iter()
                     .map(|p| {
-                        let regex = Regex::new(&p.pattern)
+                        // Use cached regex compilation
+                        let regex = compile_regex(&p.pattern)
                             .map_err(|e| format!("Invalid regex in rule {}: {}", rule.id, e))?;
                         Ok((p.field.clone(), regex, p.negate))
                     })

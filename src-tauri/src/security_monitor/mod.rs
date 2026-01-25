@@ -7,14 +7,39 @@
 //! The monitor also supports prompt-seeded expectation tracking: when a user sends
 //! a prompt, the LLM generates initial expectations (expected tools, paths, commands),
 //! then every tool call is checked against those expectations for anomaly detection.
+//!
+//! # Usage
+//!
+//! Use the builder pattern for creating SecurityMonitor instances:
+//!
+//! ```ignore
+//! use security_monitor::{SecurityMonitorBuilder, SecurityConfig};
+//!
+//! let monitor = SecurityMonitorBuilder::new()
+//!     .with_config(SecurityConfig::default())
+//!     .with_agent_manager(agent_manager)
+//!     .with_logger(logger)
+//!     .with_app_handle(app_handle)
+//!     .build()?;
+//! ```
+//!
+//! Or use preset configurations:
+//!
+//! ```ignore
+//! use security_monitor::builder::presets;
+//!
+//! let monitor = presets::strict_monitor(agent_manager, logger, app_handle)?;
+//! ```
 
 pub mod anomaly_detection;
+pub mod builder;
 pub mod collector;
 mod expectation_generator;
 pub mod llm_analyzer;
 mod parsing_utils;
 pub mod path_matching;
 pub mod pattern_matcher;
+mod prompts;
 pub mod response_handler;
 pub mod rules;
 pub mod session_expectations;
@@ -30,6 +55,9 @@ pub use llm_analyzer::{
 pub use pattern_matcher::{DetectionRule, PatternMatch, PatternMatcher, Severity, ThreatCategory};
 pub use response_handler::{ResponseConfig, ResponseHandler, SecurityAlertEvent};
 pub use session_expectations::{InitialExpectations, SessionExpectations};
+
+// Re-export builder for convenient access
+pub use builder::SecurityMonitorBuilder;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -129,20 +157,50 @@ impl MonitoringProvider {
     }
 }
 
-/// Main security monitor that orchestrates all security components
+/// Main security monitor that orchestrates all security components.
+///
+/// Use `SecurityMonitorBuilder` to create instances:
+///
+/// ```ignore
+/// let monitor = SecurityMonitorBuilder::new()
+///     .with_config(config)
+///     .with_agent_manager(agent_manager)
+///     .with_logger(logger)
+///     .with_app_handle(app_handle)
+///     .build()?;
+/// ```
 pub struct SecurityMonitor {
-    collector: Arc<Mutex<SecurityEventCollector>>,
-    pattern_matcher: PatternMatcher,
-    llm_analyzer: Option<LLMAnalyzer>,
-    response_handler: ResponseHandler,
-    enabled: Arc<Mutex<bool>>,
-    config: SecurityConfig,
+    pub(crate) collector: Arc<Mutex<SecurityEventCollector>>,
+    pub(crate) pattern_matcher: PatternMatcher,
+    pub(crate) llm_analyzer: Option<LLMAnalyzer>,
+    pub(crate) response_handler: ResponseHandler,
+    pub(crate) enabled: Arc<Mutex<bool>>,
+    pub(crate) config: SecurityConfig,
     /// Session-based expectation tracking for prompt-seeded anomaly detection
-    session_expectations: Arc<Mutex<SessionExpectations>>,
+    pub(crate) session_expectations: Arc<Mutex<SessionExpectations>>,
+}
+
+impl std::fmt::Debug for SecurityMonitor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecurityMonitor")
+            .field("enabled", &"<Mutex>")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }
 
 impl SecurityMonitor {
-    /// Create a new SecurityMonitor with the given configuration
+    /// Create a new SecurityMonitorBuilder.
+    ///
+    /// This is the preferred way to create SecurityMonitor instances.
+    pub fn builder() -> SecurityMonitorBuilder {
+        SecurityMonitorBuilder::new()
+    }
+
+    /// Create a new SecurityMonitor with the given configuration.
+    ///
+    /// This is a convenience method that delegates to the builder.
+    /// For more control over initialization, use `SecurityMonitor::builder()`.
     pub fn new(
         agent_manager: Arc<Mutex<AgentManager>>,
         logger: Arc<Logger>,
@@ -150,46 +208,13 @@ impl SecurityMonitor {
         config: SecurityConfig,
         response_config: ResponseConfig,
     ) -> Result<Self, String> {
-        let collector = Arc::new(Mutex::new(SecurityEventCollector::new(
-            config.max_events,
-            config.batch_size,
-            config.batch_interval_ms,
-        )));
-
-        // Load default detection rules
-        let rules = rules::get_default_rules();
-        let pattern_matcher = PatternMatcher::new(rules)?;
-
-        // Try to create LLM analyzer (optional - will work without it)
-        let llm_analyzer = match config.monitoring_provider.create_client() {
-            Ok(client) => {
-                println!("✓ Security monitor LLM analyzer initialized");
-                Some(LLMAnalyzer::new(client))
-            }
-            Err(e) => {
-                eprintln!(
-                    "⚠ Security monitor: LLM analyzer not available ({}). Using pattern matching only.",
-                    e
-                );
-                None
-            }
-        };
-
-        let response_handler =
-            ResponseHandler::new(agent_manager, logger, app_handle, response_config);
-
-        // Initialize session expectations tracker
-        let session_expectations = Arc::new(Mutex::new(SessionExpectations::new()));
-
-        Ok(Self {
-            collector,
-            pattern_matcher,
-            llm_analyzer,
-            response_handler,
-            enabled: Arc::new(Mutex::new(config.enabled)),
-            config,
-            session_expectations,
-        })
+        SecurityMonitorBuilder::new()
+            .with_config(config)
+            .with_response_config(response_config)
+            .with_agent_manager(agent_manager)
+            .with_logger(logger)
+            .with_app_handle(app_handle)
+            .build()
     }
 
     /// Called when user sends a prompt - seeds expectations for anomaly detection

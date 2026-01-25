@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ViewHeader } from "$lib/components/ui/layout";
   import { IconButton } from "$lib/components/ui/button";
-  import { Trash2, Mic } from "$lib/components/ui/icons";
+  import { Trash2, Mic, CheckSquare } from "$lib/components/ui/icons";
   import HelpTip from "../new-agent/HelpTip.svelte";
 
   interface Props {
@@ -9,9 +9,20 @@
     onClear: () => void;
     hasOpenAiKey?: boolean;
     onVoiceClick?: () => void;
+    showTodoPanel?: boolean;
+    onToggleTodoPanel?: () => void;
+    hasTodos?: boolean;
   }
 
-  let { isThinking, onClear, hasOpenAiKey = false, onVoiceClick }: Props = $props();
+  let {
+    isThinking,
+    onClear,
+    hasOpenAiKey = false,
+    onVoiceClick,
+    showTodoPanel = false,
+    onToggleTodoPanel,
+    hasTodos = false,
+  }: Props = $props();
 </script>
 
 <ViewHeader emojiIcon="🎛️" title="System Commander">
@@ -25,6 +36,15 @@
     {/if}
   {/snippet}
   {#snippet actions()}
+    {#if hasTodos || showTodoPanel}
+      <IconButton
+        icon={CheckSquare}
+        label="Tasks"
+        variant={showTodoPanel ? "primary" : "ghost"}
+        onclick={onToggleTodoPanel}
+        title="Toggle task list panel"
+      />
+    {/if}
     {#if hasOpenAiKey}
       <IconButton
         icon={Mic}

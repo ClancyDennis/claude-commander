@@ -3,14 +3,12 @@
   import type {
     InstructionDraft,
     TestAgentSession,
-    TestAnalysisResult,
   } from "../types";
   import DraftEditor from "./instruction-editor/DraftEditor.svelte";
   import GoalInput from "./instruction-wizard/GoalInput.svelte";
   import DraftPreview from "./instruction-wizard/DraftPreview.svelte";
   import TestRunner from "./instruction-wizard/TestRunner.svelte";
-  import TestResults from "./instruction-wizard/TestResults.svelte";
-  import { FileText, Sparkles, Play, CheckCircle, Layers } from "lucide-svelte";
+  import { FileText, Sparkles, Play, Layers, ChevronLeft } from "lucide-svelte";
 
   interface Props {
     workingDir: string;
@@ -22,7 +20,7 @@
 
   // Wizard state
   let currentStep = $state(1);
-  const TOTAL_STEPS = 5;
+  const TOTAL_STEPS = 4;
 
   // Step 1: Goal input
   let goalDescription = $state("");
@@ -38,8 +36,9 @@
   let testSession = $state<TestAgentSession | null>(null);
   let testPrompt = $state("");
 
-  // Step 5: Results
-  let testResults = $state<TestAnalysisResult | null>(null);
+  // Enhancement state
+  let isEnhancing = $state(false);
+  let enhancementApplied = $state(false);
 
   // Error handling
   let error = $state("");
@@ -83,11 +82,13 @@
     }
 
     error = "";
+    enhancementApplied = false; // Reset for new test
 
     try {
       const session = await invoke<TestAgentSession>("create_test_agent", {
         instructionContent: editedContent,
         testPrompt: testPrompt,
+        potentialRequirements: draft?.potentialRequirements ?? [],
         workingDir: workingDir,
       });
 
@@ -101,16 +102,28 @@
   async function handleAnalyzeResults() {
     if (!testSession) return;
 
+    isEnhancing = true;
+    error = "";
+
     try {
-      const results = await invoke<TestAnalysisResult>("analyze_test_results", {
+      // Call AI to enhance the instruction based on test transcript
+      const enhancedContent = await invoke<string>("enhance_instruction_from_test", {
+        originalInstruction: editedContent,
         agentId: testSession.agentId,
-        startedAt: testSession.startedAt,
       });
 
-      testResults = results;
-      goToStep(5);
+      // Update the instruction content with enhanced version
+      editedContent = enhancedContent;
+      enhancementApplied = true;
+
+      // Go back to edit step to show the enhanced instruction
+      goToStep(3);
     } catch (e) {
-      error = `Failed to analyze results: ${e}`;
+      error = `Failed to enhance instruction: ${e}`;
+      // Fall back to showing edit step anyway
+      goToStep(3);
+    } finally {
+      isEnhancing = false;
     }
   }
 
@@ -166,12 +179,6 @@
     goToStep(3);
   }
 
-  function handleRunAgain() {
-    testResults = null;
-    testSession = null;
-    handleStartTest();
-  }
-
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       onClose();
@@ -184,7 +191,6 @@
     { title: "Review Draft", icon: FileText },
     { title: "Edit Draft", icon: FileText },
     { title: "Test", icon: Play },
-    { title: "Results", icon: CheckCircle },
   ];
 
   let isWideStep = $derived(currentStep >= 3);
@@ -238,12 +244,12 @@
       {#if currentStep === 1}
         <!-- Step 1: Describe Goal -->
         <div class="step-content animate-slide-in">
-          <div class="step-header">
-            <Sparkles class="w-5 h-5 text-primary" />
-            <div>
-              <h3>Describe Your Goal</h3>
-              <p class="text-muted-foreground text-sm">What do you want to set up or integrate?</p>
+          <div class="step-header-centered">
+            <div class="step-icon">
+              <Sparkles class="w-8 h-8" />
             </div>
+            <h3>Describe Your Goal</h3>
+            <p class="step-description">What do you want to set up or integrate?</p>
           </div>
 
           <GoalInput
@@ -255,12 +261,12 @@
       {:else if currentStep === 2}
         <!-- Step 2: Preview Draft -->
         <div class="step-content animate-slide-in">
-          <div class="step-header">
-            <FileText class="w-5 h-5 text-primary" />
-            <div>
-              <h3>Review Draft</h3>
-              <p class="text-muted-foreground text-sm">AI-generated instruction based on your goal</p>
+          <div class="step-header-centered">
+            <div class="step-icon">
+              <FileText class="w-8 h-8" />
             </div>
+            <h3>Review Draft</h3>
+            <p class="step-description">AI-generated instruction based on your goal</p>
           </div>
 
           {#if draft}
@@ -273,13 +279,24 @@
       {:else if currentStep === 3}
         <!-- Step 3: Edit Draft -->
         <div class="step-content animate-slide-in">
-          <div class="step-header">
-            <FileText class="w-5 h-5 text-primary" />
-            <div>
-              <h3>Edit Instruction</h3>
-              <p class="text-muted-foreground text-sm">Refine the generated instruction</p>
+          <div class="step-header-centered">
+            <div class="step-icon">
+              <FileText class="w-8 h-8" />
             </div>
+            <h3>{enhancementApplied ? "Enhanced Instruction" : "Edit Instruction"}</h3>
+            <p class="step-description">
+              {enhancementApplied
+                ? "AI has updated the instruction based on test results"
+                : "Refine the generated instruction"}
+            </p>
           </div>
+
+          {#if enhancementApplied}
+            <div class="enhancement-badge">
+              <Sparkles class="w-4 h-4" />
+              <span>Enhanced with test findings</span>
+            </div>
+          {/if}
 
           <div class="edit-form">
             <label class="field-label">
@@ -314,32 +331,33 @@
       {:else if currentStep === 4}
         <!-- Step 4: Test Runner -->
         <div class="step-content animate-slide-in">
-          <div class="step-header">
-            <Play class="w-5 h-5 text-primary" />
-            <div>
-              <h3>Testing Instruction</h3>
-              <p class="text-muted-foreground text-sm">Running a test agent to discover requirements</p>
+          <div class="step-header-centered">
+            <div class="step-icon">
+              <Play class="w-8 h-8" />
             </div>
+            <h3>Testing Instruction</h3>
+            <p class="step-description">Running a test agent to discover requirements</p>
           </div>
 
           {#if testSession}
-            <TestRunner
-              session={testSession}
-              onStop={handleStopTest}
-              onAnalyze={handleAnalyzeResults}
-            />
-          {/if}
-        </div>
-      {:else if currentStep === 5}
-        <!-- Step 5: Results -->
-        <div class="step-content animate-slide-in">
-          {#if testResults}
-            <TestResults
-              results={testResults}
-              onEditDraft={() => goToStep(3)}
-              onRunAgain={handleRunAgain}
-              onSave={handleSaveInstruction}
-            />
+            {#if isEnhancing}
+              <div class="enhancing-state">
+                <div class="enhancing-spinner"></div>
+                <div class="enhancing-text">
+                  <Sparkles class="w-5 h-5" />
+                  <span>Enhancing instruction with test findings...</span>
+                </div>
+                <p class="step-description">
+                  AI is analyzing the test execution and updating the instruction with concrete details
+                </p>
+              </div>
+            {:else}
+              <TestRunner
+                session={testSession}
+                onStop={handleStopTest}
+                onAnalyze={handleAnalyzeResults}
+              />
+            {/if}
           {/if}
         </div>
       {/if}
@@ -376,25 +394,15 @@
         </button>
       {:else if currentStep === 2}
         <button class="secondary" onclick={() => goToStep(1)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
-          </svg>
+          <ChevronLeft class="w-4 h-4" />
           Back
         </button>
         <button class="primary" onclick={handleEditDraft}>
-          Edit Draft
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
+          Continue
         </button>
       {:else if currentStep === 3}
         <button class="secondary" onclick={() => goToStep(2)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
-          </svg>
+          <ChevronLeft class="w-4 h-4" />
           Back
         </button>
         <button
@@ -402,7 +410,7 @@
           onclick={handleSaveInstruction}
           disabled={!editedContent.trim() || !filename.trim()}
         >
-          Save Without Testing
+          Save
         </button>
         <button
           class="primary"
@@ -410,18 +418,13 @@
           disabled={!editedContent.trim()}
         >
           <Play class="w-4 h-4" />
-          Test Instruction
+          Test
         </button>
       {:else if currentStep === 4}
-        <button class="secondary" onclick={() => goToStep(3)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
-          </svg>
-          Back to Edit
+        <button class="secondary" onclick={() => goToStep(3)} disabled={isEnhancing}>
+          <ChevronLeft class="w-4 h-4" />
+          Back
         </button>
-      {:else if currentStep === 5}
-        <!-- Navigation handled by TestResults component -->
       {/if}
     </footer>
   </div>
@@ -475,8 +478,6 @@
   }
 
   .dot.active {
-    width: 24px;
-    border-radius: 4px;
     background: var(--accent-hex);
   }
 
@@ -512,15 +513,17 @@
   }
 
   h2 {
-    font-size: 20px;
+    font-size: var(--text-xl);
     font-weight: 700;
+    letter-spacing: -0.02em;
     margin-bottom: 2px;
   }
 
   h3 {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
-    margin-bottom: 2px;
+    letter-spacing: -0.01em;
+    margin-bottom: 0;
   }
 
   .subtitle {
@@ -530,8 +533,8 @@
 
   .close-btn {
     background: var(--bg-elevated);
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     display: flex;
     align-items: center;
@@ -564,11 +567,31 @@
     gap: var(--space-md);
   }
 
-  .step-header {
+  .step-header-centered {
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     gap: var(--space-sm);
-    align-items: flex-start;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-lg);
+  }
+
+  .step-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: rgba(232, 102, 77, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-hex);
+    margin-bottom: var(--space-xs);
+  }
+
+  .step-description {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    max-width: 320px;
   }
 
   .edit-form {
@@ -590,13 +613,13 @@
 
   .input {
     width: 100%;
-    height: 40px;
-    padding: 0 12px;
+    height: 44px;
+    padding: 0 14px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-family: inherit;
   }
 
@@ -613,14 +636,14 @@
     justify-content: flex-end;
     gap: var(--space-sm);
     border-top: 1px solid var(--border);
-    background: var(--bg-tertiary);
   }
 
   button {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 12px 20px;
+    min-height: 44px;
     border-radius: var(--radius-md);
     font-size: 14px;
     font-weight: 500;
@@ -732,15 +755,48 @@
     }
   }
 
-  .text-muted-foreground {
-    color: var(--text-muted);
+  .enhancement-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, var(--accent-hex) 0%, #e85a45 100%);
+    color: white;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    width: fit-content;
   }
 
-  .text-sm {
-    font-size: var(--text-sm);
+  .enhancing-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-xl);
+    text-align: center;
   }
 
-  .text-primary {
+  .enhancing-spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent-hex);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .enhancing-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .enhancing-text :global(svg) {
     color: var(--accent-hex);
   }
 </style>

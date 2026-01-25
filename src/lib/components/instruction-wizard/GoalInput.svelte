@@ -45,7 +45,7 @@ Example: 'I want to connect to Google Drive and list my files'"
       <button
         type="button"
         onclick={() => useExample(example)}
-        class="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+        class="text-sm px-3 py-2.5 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
         {disabled}
       >
         {example}

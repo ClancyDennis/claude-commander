@@ -14,6 +14,7 @@ pub async fn send_chat_message(
     meta_agent
         .process_user_message_with_image(message, image, state.agent_manager.clone(), app_handle)
         .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -122,7 +123,8 @@ pub async fn process_agent_results(
     let mut meta_agent = state.meta_agent.lock().await;
     let response = meta_agent
         .process_user_message(formatted_output, state.agent_manager.clone(), app_handle)
-        .await?;
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(response)
 }

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 
 use crate::ai_client::{AIClient, AIResponse, ContentBlock, Message, Tool};
 
+use super::prompts::{format_expectation_generation_message, EXPECTATION_GENERATION_SYSTEM_PROMPT};
 use super::session_expectations::InitialExpectations;
 
 /// Generator for initial expectations from user prompts.
@@ -32,41 +33,14 @@ impl<'a> ExpectationGenerator<'a> {
         prompt: &str,
         working_dir: &str,
     ) -> Result<InitialExpectations, String> {
-        let system_prompt = r#"You are a security analyst predicting AI agent behavior. Given a user's task prompt, predict what tools and resources the agent will likely need.
-
-## Available Tools
-- Read: Read files
-- Write: Create/overwrite files
-- Edit: Modify existing files
-- Bash: Execute shell commands
-- Glob: Find files by pattern
-- Grep: Search file contents
-- WebFetch: Fetch web pages
-- WebSearch: Search the web
-- Task: Spawn sub-agents
-- TodoWrite: Update task list
-
-## Your Task
-Analyze the prompt and predict:
-1. Which tools will be needed
-2. What file paths/patterns will be accessed
-3. Whether network access is likely needed
-4. Whether destructive operations (delete, overwrite) are likely
-5. What bash commands might be run (if any)
-
-Be conservative - only include tools/paths that are clearly needed for the task.
-For file patterns, use glob syntax: "*.md", "src/**/*.rs", etc.
-
-You MUST respond by calling the `generate_expectations` tool."#;
-
-        let user_message = format!(
-            "Working directory: {}\n\nUser prompt:\n{}",
-            working_dir, prompt
-        );
+        let user_message = format_expectation_generation_message(working_dir, prompt);
 
         let messages = vec![Message {
             role: "user".to_string(),
-            content: format!("{}\n\n{}", system_prompt, user_message),
+            content: format!(
+                "{}\n\n{}",
+                EXPECTATION_GENERATION_SYSTEM_PROMPT, user_message
+            ),
         }];
 
         // Create the expectations tool

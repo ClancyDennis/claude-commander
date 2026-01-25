@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Snippet, Component } from "svelte";
-  import * as Dialog from "$lib/components/ui/dialog";
 
   interface Props {
     title: string;
@@ -30,14 +29,14 @@
     </div>
   {/if}
 
-  <Dialog.Header class={centered ? "items-center" : ""}>
-    <Dialog.Title class="text-xl">{title}</Dialog.Title>
+  <div class="space-y-1.5 {centered ? 'flex flex-col items-center' : ''}">
+    <h3 class="text-xl font-semibold leading-none tracking-tight">{title}</h3>
     {#if description}
-      <Dialog.Description class="text-base mt-2">
+      <p class="text-base text-muted-foreground mt-2">
         {description}
-      </Dialog.Description>
+      </p>
     {/if}
-  </Dialog.Header>
+  </div>
 
   {#if children}
     {@render children()}

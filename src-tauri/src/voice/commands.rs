@@ -1,64 +1,29 @@
+// Voice Commands - Tauri command handlers for voice sessions
+//
+// This module provides the #[tauri::command] entry points for voice functionality.
+// It uses the session_registry and session_manager modules for unified session handling.
+
 use super::attention::AttentionSession;
 use super::discuss::DiscussSession;
 use super::realtime::VoiceSession;
+use super::session_manager::{
+    get_api_key, AttentionTimeoutEvent, ToolCallEvent, VoiceAudioEvent, VoiceResponseEvent,
+    VoiceStatus, VoiceTranscriptEvent,
+};
+use super::session_registry::{attention_session, discuss_session, voice_session, SessionOps};
 use super::tools;
 use crate::AppState;
-use std::sync::Arc;
 use tauri::Emitter;
-use tokio::sync::Mutex;
 
-// Global voice session state (for Dictate mode)
-static VOICE_SESSION: std::sync::OnceLock<Arc<Mutex<Option<VoiceSession>>>> =
-    std::sync::OnceLock::new();
+// ============================================================================
+// Voice Mode Commands (Dictate)
+// ============================================================================
 
-// Global discuss session state (for Discuss mode)
-static DISCUSS_SESSION: std::sync::OnceLock<Arc<Mutex<Option<DiscussSession>>>> =
-    std::sync::OnceLock::new();
-
-// Global attention session state (for Attention mode)
-static ATTENTION_SESSION: std::sync::OnceLock<Arc<Mutex<Option<AttentionSession>>>> =
-    std::sync::OnceLock::new();
-
-fn get_voice_session() -> &'static Arc<Mutex<Option<VoiceSession>>> {
-    VOICE_SESSION.get_or_init(|| Arc::new(Mutex::new(None)))
-}
-
-fn get_discuss_session() -> &'static Arc<Mutex<Option<DiscussSession>>> {
-    DISCUSS_SESSION.get_or_init(|| Arc::new(Mutex::new(None)))
-}
-
-fn get_attention_session() -> &'static Arc<Mutex<Option<AttentionSession>>> {
-    ATTENTION_SESSION.get_or_init(|| Arc::new(Mutex::new(None)))
-}
-
-#[derive(Clone, serde::Serialize)]
-struct VoiceTranscriptEvent {
-    transcript: String,
-}
-
-#[derive(Clone, serde::Serialize)]
-struct VoiceResponseEvent {
-    delta: String,
-}
-
-#[derive(Clone, serde::Serialize)]
-struct VoiceAudioEvent {
-    audio: String,
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct VoiceStatus {
-    pub is_active: bool,
-    pub transcript: String,
-}
-
-/// Start a voice recording session
+/// Start a voice recording session (Dictate mode).
 #[tauri::command]
 pub async fn start_voice_session(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .map_err(|_| "OPENAI_API_KEY not set. Please set it in your .env file.")?;
-
-    let session_lock = get_voice_session();
+    let api_key = get_api_key()?;
+    let session_lock = voice_session();
     let mut session_guard = session_lock.lock().await;
 
     // Check if already active
@@ -68,51 +33,26 @@ pub async fn start_voice_session(app_handle: tauri::AppHandle) -> Result<(), Str
         }
     }
 
-    // Create new session
+    // Create new session with callbacks
     let mut session = VoiceSession::new();
+    let (app_t, app_r, app_a) = (app_handle.clone(), app_handle.clone(), app_handle.clone());
 
-    // Clone app_handle for the callbacks
-    let app_handle_transcript = app_handle.clone();
-    let app_handle_response = app_handle.clone();
-    let app_handle_audio = app_handle.clone();
-
-    // Connect with transcript, response, and audio callbacks
     session
         .connect(
             &api_key,
             move |transcript| {
-                // Emit transcript event to frontend (user's speech)
-                let _ = app_handle_transcript.emit(
-                    "voice:transcript",
-                    VoiceTranscriptEvent {
-                        transcript: transcript.clone(),
-                    },
-                );
+                let _ = app_t.emit("voice:transcript", VoiceTranscriptEvent { transcript });
             },
             move |delta| {
-                // Emit response event to frontend (model's response text)
-                let _ = app_handle_response.emit(
-                    "voice:response",
-                    VoiceResponseEvent {
-                        delta: delta.clone(),
-                    },
-                );
+                let _ = app_r.emit("voice:response", VoiceResponseEvent { delta });
             },
             move |audio| {
-                // Emit audio event to frontend (model's response audio for playback)
-                let _ = app_handle_audio.emit(
-                    "voice:audio",
-                    VoiceAudioEvent {
-                        audio: audio.clone(),
-                    },
-                );
+                let _ = app_a.emit("voice:audio", VoiceAudioEvent { audio });
             },
         )
         .await?;
 
     *session_guard = Some(session);
-
-    // Emit status event
     let _ = app_handle.emit(
         "voice:status",
         VoiceStatus {
@@ -125,30 +65,20 @@ pub async fn start_voice_session(app_handle: tauri::AppHandle) -> Result<(), Str
     Ok(())
 }
 
-/// Send an audio chunk to the voice session
+/// Send an audio chunk to the voice session.
 #[tauri::command]
 pub async fn send_voice_audio(data: String) -> Result<(), String> {
-    let session_lock = get_voice_session();
-    let session_guard = session_lock.lock().await;
-
-    if let Some(session) = session_guard.as_ref() {
-        session.send_audio(data).await?;
-        Ok(())
-    } else {
-        Err("No active voice session".to_string())
-    }
+    voice_session().send_audio_if_active(data).await
 }
 
-/// Stop the voice session and return the transcript
+/// Stop the voice session and return the transcript.
 #[tauri::command]
 pub async fn stop_voice_session(app_handle: tauri::AppHandle) -> Result<String, String> {
-    let session_lock = get_voice_session();
+    let session_lock = voice_session();
     let mut session_guard = session_lock.lock().await;
 
     if let Some(mut session) = session_guard.take() {
         let transcript = session.stop().await;
-
-        // Emit status event
         let _ = app_handle.emit(
             "voice:status",
             VoiceStatus {
@@ -156,7 +86,6 @@ pub async fn stop_voice_session(app_handle: tauri::AppHandle) -> Result<String, 
                 transcript: transcript.clone(),
             },
         );
-
         println!("[Voice] Session stopped. Transcript: {}", transcript);
         Ok(transcript)
     } else {
@@ -164,46 +93,24 @@ pub async fn stop_voice_session(app_handle: tauri::AppHandle) -> Result<String, 
     }
 }
 
-/// Get the current voice session status
+/// Get the current voice session status.
 #[tauri::command]
 pub async fn get_voice_status() -> Result<VoiceStatus, String> {
-    let session_lock = get_voice_session();
-    let session_guard = session_lock.lock().await;
-
-    if let Some(session) = session_guard.as_ref() {
-        Ok(VoiceStatus {
-            is_active: session.is_active().await,
-            transcript: String::new(), // We don't expose transcript here for privacy
-        })
-    } else {
-        Ok(VoiceStatus {
-            is_active: false,
-            transcript: String::new(),
-        })
-    }
+    Ok(voice_session().get_status().await)
 }
 
 // ============================================================================
 // Discuss Mode Commands
 // ============================================================================
 
-#[derive(Clone, serde::Serialize)]
-struct DiscussToolCallEvent {
-    name: String,
-    call_id: String,
-    args: String,
-}
-
-/// Start a discuss mode session
+/// Start a discuss mode session.
 #[tauri::command]
 pub async fn start_discuss_session(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .map_err(|_| "OPENAI_API_KEY not set. Please set it in your .env file.")?;
-
-    let session_lock = get_discuss_session();
+    let api_key = get_api_key()?;
+    let session_lock = discuss_session();
     let mut session_guard = session_lock.lock().await;
 
     // Check if already active
@@ -213,104 +120,58 @@ pub async fn start_discuss_session(
         }
     }
 
-    // Create new session
+    // Create new session with callbacks
     let mut session = DiscussSession::new();
+    let (app_t, app_r, app_a, app_tool, app_user, app_asst) = (
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+    );
 
-    // Clone app_handle for the callbacks
-    let app_handle_transcript = app_handle.clone();
-    let app_handle_response = app_handle.clone();
-    let app_handle_audio = app_handle.clone();
-    let app_handle_tool = app_handle.clone();
-    let app_handle_user_turn = app_handle.clone();
-    let app_handle_assistant_turn = app_handle.clone();
-
-    // Clone state references for tool callback
     let meta_agent = state.meta_agent.clone();
     let agent_manager = state.agent_manager.clone();
 
-    // Connect with callbacks
     session
         .connect(
             &api_key,
             move |transcript| {
-                // Emit transcript event (user's speech)
-                let _ = app_handle_transcript.emit(
-                    "discuss:transcript",
-                    VoiceTranscriptEvent {
-                        transcript: transcript.clone(),
-                    },
-                );
+                let _ = app_t.emit("discuss:transcript", VoiceTranscriptEvent { transcript });
             },
             move |delta| {
-                // Emit response event (AI's response text)
-                let _ = app_handle_response.emit(
-                    "discuss:response",
-                    VoiceResponseEvent {
-                        delta: delta.clone(),
-                    },
-                );
+                let _ = app_r.emit("discuss:response", VoiceResponseEvent { delta });
             },
             move |audio| {
-                // Emit audio event (AI's response audio)
-                let _ = app_handle_audio.emit(
-                    "discuss:audio",
-                    VoiceAudioEvent {
-                        audio: audio.clone(),
-                    },
-                );
+                let _ = app_a.emit("discuss:audio", VoiceAudioEvent { audio });
             },
             move |name, call_id, args| {
-                // Execute tool and emit events
-                let app_handle = app_handle_tool.clone();
-                let name_clone = name.clone();
-                let args_clone = args.clone();
-                let meta_agent = meta_agent.clone();
-                let agent_manager = agent_manager.clone();
+                let app = app_tool.clone();
+                let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
+                let (n, a) = (name.clone(), args.clone());
 
-                // Emit tool call event
-                let _ = app_handle.emit(
+                let _ = app.emit(
                     "discuss:tool_call",
-                    DiscussToolCallEvent {
+                    ToolCallEvent {
                         name: name.clone(),
                         call_id: call_id.clone(),
                         args: args.clone(),
                     },
                 );
 
-                // Execute tool synchronously for now
-                // (The callback doesn't support async, so we spawn a blocking task)
-                let result = std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        tools::execute_tool_with_state(
-                            &name_clone,
-                            &args_clone,
-                            meta_agent,
-                            agent_manager,
-                            app_handle,
-                        )
-                        .await
-                    })
-                })
-                .join()
-                .unwrap_or_else(|_| "Tool execution failed".to_string());
-
-                result
+                execute_tool_blocking(n, a, meta, mgr, app)
             },
             move || {
-                // User turn complete - emit event to commit message
-                let _ = app_handle_user_turn.emit("discuss:user_turn_complete", ());
+                let _ = app_user.emit("discuss:user_turn_complete", ());
             },
             move || {
-                // Assistant turn complete - emit event to commit message
-                let _ = app_handle_assistant_turn.emit("discuss:assistant_turn_complete", ());
+                let _ = app_asst.emit("discuss:assistant_turn_complete", ());
             },
         )
         .await?;
 
     *session_guard = Some(session);
-
-    // Emit status event
     let _ = app_handle.emit(
         "discuss:status",
         VoiceStatus {
@@ -323,30 +184,20 @@ pub async fn start_discuss_session(
     Ok(())
 }
 
-/// Send audio to the discuss session
+/// Send audio to the discuss session.
 #[tauri::command]
 pub async fn send_discuss_audio(data: String) -> Result<(), String> {
-    let session_lock = get_discuss_session();
-    let session_guard = session_lock.lock().await;
-
-    if let Some(session) = session_guard.as_ref() {
-        session.send_audio(data).await?;
-        Ok(())
-    } else {
-        Err("No active discuss session".to_string())
-    }
+    discuss_session().send_audio_if_active(data).await
 }
 
-/// Stop the discuss session
+/// Stop the discuss session.
 #[tauri::command]
 pub async fn stop_discuss_session(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let session_lock = get_discuss_session();
+    let session_lock = discuss_session();
     let mut session_guard = session_lock.lock().await;
 
     if let Some(mut session) = session_guard.take() {
         session.stop().await;
-
-        // Emit status event
         let _ = app_handle.emit(
             "discuss:status",
             VoiceStatus {
@@ -354,7 +205,6 @@ pub async fn stop_discuss_session(app_handle: tauri::AppHandle) -> Result<(), St
                 transcript: String::new(),
             },
         );
-
         println!("[Discuss] Session stopped");
         Ok(())
     } else {
@@ -362,36 +212,17 @@ pub async fn stop_discuss_session(app_handle: tauri::AppHandle) -> Result<(), St
     }
 }
 
-/// Get discuss session status
+/// Get discuss session status.
 #[tauri::command]
 pub async fn get_discuss_status() -> Result<VoiceStatus, String> {
-    let session_lock = get_discuss_session();
-    let session_guard = session_lock.lock().await;
-
-    if let Some(session) = session_guard.as_ref() {
-        Ok(VoiceStatus {
-            is_active: session.is_active().await,
-            transcript: String::new(),
-        })
-    } else {
-        Ok(VoiceStatus {
-            is_active: false,
-            transcript: String::new(),
-        })
-    }
+    Ok(discuss_session().get_status().await)
 }
 
 // ============================================================================
 // Attention Mode Commands
 // ============================================================================
 
-#[derive(Clone, serde::Serialize)]
-struct AttentionTimeoutEvent {
-    agent_id: String,
-}
-
-/// Start an attention mode session
-/// This announces task completion and allows voice follow-up
+/// Start an attention mode session for announcing task completion.
 #[tauri::command]
 pub async fn start_attention_session(
     state: tauri::State<'_, AppState>,
@@ -400,10 +231,8 @@ pub async fn start_attention_session(
     agent_title: String,
     summary: String,
 ) -> Result<(), String> {
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .map_err(|_| "OPENAI_API_KEY not set. Please set it in your .env file.")?;
-
-    let session_lock = get_attention_session();
+    let api_key = get_api_key()?;
+    let session_lock = attention_session();
     let mut session_guard = session_lock.lock().await;
 
     // Check if already active
@@ -413,92 +242,50 @@ pub async fn start_attention_session(
         }
     }
 
-    // Create new session
+    // Create new session with callbacks
     let mut session = AttentionSession::new();
+    let (app_t, app_r, app_a, app_tool, app_timeout) = (
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+        app_handle.clone(),
+    );
 
-    // Clone app_handle for the callbacks
-    let app_handle_transcript = app_handle.clone();
-    let app_handle_response = app_handle.clone();
-    let app_handle_audio = app_handle.clone();
-    let app_handle_tool = app_handle.clone();
-    let app_handle_timeout = app_handle.clone();
-    let agent_id_timeout = agent_id.clone();
-
-    // Clone state references for tool callback
     let meta_agent = state.meta_agent.clone();
     let agent_manager = state.agent_manager.clone();
+    let agent_id_timeout = agent_id.clone();
 
-    // Connect with callbacks
     session
         .connect(
             &api_key,
             move |transcript| {
-                // Emit transcript event (user's speech)
-                let _ = app_handle_transcript.emit(
-                    "attention:transcript",
-                    VoiceTranscriptEvent {
-                        transcript: transcript.clone(),
-                    },
-                );
+                let _ = app_t.emit("attention:transcript", VoiceTranscriptEvent { transcript });
             },
             move |delta| {
-                // Emit response event (AI's response text)
-                let _ = app_handle_response.emit(
-                    "attention:response",
-                    VoiceResponseEvent {
-                        delta: delta.clone(),
-                    },
-                );
+                let _ = app_r.emit("attention:response", VoiceResponseEvent { delta });
             },
             move |audio| {
-                // Emit audio event (AI's response audio)
-                let _ = app_handle_audio.emit(
-                    "attention:audio",
-                    VoiceAudioEvent {
-                        audio: audio.clone(),
-                    },
-                );
+                let _ = app_a.emit("attention:audio", VoiceAudioEvent { audio });
             },
             move |name, call_id, args| {
-                // Execute tool and emit events
-                let app_handle = app_handle_tool.clone();
-                let name_clone = name.clone();
-                let args_clone = args.clone();
-                let meta_agent = meta_agent.clone();
-                let agent_manager = agent_manager.clone();
+                let app = app_tool.clone();
+                let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
+                let (n, a) = (name.clone(), args.clone());
 
-                // Emit tool call event
-                let _ = app_handle.emit(
+                let _ = app.emit(
                     "attention:tool_call",
-                    DiscussToolCallEvent {
+                    ToolCallEvent {
                         name: name.clone(),
                         call_id: call_id.clone(),
                         args: args.clone(),
                     },
                 );
 
-                // Execute tool synchronously
-                let result = std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        tools::execute_tool_with_state(
-                            &name_clone,
-                            &args_clone,
-                            meta_agent,
-                            agent_manager,
-                            app_handle,
-                        )
-                        .await
-                    })
-                })
-                .join()
-                .unwrap_or_else(|_| "Tool execution failed".to_string());
-
-                result
+                execute_tool_blocking(n, a, meta, mgr, app)
             },
             move || {
-                // Timeout callback - emit event to frontend
-                let _ = app_handle_timeout.emit(
+                let _ = app_timeout.emit(
                     "attention:timeout",
                     AttentionTimeoutEvent {
                         agent_id: agent_id_timeout.clone(),
@@ -508,12 +295,10 @@ pub async fn start_attention_session(
         )
         .await?;
 
-    // Send the initial prompt with the summary
+    // Send initial prompt with the summary
     session.send_initial_prompt(&summary).await?;
 
     *session_guard = Some(session);
-
-    // Emit status event
     let _ = app_handle.emit(
         "attention:status",
         VoiceStatus {
@@ -529,30 +314,20 @@ pub async fn start_attention_session(
     Ok(())
 }
 
-/// Send audio to the attention session
+/// Send audio to the attention session.
 #[tauri::command]
 pub async fn send_attention_audio(data: String) -> Result<(), String> {
-    let session_lock = get_attention_session();
-    let session_guard = session_lock.lock().await;
-
-    if let Some(session) = session_guard.as_ref() {
-        session.send_audio(data).await?;
-        Ok(())
-    } else {
-        Err("No active attention session".to_string())
-    }
+    attention_session().send_audio_if_active(data).await
 }
 
-/// Stop the attention session
+/// Stop the attention session.
 #[tauri::command]
 pub async fn stop_attention_session(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let session_lock = get_attention_session();
+    let session_lock = attention_session();
     let mut session_guard = session_lock.lock().await;
 
     if let Some(mut session) = session_guard.take() {
         session.stop().await;
-
-        // Emit status event
         let _ = app_handle.emit(
             "attention:status",
             VoiceStatus {
@@ -560,7 +335,6 @@ pub async fn stop_attention_session(app_handle: tauri::AppHandle) -> Result<(), 
                 transcript: String::new(),
             },
         );
-
         println!("[Attention] Session stopped");
         Ok(())
     } else {
@@ -568,21 +342,34 @@ pub async fn stop_attention_session(app_handle: tauri::AppHandle) -> Result<(), 
     }
 }
 
-/// Get attention session status
+/// Get attention session status.
 #[tauri::command]
 pub async fn get_attention_status() -> Result<VoiceStatus, String> {
-    let session_lock = get_attention_session();
-    let session_guard = session_lock.lock().await;
+    Ok(attention_session().get_status().await)
+}
 
-    if let Some(session) = session_guard.as_ref() {
-        Ok(VoiceStatus {
-            is_active: session.is_active().await,
-            transcript: String::new(),
+// ============================================================================
+// Shared Helpers
+// ============================================================================
+
+/// Execute a tool call in a blocking context (for sync callbacks).
+///
+/// This helper spawns a thread with its own tokio runtime to execute
+/// the async tool call, since the callback doesn't support async directly.
+fn execute_tool_blocking(
+    name: String,
+    args: String,
+    meta_agent: std::sync::Arc<tokio::sync::Mutex<crate::meta_agent::MetaAgent>>,
+    agent_manager: std::sync::Arc<tokio::sync::Mutex<crate::agent_manager::AgentManager>>,
+    app_handle: tauri::AppHandle,
+) -> String {
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            tools::execute_tool_with_state(&name, &args, meta_agent, agent_manager, app_handle)
+                .await
         })
-    } else {
-        Ok(VoiceStatus {
-            is_active: false,
-            transcript: String::new(),
-        })
-    }
+    })
+    .join()
+    .unwrap_or_else(|_| "Tool execution failed".to_string())
 }

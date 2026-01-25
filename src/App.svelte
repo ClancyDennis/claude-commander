@@ -67,6 +67,7 @@
     showElevatedCommand,
     pendingElevatedCount,
   } from "./lib/stores/security";
+  import { setMetaTodos } from "./lib/stores/metaTodos";
   import SecurityAlertDetail from "./lib/components/SecurityAlertDetail.svelte";
   import NotificationsModal from "./lib/components/NotificationsModal.svelte";
   import ElevatedCommandModal from "./lib/components/ElevatedCommandModal.svelte";
@@ -270,6 +271,9 @@
       },
       onNavigate: (agentId) => {
         openAgent(agentId);
+      },
+      onMetaAgentTodos: (event) => {
+        setMetaTodos(event.todos);
       },
 
       // Pipeline callbacks
