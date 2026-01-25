@@ -25,14 +25,22 @@
     suggestionStatuses = new Map(suggestionStatuses);
   }
 
-  let acceptedCount = $derived(
-    Array.from(suggestionStatuses.values()).filter((s) => s === "accepted").length
-  );
+  // Single-pass count calculation for both accepted and pending
+  let counts = $derived.by(() => {
+    let accepted = 0;
+    let nonPending = 0;
+    for (const status of suggestionStatuses.values()) {
+      if (status === "accepted") accepted++;
+      if (status !== "pending") nonPending++;
+    }
+    return {
+      accepted,
+      pending: analysis.suggestions.length - nonPending
+    };
+  });
 
-  let pendingCount = $derived(
-    analysis.suggestions.length -
-    Array.from(suggestionStatuses.values()).filter((s) => s !== "pending").length
-  );
+  let acceptedCount = $derived(counts.accepted);
+  let pendingCount = $derived(counts.pending);
 
   // Quality score color
   let scoreColor = $derived(

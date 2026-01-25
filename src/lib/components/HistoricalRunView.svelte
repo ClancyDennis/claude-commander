@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { selectedHistoricalRun } from "../stores/agents";
+  import { invoke } from "@tauri-apps/api/core";
+  import { selectedHistoricalRun, addAgent, openAgent, setSidebarMode, pendingAgentPrompt } from "../stores/agents";
+  import { showToast } from "./ToastNotifications.svelte";
+
+  // Type for the resume run result from backend
+  interface ResumeRunResult {
+    agent_id: string;
+    context_prompt: string | null;
+  }
   import type {
     AgentRun,
     OrchestratorToolCall,
@@ -29,6 +37,9 @@
 
   // Scroll position for virtualized lists
   let scrollTop = $state(0);
+
+  // Resume operation state
+  let isResuming = $state(false);
 
   // Loading states
   let loadingPrompts = $state(false);
@@ -113,6 +124,60 @@
     activeTab = tab;
   }
 
+  async function handleResume(autoStart: boolean) {
+    if (!$selectedHistoricalRun || isResuming) return;
+
+    const runToResume = $selectedHistoricalRun;
+    isResuming = true;
+
+    try {
+      const result = await invoke<ResumeRunResult>("resume_crashed_run", {
+        agentId: runToResume.agent_id,
+        autoStart: autoStart
+      });
+
+      // Add the new agent to the store
+      addAgent({
+        id: result.agent_id,
+        workingDir: runToResume.working_dir,
+        status: "running",
+        isProcessing: autoStart,  // Only processing if auto-started
+        pendingInput: !autoStart,  // Waiting for input if not auto-started
+        lastActivity: new Date(),
+      });
+
+      // If not auto-starting, set pending prompt for input pre-fill
+      if (!autoStart && result.context_prompt) {
+        pendingAgentPrompt.set({
+          agentId: result.agent_id,
+          prompt: result.context_prompt
+        });
+      }
+
+      // Switch to running agents view and select the new agent
+      setSidebarMode('running');
+      openAgent(result.agent_id);
+
+      showToast({
+        type: "success",
+        message: autoStart
+          ? "Run resumed successfully"
+          : "Agent created - review the context and send when ready",
+        duration: 3000
+      });
+
+    } catch (error) {
+      console.error("Failed to resume run:", error);
+      showToast({
+        type: "error",
+        message: `Failed to resume run: ${error}`,
+        duration: 5000
+      });
+    } finally {
+      isResuming = false;
+    }
+  }
+
   // Derived values for tab counts
   let activityCount = $derived(toolCalls.length + stateChanges.length + decisions.length);
   let hasPipeline = $derived(!!$selectedHistoricalRun?.pipeline_id);
@@ -139,6 +204,7 @@
           run={$selectedHistoricalRun}
           {prompts}
           {outputs}
+          onResume={handleResume}
         />
       {:else if activeTab === 'activity'}
         <ActivityTab

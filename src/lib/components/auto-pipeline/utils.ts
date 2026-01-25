@@ -102,6 +102,28 @@ export function countByType(outputs: UnifiedOutput[]): {
 }
 
 /**
+ * Count outputs per stage AND type in a single pass (performance optimization)
+ */
+export function countOutputs(outputs: UnifiedOutput[]): {
+  stageCounts: { Orchestrator: number; Planning: number; Building: number; Verifying: number };
+  typeCounts: { text: number; tool_use: number; tool_result: number; error: number; orchestrator_tool: number; state_change: number; decision: number };
+} {
+  const stageCounts = { Orchestrator: 0, Planning: 0, Building: 0, Verifying: 0 };
+  const typeCounts = { text: 0, tool_use: 0, tool_result: 0, error: 0, orchestrator_tool: 0, state_change: 0, decision: 0 };
+
+  for (const o of outputs) {
+    if (o.stage in stageCounts) {
+      stageCounts[o.stage as keyof typeof stageCounts]++;
+    }
+    if (o.output_type in typeCounts) {
+      typeCounts[o.output_type as keyof typeof typeCounts]++;
+    }
+  }
+
+  return { stageCounts, typeCounts };
+}
+
+/**
  * Filter outputs based on stage, type, and search query
  */
 export function filterOutputs(

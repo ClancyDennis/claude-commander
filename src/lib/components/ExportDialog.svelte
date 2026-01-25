@@ -28,18 +28,18 @@
     return Array.from(types).sort();
   });
 
-  // Filter outputs based on settings
+  // Filter outputs based on settings - skip spread when no filter needed
   const filteredOutputs = $derived.by(() => {
-    let filtered = [...outputs];
+    const needsFilter = filterType !== "all" || !includeToolCalls;
+    if (!needsFilter) return outputs;
 
+    let filtered = outputs;
     if (filterType !== "all") {
       filtered = filtered.filter(o => o.type === filterType);
     }
-
     if (!includeToolCalls) {
       filtered = filtered.filter(o => o.type !== "tool_use" && o.type !== "tool_result");
     }
-
     return filtered;
   });
 

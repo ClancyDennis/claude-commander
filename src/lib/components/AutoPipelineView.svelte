@@ -15,8 +15,7 @@
   import { PipelineHeader, StageIndicator, FilterBar, OutputList } from './auto-pipeline';
   import {
     processOutputs,
-    countByStage,
-    countByType,
+    countOutputs,
     filterOutputs,
     formatToolDisplay,
     getOrchestratorActiveStage,
@@ -55,8 +54,10 @@
   // Derived values using utility functions
   let allOutputs = $derived(processOutputs(pipeline, pipelineHistory));
   let filteredOutputs = $derived(filterOutputs(allOutputs, stageFilter, typeFilter, searchQuery));
-  let stageCounts = $derived(countByStage(allOutputs));
-  let typeCounts = $derived(countByType(allOutputs));
+  // Single-pass count calculation for both stage and type counts
+  let outputCounts = $derived(countOutputs(allOutputs));
+  let stageCounts = $derived(outputCounts.stageCounts);
+  let typeCounts = $derived(outputCounts.typeCounts);
 
   // Orchestrator status derived values
   let totalToolCount = $derived($orchestratorToolCalls.length);

@@ -1,9 +1,18 @@
 // Agent-related Tauri commands
 
+use crate::agent_runs_db::{AgentRun, EventQueryFilters};
 use crate::skill_generator;
 use crate::types::{AgentInfo, AgentSource, AgentStatistics};
 use crate::AppState;
+use serde::Serialize;
 use std::sync::Arc;
+
+/// Result returned when resuming a crashed run
+#[derive(Debug, Clone, Serialize)]
+pub struct ResumeRunResult {
+    pub agent_id: String,
+    pub context_prompt: Option<String>,
+}
 
 /// Get the global instructions directory (~/.instructions/)
 fn get_instructions_dir() -> Result<std::path::PathBuf, String> {
@@ -313,12 +322,56 @@ pub async fn list_github_repos() -> Result<Vec<serde_json::Value>, String> {
     Ok(repos)
 }
 
+/// Build a context-aware prompt for resuming a crashed run
+fn build_resume_prompt(
+    run: &AgentRun,
+    prompts: &[(String, i64)],
+    last_output: Option<String>,
+) -> String {
+    let mut prompt_parts = Vec::new();
+
+    // Add context header
+    prompt_parts.push("# Resuming Previous Session".to_string());
+    prompt_parts.push(format!(
+        "This is a continuation of a previous session that ended with status: {:?}",
+        run.status
+    ));
+
+    if let Some(ref error) = run.error_message {
+        prompt_parts.push(format!(
+            "\nThe previous session ended with error:\n```\n{}\n```",
+            error
+        ));
+    }
+
+    // Include the last user prompt
+    if let Some((last_prompt, _timestamp)) = prompts.last() {
+        prompt_parts.push("\n## Last User Request".to_string());
+        prompt_parts.push(last_prompt.clone());
+    } else if let Some(ref initial) = run.initial_prompt {
+        prompt_parts.push("\n## Original Request".to_string());
+        prompt_parts.push(initial.clone());
+    }
+
+    // Include the last agent output/response
+    if let Some(output) = last_output {
+        prompt_parts.push("\n## Last Agent Response".to_string());
+        prompt_parts.push(output);
+    }
+
+    prompt_parts.push("\n---".to_string());
+    prompt_parts.push("Please continue from where the previous session left off.".to_string());
+
+    prompt_parts.join("\n")
+}
+
 #[tauri::command]
 pub async fn resume_crashed_run(
     agent_id: String,
+    auto_start: bool,
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<ResumeRunResult, String> {
     // Get the run from database
     let run = state
         .agent_runs_db
@@ -332,7 +385,34 @@ pub async fn resume_crashed_run(
         return Err("This run cannot be resumed".to_string());
     }
 
-    // Recreate the agent with the same working directory and context
+    // Get conversation history (prompts) from the previous run
+    let prompts = state
+        .agent_runs_db
+        .get_prompts(&agent_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Get the last agent output
+    let last_output = {
+        let filters = EventQueryFilters {
+            agent_id: Some(agent_id.clone()),
+            pipeline_id: run.pipeline_id.clone(),
+            limit: Some(1),
+            ..Default::default()
+        };
+        state
+            .agent_runs_db
+            .query_agent_outputs(filters)
+            .await
+            .ok()
+            .and_then(|outputs| outputs.into_iter().next())
+            .map(|o| o.content)
+    };
+
+    // Build the context-aware resume prompt
+    let resume_prompt = build_resume_prompt(&run, &prompts, last_output);
+
+    // Recreate the agent with the same working directory
     let manager = state.agent_manager.lock().await;
     let new_agent_id = manager
         .create_agent(
@@ -344,14 +424,21 @@ pub async fn resume_crashed_run(
         )
         .await?;
 
-    // If there was an initial prompt, resend it
-    // Note: For resumed runs, we don't pass security_monitor to avoid re-analyzing
-    // the prompt that was already analyzed in the original run
-    if let Some(initial_prompt) = run.initial_prompt {
+    // Either auto-start with the prompt or return it for pre-filling
+    if auto_start && !resume_prompt.is_empty() {
+        // Note: For resumed runs, we don't pass security_monitor to avoid re-analyzing
+        // the prompt that was already analyzed in the original run
         manager
-            .send_prompt(&new_agent_id, &initial_prompt, None, None)
+            .send_prompt(&new_agent_id, &resume_prompt, None, None)
             .await?;
+        Ok(ResumeRunResult {
+            agent_id: new_agent_id,
+            context_prompt: None,
+        })
+    } else {
+        Ok(ResumeRunResult {
+            agent_id: new_agent_id,
+            context_prompt: Some(resume_prompt),
+        })
     }
-
-    Ok(new_agent_id)
 }

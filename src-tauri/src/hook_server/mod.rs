@@ -18,9 +18,42 @@ pub use elevated_commands::{
     approve_elevated_request, deny_elevated_request, get_pending_elevated_commands,
 };
 
+/// Global storage for agent todo lists (accessible by meta-agent tools)
+static AGENT_TODOS: std::sync::OnceLock<Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>> =
+    std::sync::OnceLock::new();
+
+/// Initialize the global todo storage (called from start_hook_server)
+pub fn init_agent_todos(todos: Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>) {
+    let _ = AGENT_TODOS.set(todos);
+}
+
+/// Get the todo list for a specific agent
+pub async fn get_agent_todos(agent_id: &str) -> Option<Vec<AgentTodoItem>> {
+    let todos = AGENT_TODOS.get()?;
+    let guard = todos.lock().await;
+    guard.get(agent_id).cloned()
+}
+
+/// Get all agent todo lists
+pub async fn get_all_agent_todos() -> HashMap<String, Vec<AgentTodoItem>> {
+    if let Some(todos) = AGENT_TODOS.get() {
+        todos.lock().await.clone()
+    } else {
+        HashMap::new()
+    }
+}
+
 // Re-export the handler functions for internal router use
 use elevated_commands::{handle_elevated_request, handle_elevated_status, handle_scope_check};
 use tool_tracking::handle_hook;
+
+/// A single task/todo item from an agent's TodoWrite call
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AgentTodoItem {
+    pub content: String,
+    pub status: String, // "pending", "in_progress", "completed"
+    pub active_form: Option<String>,
+}
 
 /// Shared state for the hook server
 pub struct HookServerState {
@@ -32,6 +65,8 @@ pub struct HookServerState {
     pub(crate) pending_elevated: Arc<Mutex<HashMap<String, PendingElevatedCommand>>>,
     /// Approved script scopes (script_hash -> expiry timestamp)
     pub(crate) approved_scopes: Arc<Mutex<HashMap<String, i64>>>,
+    /// Latest todo list per agent (agent_id -> todo items)
+    pub(crate) agent_todos: Arc<Mutex<HashMap<String, Vec<AgentTodoItem>>>>,
 }
 
 /// Start the hook server on the specified port
@@ -47,6 +82,11 @@ pub async fn start_hook_server(
     pending_elevated: Arc<Mutex<HashMap<String, PendingElevatedCommand>>>,
     approved_scopes: Arc<Mutex<HashMap<String, i64>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let agent_todos = Arc::new(Mutex::new(HashMap::new()));
+
+    // Initialize global todo storage for meta-agent access
+    init_agent_todos(agent_todos.clone());
+
     let state = Arc::new(HookServerState {
         agent_manager,
         app_handle,
@@ -54,6 +94,7 @@ pub async fn start_hook_server(
         security_monitor,
         pending_elevated,
         approved_scopes,
+        agent_todos,
     });
 
     let app = Router::new()

@@ -145,6 +145,7 @@
 
         <AgentInput
           status={agent.status}
+          agentId={effectiveAgentId}
           onSend={sendPrompt}
         />
       </div>

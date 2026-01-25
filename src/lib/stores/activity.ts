@@ -17,11 +17,11 @@ export const agentActivities = writable<Map<string, AgentActivity>>(new Map());
 export const agentActivityWithIdle = derived(
   [agentActivities],
   ([$activities]) => {
-    const now = new Date();
+    const now = Date.now(); // Use Date.now() instead of new Date() to avoid object creation
     const result = new Map<string, AgentActivity>();
 
     $activities.forEach((activity, agentId) => {
-      const idleTime = now.getTime() - activity.lastActivity.getTime();
+      const idleTime = now - activity.lastActivity.getTime();
       result.set(agentId, {
         ...activity,
         idleTime,

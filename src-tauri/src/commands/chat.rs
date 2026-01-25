@@ -34,9 +34,12 @@ pub async fn clear_chat_history(state: tauri::State<'_, AppState>) -> Result<(),
 #[tauri::command]
 pub async fn process_agent_results(
     agent_id: String,
+    results_only: Option<bool>,
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<ChatResponse, String> {
+    let results_only = results_only.unwrap_or(false);
+
     // Get agent outputs
     let manager = state.agent_manager.lock().await;
     let outputs = manager.get_agent_outputs(&agent_id, 0).await?;
@@ -49,7 +52,11 @@ pub async fn process_agent_results(
         .unwrap_or_else(|| agent_id.clone());
 
     // Format outputs
-    let mut formatted_output = format!("Results from agent in {}:\n\n", agent_name);
+    let mut formatted_output = if results_only {
+        format!("Final results from agent in {}:\n\n", agent_name)
+    } else {
+        format!("Full output from agent in {}:\n\n", agent_name)
+    };
 
     for output in outputs.iter() {
         match output.output_type.as_str() {
@@ -57,6 +64,10 @@ pub async fn process_agent_results(
                 formatted_output.push_str(&format!("Assistant: {}\n\n", output.content));
             }
             "tool_use" => {
+                // Skip tool uses if results_only mode
+                if results_only {
+                    continue;
+                }
                 // Extract tool name from content
                 let tool_name = if output.content.contains("Using tool:") {
                     output.content.lines().next().unwrap_or("Unknown tool")
@@ -66,6 +77,10 @@ pub async fn process_agent_results(
                 formatted_output.push_str(&format!("{}\n", tool_name));
             }
             "tool_result" => {
+                // Skip tool results if results_only mode
+                if results_only {
+                    continue;
+                }
                 // Truncate long tool results
                 let truncated = if output.content.len() > 500 {
                     format!("{}...[truncated]", &output.content[..500])

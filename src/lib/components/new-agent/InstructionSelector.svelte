@@ -5,6 +5,7 @@
   import HelpTip from "./HelpTip.svelte";
   import InstructionItem from "./InstructionItem.svelte";
   import InstructionEditorModal from "../InstructionEditorModal.svelte";
+  import InstructionWizard from "../InstructionWizard.svelte";
 
   let {
     workingDir,
@@ -24,6 +25,9 @@
   let showEditorModal = $state(false);
   let editingFile = $state<InstructionFileInfo | null>(null);
   let error = $state("");
+
+  // Wizard Modal State
+  let showWizardModal = $state(false);
 
   // Skill Generation State
   let generatingSkillForFile = $state<string | null>(null);
@@ -162,6 +166,11 @@
     });
   }
 
+  function handleWizardSaved(filename: string) {
+    showWizardModal = false;
+    handleModalSaved(filename);
+  }
+
   function toggleInstructionSelection(fileId: string) {
     if (selectedInstructions.has(fileId)) {
       selectedInstructions.delete(fileId);
@@ -190,6 +199,15 @@
   />
 {/if}
 
+<!-- Instruction Wizard Modal -->
+{#if showWizardModal}
+  <InstructionWizard
+    {workingDir}
+    onClose={() => showWizardModal = false}
+    onSaved={handleWizardSaved}
+  />
+{/if}
+
 <label>
   <div class="label-row">
     <span class="label-text" style="margin-bottom: 0;">
@@ -207,6 +225,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
+      </button>
+      <button class="icon-btn small wizard-btn" onclick={() => showWizardModal = true} title="Create with guided wizard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+        Wizard
       </button>
       <button class="icon-btn small" onclick={openCreateModal} title="Create new with AI assistance">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -339,6 +365,17 @@
   .icon-btn.small svg {
     width: 12px;
     height: 12px;
+  }
+
+  .icon-btn.wizard-btn {
+    background: linear-gradient(135deg, var(--accent-hex), var(--accent-hover));
+    border-color: var(--accent-hex);
+    color: white;
+  }
+
+  .icon-btn.wizard-btn:hover {
+    background: linear-gradient(135deg, var(--accent-hover), var(--accent-hex));
+    color: white;
   }
 
   .instructions-section {

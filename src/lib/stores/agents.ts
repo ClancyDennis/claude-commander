@@ -63,6 +63,9 @@ export const sidebarMode = writable<'running' | 'history'>('running');
 export const historicalRuns = writable<AgentRun[]>([]);
 export const selectedHistoricalRun = writable<AgentRun | null>(null);
 
+// Store for pre-filling agent input when resuming without auto-start
+export const pendingAgentPrompt = writable<{ agentId: string; prompt: string } | null>(null);
+
 // ============================================================================
 // Chat-Related Stores (Meta-Agent)
 // ============================================================================
@@ -108,6 +111,9 @@ export const selectedAgentStats = derived(
   }
 );
 
+// Memoized agentsWithOutputs to prevent unnecessary re-renders
+let lastAgentsWithOutputs: Array<{id: string; workingDir: string; outputCount: number}> = [];
+
 export const agentsWithOutputs = derived(
   [agents, agentOutputs],
   ([$agents, $agentOutputs]) => {
@@ -126,7 +132,25 @@ export const agentsWithOutputs = derived(
       }
     });
 
-    return agentsArray;
+    // Only return a new array if the data actually changed (structural comparison)
+    if (agentsArray.length !== lastAgentsWithOutputs.length) {
+      lastAgentsWithOutputs = agentsArray;
+      return agentsArray;
+    }
+
+    // Check if any item changed
+    const hasChanged = agentsArray.some((item, i) => {
+      const prev = lastAgentsWithOutputs[i];
+      return !prev || item.id !== prev.id || item.outputCount !== prev.outputCount;
+    });
+
+    if (hasChanged) {
+      lastAgentsWithOutputs = agentsArray;
+      return agentsArray;
+    }
+
+    // Return the same reference to prevent reactivity triggers
+    return lastAgentsWithOutputs;
   }
 );
 
@@ -176,51 +200,138 @@ export function removeAgent(agentId: string) {
 }
 
 // ============================================================================
-// Agent Output Functions
+// Agent Output Functions (with debouncing to prevent UI lag)
 // ============================================================================
 
-export function appendOutput(agentId: string, output: AgentOutput) {
-  console.log("[Store] appendOutput called for agent:", agentId, "output:", output);
-  agentOutputs.update((map) => {
-    const outputs = map.get(agentId) ?? [];
-    console.log("[Store] Current outputs for agent:", outputs.length);
-    // Create a new array to trigger reactivity
-    const newOutputs = [...outputs, output];
-    const newMap = new Map(map);
-    newMap.set(agentId, newOutputs);
-    console.log("[Store] New output count:", newOutputs.length);
-    return newMap;
-  });
+const OUTPUT_DEBOUNCE_MS = 50;
 
-  // Update unread count if agent not currently viewed
-  const currentViewed = get(viewedAgents);
-  if (!currentViewed.has(agentId)) {
-    agents.update((map) => {
-      const agent = map.get(agentId);
-      if (agent) {
-        const unreadCount = (agent.unreadOutputs ?? 0) + 1;
-        map.set(agentId, { ...agent, unreadOutputs: unreadCount });
+// Pending outputs and events to be batched
+const pendingOutputs: Map<string, AgentOutput[]> = new Map();
+const pendingToolEvents: Map<string, ToolEvent[]> = new Map();
+const pendingUnreadCounts: Map<string, number> = new Map();
+const pendingActivityUpdates: Map<string, { lastActivity: Date; isProcessing: boolean }> = new Map();
+
+let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let toolEventFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushOutputs() {
+  if (pendingOutputs.size === 0 && pendingUnreadCounts.size === 0 && pendingActivityUpdates.size === 0) return;
+
+  // Batch update agentOutputs
+  if (pendingOutputs.size > 0) {
+    agentOutputs.update((map) => {
+      const newMap = new Map(map);
+      for (const [agentId, outputs] of pendingOutputs) {
+        const existing = newMap.get(agentId) ?? [];
+        newMap.set(agentId, [...existing, ...outputs]);
       }
-      return new Map(map);
+      return newMap;
     });
+    pendingOutputs.clear();
   }
 
-  // Update last activity
-  updateAgentActivity(agentId, {
+  // Batch update agents (unread counts + activity)
+  if (pendingUnreadCounts.size > 0 || pendingActivityUpdates.size > 0) {
+    agents.update((map) => {
+      const newMap = new Map(map);
+
+      // Apply unread count updates
+      for (const [agentId, count] of pendingUnreadCounts) {
+        const agent = newMap.get(agentId);
+        if (agent) {
+          const currentUnread = agent.unreadOutputs ?? 0;
+          newMap.set(agentId, { ...agent, unreadOutputs: currentUnread + count });
+        }
+      }
+
+      // Apply activity updates
+      for (const [agentId, activity] of pendingActivityUpdates) {
+        const agent = newMap.get(agentId);
+        if (agent) {
+          newMap.set(agentId, { ...agent, ...activity });
+        }
+      }
+
+      return newMap;
+    });
+    pendingUnreadCounts.clear();
+    pendingActivityUpdates.clear();
+  }
+}
+
+function flushToolEvents() {
+  if (pendingToolEvents.size === 0) return;
+
+  toolEvents.update((map) => {
+    const newMap = new Map(map);
+    for (const [agentId, events] of pendingToolEvents) {
+      const existing = newMap.get(agentId) ?? [];
+      newMap.set(agentId, [...existing, ...events]);
+    }
+    return newMap;
+  });
+  pendingToolEvents.clear();
+}
+
+export function appendOutput(agentId: string, output: AgentOutput) {
+  // Queue output for batching
+  const existing = pendingOutputs.get(agentId) ?? [];
+  existing.push(output);
+  pendingOutputs.set(agentId, existing);
+
+  // Queue unread count update if agent not currently viewed
+  const currentViewed = get(viewedAgents);
+  if (!currentViewed.has(agentId)) {
+    const currentPending = pendingUnreadCounts.get(agentId) ?? 0;
+    pendingUnreadCounts.set(agentId, currentPending + 1);
+  }
+
+  // Queue activity update
+  pendingActivityUpdates.set(agentId, {
     lastActivity: new Date(),
     isProcessing: false,
   });
+
+  // Debounce the flush
+  if (outputFlushTimer) {
+    clearTimeout(outputFlushTimer);
+  }
+  outputFlushTimer = setTimeout(() => {
+    outputFlushTimer = null;
+    flushOutputs();
+  }, OUTPUT_DEBOUNCE_MS);
 }
 
 export function appendToolEvent(agentId: string, event: ToolEvent) {
-  toolEvents.update((map) => {
-    const events = map.get(agentId) ?? [];
-    // Create a new array to trigger reactivity
-    const newEvents = [...events, event];
-    const newMap = new Map(map);
-    newMap.set(agentId, newEvents);
-    return newMap;
-  });
+  // Queue event for batching
+  const existing = pendingToolEvents.get(agentId) ?? [];
+  existing.push(event);
+  pendingToolEvents.set(agentId, existing);
+
+  // Debounce the flush
+  if (toolEventFlushTimer) {
+    clearTimeout(toolEventFlushTimer);
+  }
+  toolEventFlushTimer = setTimeout(() => {
+    toolEventFlushTimer = null;
+    flushToolEvents();
+  }, OUTPUT_DEBOUNCE_MS);
+}
+
+/**
+ * Force flush all pending agent updates (useful before cleanup or sync operations)
+ */
+export function flushAgentUpdates() {
+  if (outputFlushTimer) {
+    clearTimeout(outputFlushTimer);
+    outputFlushTimer = null;
+  }
+  if (toolEventFlushTimer) {
+    clearTimeout(toolEventFlushTimer);
+    toolEventFlushTimer = null;
+  }
+  flushOutputs();
+  flushToolEvents();
 }
 
 export function clearAgentOutput(agentId: string) {

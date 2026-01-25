@@ -85,7 +85,7 @@
     }
   }
 
-  async function handleProcessResults(agentId: string) {
+  async function handleProcessResults(agentId: string, resultsOnly: boolean = false) {
     if (processingAgentId || $metaAgentThinking) return;
 
     processingAgentId = agentId;
@@ -94,6 +94,7 @@
     try {
       const response = await invoke<ChatResponse>("process_agent_results", {
         agentId,
+        resultsOnly,
       });
 
       // Add the response to chat

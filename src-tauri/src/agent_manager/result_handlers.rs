@@ -46,7 +46,7 @@ pub(crate) async fn handle_result_message(ctx: &StreamContext, json: &serde_json
         .with_size_from_content()
         .build();
 
-    store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
+    store_in_buffer(output_event.clone(), ctx.output_buffer.clone()).await;
     let _ = ctx
         .app_handle
         .emit("agent:output", serde_json::to_value(output_event).unwrap());

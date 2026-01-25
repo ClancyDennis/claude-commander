@@ -144,7 +144,7 @@ async fn handle_text_block(
             .with_size_from_content()
             .build();
 
-        store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
+        store_in_buffer(output_event.clone(), ctx.output_buffer.clone()).await;
         let _ = ctx
             .app_handle
             .emit("agent:output", serde_json::to_value(output_event).unwrap());
@@ -193,7 +193,7 @@ async fn handle_tool_use_block(
         .with_size_from_content()
         .build();
 
-    store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
+    store_in_buffer(output_event.clone(), ctx.output_buffer.clone()).await;
     let _ = ctx
         .app_handle
         .emit("agent:output", serde_json::to_value(output_event).unwrap());
@@ -319,7 +319,7 @@ async fn handle_tool_result_block(
             .with_size_from_content()
             .build();
 
-        store_in_buffer(output_event.clone(), ctx.output_buffer.clone());
+        store_in_buffer(output_event.clone(), ctx.output_buffer.clone()).await;
         let _ = ctx
             .app_handle
             .emit("agent:output", serde_json::to_value(output_event).unwrap());

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::security_monitor::{SecurityEvent, SecurityEventMetadata, SecurityEventType};
 use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
 
-use super::HookServerState;
+use super::{AgentTodoItem, HookServerState};
 
 /// Query parameters for the hook endpoint
 #[derive(Debug, Deserialize)]
@@ -108,6 +108,38 @@ async fn handle_pre_tool_use(
 
     // Clone tool_input for use in multiple places
     let tool_input_value = input.tool_input.clone().unwrap_or(serde_json::Value::Null);
+
+    // If this is a TodoWrite call, capture the todo list
+    if tool_name == "TodoWrite" {
+        if let Some(todos_value) = tool_input_value.get("todos") {
+            if let Some(todos_array) = todos_value.as_array() {
+                let todo_items: Vec<AgentTodoItem> = todos_array
+                    .iter()
+                    .filter_map(|item| {
+                        let content = item.get("content")?.as_str()?.to_string();
+                        let status = item
+                            .get("status")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("pending")
+                            .to_string();
+                        let active_form = item
+                            .get("activeForm")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.to_string());
+                        Some(AgentTodoItem {
+                            content,
+                            status,
+                            active_form,
+                        })
+                    })
+                    .collect();
+
+                // Store the todo list for this agent
+                let mut agent_todos = state.agent_todos.lock().await;
+                agent_todos.insert(agent_id.to_string(), todo_items);
+            }
+        }
+    }
 
     // Emit pending event
     let event = ToolEventPayload {

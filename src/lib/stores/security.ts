@@ -1,4 +1,4 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type { SecurityAlert, PendingSecurityReview, PendingElevatedCommand } from "../types";
 
 // Map of agent_id -> alerts
@@ -47,11 +47,7 @@ export function clearAllAlerts() {
 }
 
 export function getAlertsForAgent(agentId: string): SecurityAlert[] {
-  let alerts: SecurityAlert[] = [];
-  securityAlerts.subscribe((map) => {
-    alerts = map.get(agentId) ?? [];
-  })();
-  return alerts;
+  return get(securityAlerts).get(agentId) ?? [];
 }
 
 // Derived: total pending reviews count
@@ -109,20 +105,12 @@ export function removePendingReview(reviewId: string) {
 
 // Check if agent is terminated
 export function isAgentTerminated(agentId: string): boolean {
-  let result = false;
-  terminatedAgents.subscribe((set) => {
-    result = set.has(agentId);
-  })();
-  return result;
+  return get(terminatedAgents).has(agentId);
 }
 
 // Check if agent is suspended
 export function isAgentSuspended(agentId: string): boolean {
-  let result = false;
-  suspendedAgents.subscribe((set) => {
-    result = set.has(agentId);
-  })();
-  return result;
+  return get(suspendedAgents).has(agentId);
 }
 
 // Store for selected alert detail (for modal display)
@@ -169,18 +157,25 @@ export const unreadAlertCount = derived(
     $active.filter((a) => !$readState.get(a.alertId)).length
 );
 
-// Derived: Highest severity among unread alerts
+// Derived: Highest severity among unread alerts (single-pass with early exit)
 export const highestUnreadSeverity = derived(
   [activeAlerts, alertReadState],
   ([$active, $readState]) => {
-    const unread = $active.filter((a) => !$readState.get(a.alertId));
-    const severityOrder = ["critical", "high", "medium", "low"];
-    for (const severity of severityOrder) {
-      if (unread.some((a) => a.severity === severity)) {
-        return severity as SecurityAlert["severity"];
+    let highest: SecurityAlert["severity"] | null = null;
+    const severityRank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+    let highestRank = 0;
+
+    for (const a of $active) {
+      if (!$readState.get(a.alertId)) {
+        const rank = severityRank[a.severity];
+        if (rank > highestRank) {
+          highestRank = rank;
+          highest = a.severity;
+          if (rank === 4) break; // Can't get higher than critical
+        }
       }
     }
-    return null;
+    return highest;
   }
 );
 
@@ -194,8 +189,7 @@ export function markAlertRead(alertId: string) {
 
 // Mark all alerts as read
 export function markAllAlertsRead() {
-  let alerts: SecurityAlert[] = [];
-  activeAlerts.subscribe((a) => (alerts = a))();
+  const alerts = get(activeAlerts);
   alertReadState.update((map) => {
     alerts.forEach((a) => map.set(a.alertId, true));
     return new Map(map);
@@ -312,11 +306,7 @@ export function closeElevatedCommandModal() {
 
 // Get pending elevated command by ID
 export function getElevatedCommand(requestId: string): PendingElevatedCommand | undefined {
-  let result: PendingElevatedCommand | undefined;
-  pendingElevatedCommands.subscribe((map) => {
-    result = map.get(requestId);
-  })();
-  return result;
+  return get(pendingElevatedCommands).get(requestId);
 }
 
 // Clean up expired elevated commands

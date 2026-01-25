@@ -8,6 +8,7 @@
     enableImageAttachment?: boolean;
     maxHeight?: number;
     class?: string;
+    pendingPrompt?: string | null;
   };
 </script>
 
@@ -34,6 +35,7 @@
     enableImageAttachment = false,
     maxHeight = 200,
     class: className,
+    pendingPrompt = null,
     onSend,
     prefix,
     suffix,
@@ -49,16 +51,27 @@
   let isDragging = $state(false);
   let error = $state<string | null>(null);
 
-  // Cleanup object URLs on destroy
+  // Cleanup object URLs and pending RAF on destroy
   onDestroy(() => {
     revokePreviewUrl(attachedImage);
+    if (heightRafId !== null) {
+      cancelAnimationFrame(heightRafId);
+    }
   });
 
+  let heightRafId: number | null = null;
+
   function adjustInputHeight() {
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + "px";
-    }
+    // Debounce height adjustments using requestAnimationFrame to prevent layout thrashing
+    if (heightRafId !== null) return;
+
+    heightRafId = requestAnimationFrame(() => {
+      heightRafId = null;
+      if (textarea) {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + "px";
+      }
+    });
   }
 
   async function addImageFile(file: File) {
@@ -163,6 +176,17 @@
     }
   });
 
+  // Watch for pending prompt (e.g., from resume run)
+  $effect(() => {
+    if (pendingPrompt) {
+      input = pendingPrompt;
+      // Focus the textarea
+      if (textarea) {
+        textarea.focus();
+      }
+    }
+  });
+
   const canSend = $derived(!disabled && (!!input.trim() || !!attachedImage));
 </script>
 
@@ -201,7 +225,6 @@
       bind:this={textarea}
       bind:value={input}
       onkeydown={handleKeydown}
-      oninput={adjustInputHeight}
       onpaste={handlePaste}
       {placeholder}
       {disabled}

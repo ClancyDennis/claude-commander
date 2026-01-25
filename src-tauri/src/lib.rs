@@ -316,6 +316,11 @@ pub fn run() {
             // Instruction analysis commands
             commands::analyze_instruction_content,
             commands::apply_instruction_suggestions,
+            // Instruction wizard commands
+            commands::generate_instruction_draft,
+            commands::create_test_agent,
+            commands::analyze_test_results,
+            commands::stop_test_agent,
             // Skill commands
             commands::generate_skill_from_instruction,
             commands::list_generated_skills,

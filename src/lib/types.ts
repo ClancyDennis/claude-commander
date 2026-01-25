@@ -283,6 +283,54 @@ export interface InstructionAnalysisResult {
   improvedContent?: string;
 }
 
+// ============================================================================
+// Instruction Wizard Types
+// ============================================================================
+
+export interface InstructionDraft {
+  content: string;
+  suggestedFilename: string;
+  suggestedTestPrompt: string;
+  potentialRequirements: string[];
+  complexity: "simple" | "moderate" | "complex";
+}
+
+export type TestSessionStatus = "running" | "completed" | "failed" | "timeout";
+
+export interface TestAgentSession {
+  sessionId: string;
+  agentId: string;
+  status: TestSessionStatus;
+  startedAt: number;
+  tempInstructionFile?: string;
+}
+
+export type FindingType =
+  | "MissingTool"
+  | "AuthRequired"
+  | "PermissionDenied"
+  | "EnvironmentSetup"
+  | "InstructionAmbiguity"
+  | "SuccessPattern"
+  | "Other";
+
+export interface TestFinding {
+  id: string;
+  findingType: FindingType;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  description: string;
+  resolutionHint?: string;
+}
+
+export interface TestAnalysisResult {
+  status: TestSessionStatus;
+  durationMs: number;
+  findings: TestFinding[];
+  recommendations: string[];
+  rawOutputSummary: string;
+}
+
 export interface GeneratedSkill {
   skillName: string;
   skillPath: string;

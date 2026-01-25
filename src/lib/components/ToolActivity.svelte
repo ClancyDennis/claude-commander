@@ -86,8 +86,8 @@
       });
     }
 
-    // Only reverse if we filtered (to show newest first)
-    return needsFilter ? filtered.reverse() : filtered.slice().reverse();
+    // Always return reversed copy (newest first) - use spread for clean copy
+    return [...filtered].reverse();
   });
 
   // Virtualization: calculate visible items based on scroll position

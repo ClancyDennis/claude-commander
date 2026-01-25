@@ -7,10 +7,13 @@
     run: AgentRun;
     prompts: PromptData[];
     outputs: AgentOutputRecord[];
-    onResume?: () => void;
+    onResume?: (autoStart: boolean) => void;
   }
 
   let { run, prompts, outputs, onResume }: Props = $props();
+
+  // Whether to start automatically when resuming (default: true)
+  let autoStart = $state(true);
 
   // Get the first output for the final result section
   let finalOutput = $derived(outputs.length > 0 ? outputs[0] : null);
@@ -62,12 +65,16 @@
   <!-- Resume Section -->
   {#if run.can_resume}
     <div class="resume-section">
-      <button class="primary resume-btn" onclick={onResume}>
+      <button class="primary resume-btn" onclick={() => onResume?.(autoStart)}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="5 3 19 12 5 21 5 3"/>
         </svg>
         Resume This Run
       </button>
+      <label class="auto-start-label">
+        <input type="checkbox" bind:checked={autoStart} />
+        <span>Start automatically</span>
+      </label>
       <p class="resume-hint">This run can be resumed from where it left off</p>
     </div>
   {/if}
@@ -160,5 +167,25 @@
     font-size: var(--text-xs);
     color: var(--text-muted);
     margin: 0;
+  }
+
+  .auto-start-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .auto-start-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-hex);
+    cursor: pointer;
+  }
+
+  .auto-start-label span {
+    user-select: none;
   }
 </style>

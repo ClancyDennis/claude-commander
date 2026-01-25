@@ -34,7 +34,13 @@ pub async fn execute_tool(
         "StopWorkerAgent" => agent_tools::stop_worker_agent(input.clone(), agent_manager).await,
         "ListWorkerAgents" => agent_tools::list_worker_agents(agent_manager).await,
         "GetAgentOutput" => {
-            agent_tools::get_agent_output(input.clone(), agent_manager, app_handle.clone()).await
+            agent_tools::get_agent_output(input.clone(), agent_manager.clone(), app_handle.clone()).await
+        }
+        "GetAgentTodoList" => {
+            agent_tools::get_agent_todo_list(input.clone(), agent_manager.clone()).await
+        }
+        "SearchRunHistory" => {
+            agent_tools::search_run_history(input.clone(), agent_manager).await
         }
         "NavigateToAgent" => ui_tools::navigate_to_agent(input.clone(), app_handle.clone()).await,
         "ToggleToolPanel" => ui_tools::toggle_tool_panel(input.clone(), app_handle.clone()).await,

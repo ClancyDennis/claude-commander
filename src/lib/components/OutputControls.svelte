@@ -13,15 +13,71 @@
     initialFilterType?: string;
   } = $props();
 
+  // Debounced search query - this is what the input binds to
+  let searchInputValue = $state("");
+  // The actual search query used for filtering (debounced)
   let searchQuery = $state("");
   // Intentionally capture initial value only (IIFE breaks reactive tracking)
   let filterType = $state<string>((() => initialFilterType)());
 
-  // Get unique output types for filter dropdown
+  // Debounce timer for search
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const SEARCH_DEBOUNCE_MS = 150;
+
+  // Handle search input with debouncing
+  function handleSearchInput(e: Event) {
+    const value = (e.target as HTMLInputElement).value;
+    searchInputValue = value;
+
+    // Clear existing timer
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+
+    // Debounce the actual filter update
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null;
+      searchQuery = value;
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  // Clear search immediately (no debounce needed for clear)
+  function clearSearch() {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    searchInputValue = "";
+    searchQuery = "";
+  }
+
+  // Memoize outputTypes - only recalculate when outputs array identity changes
+  // Using a cache to prevent recalculation on every filter/search change
+  const outputTypesCache = {
+    lastOutputsLength: -1,
+    lastFirstType: undefined as string | undefined,
+    cachedTypes: [] as string[]
+  };
+
   const outputTypes = $derived.by(() => {
+    // Quick check: if outputs haven't meaningfully changed, return cached
+    const firstType = outputs[0]?.type;
+    if (outputs.length === outputTypesCache.lastOutputsLength &&
+        firstType === outputTypesCache.lastFirstType) {
+      return outputTypesCache.cachedTypes;
+    }
+
+    // Recalculate
     const types = new Set<string>();
     outputs.forEach(o => types.add(o.type));
-    return Array.from(types).sort();
+    const sortedTypes = Array.from(types).sort();
+
+    // Update cache
+    outputTypesCache.lastOutputsLength = outputs.length;
+    outputTypesCache.lastFirstType = firstType;
+    outputTypesCache.cachedTypes = sortedTypes;
+
+    return sortedTypes;
   });
 
   // Apply filters
@@ -65,20 +121,31 @@
     }
   });
 
-  // Statistics
+  // Memoize stats - only recalculate byType when outputs change, not on every filter
+  const statsCache = {
+    lastOutputsLength: -1,
+    cachedByType: {} as Record<string, number>
+  };
+
   const stats = $derived.by(() => {
+    // Only recalculate byType if outputs array changed
+    if (outputs.length !== statsCache.lastOutputsLength) {
+      statsCache.lastOutputsLength = outputs.length;
+      statsCache.cachedByType = outputs.reduce((acc, o) => {
+        acc[o.type] = (acc[o.type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+    }
+
     return {
       total: outputs.length,
       filtered: filteredOutputs.length,
-      byType: outputs.reduce((acc, o) => {
-        acc[o.type] = (acc[o.type] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
+      byType: statsCache.cachedByType,
     };
   });
 
   function clearFilters() {
-    searchQuery = "";
+    clearSearch();
     filterType = "all";
   }
 
@@ -96,12 +163,13 @@
       </svg>
       <input
         type="text"
-        bind:value={searchQuery}
+        value={searchInputValue}
+        oninput={handleSearchInput}
         placeholder="Search output..."
         class="search-input"
       />
-      {#if searchQuery}
-        <button class="clear-search" onclick={() => searchQuery = ""} title="Clear search">
+      {#if searchInputValue}
+        <button class="clear-search" onclick={clearSearch} title="Clear search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -128,7 +196,7 @@
     </div>
 
     <div class="action-buttons">
-      {#if searchQuery || filterType !== "all"}
+      {#if searchInputValue || filterType !== "all"}
         <button class="secondary small" onclick={clearFilters}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>

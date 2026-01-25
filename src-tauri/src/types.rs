@@ -35,11 +35,12 @@ impl fmt::Display for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentSource {
-    UI,       // Created via NewAgentDialog
-    Meta,     // Created by meta agent
-    Pipeline, // Created by orchestration pipeline
-    Pool,     // Created by pool (legacy)
-    Manual,   // Created via API/command
+    UI,         // Created via NewAgentDialog
+    Meta,       // Created by meta agent
+    Pipeline,   // Created by orchestration pipeline
+    Pool,       // Created by pool (legacy)
+    Manual,     // Created via API/command
+    TestWizard, // Created by instruction wizard for testing
 }
 
 impl AgentSource {
@@ -51,6 +52,7 @@ impl AgentSource {
             AgentSource::Pipeline => "pipeline",
             AgentSource::Pool => "pool",
             AgentSource::Manual => "manual",
+            AgentSource::TestWizard => "testwizard",
         }
     }
 }

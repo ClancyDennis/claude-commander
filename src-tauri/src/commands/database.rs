@@ -71,6 +71,7 @@ pub async fn query_runs(
         "pipeline" => Some(AgentSource::Pipeline),
         "pool" => Some(AgentSource::Pool),
         "manual" => Some(AgentSource::Manual),
+        "testwizard" => Some(AgentSource::TestWizard),
         _ => None,
     });
 

@@ -7,25 +7,28 @@
   let { content }: { content: string } = $props();
   let container: HTMLDivElement | null = $state(null);
   let cleanupFns: (() => void)[] = [];
+  let lastRenderedContent: string | null = null;
+  let pendingRender: number | null = null;
 
-  $effect(() => {
-    if (container && content) {
-      // Clean up previous event listeners
-      cleanupFns.forEach(fn => fn());
-      cleanupFns = [];
+  function renderMarkdown(targetContainer: HTMLDivElement, markdownContent: string) {
+    // Parse markdown synchronously
+    const rawHtml = marked.parse(markdownContent, { async: false }) as string;
+    // Sanitize
+    const cleanHtml = DOMPurify.sanitize(rawHtml);
+    // Update DOM
+    targetContainer.innerHTML = cleanHtml;
 
-      // Parse markdown synchronously
-      const rawHtml = marked.parse(content, { async: false }) as string;
-      // Sanitize
-      const cleanHtml = DOMPurify.sanitize(rawHtml);
-      // Update DOM
-      container.innerHTML = cleanHtml;
+    // Defer syntax highlighting to next frame to avoid blocking input
+    requestAnimationFrame(() => {
+      if (!targetContainer.isConnected) return;
+
       // Apply syntax highlighting
-      container.querySelectorAll('pre code').forEach((el) => {
+      targetContainer.querySelectorAll('pre code').forEach((el) => {
         hljs.highlightElement(el as HTMLElement);
       });
+
       // Add copy buttons to code blocks
-      container.querySelectorAll('pre').forEach((pre) => {
+      targetContainer.querySelectorAll('pre').forEach((pre) => {
         if (pre.querySelector('.copy-btn')) return; // Already added
 
         const copyBtn = document.createElement('button');
@@ -33,7 +36,7 @@
         copyBtn.innerHTML = `
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"></path>
           </svg>
         `;
         copyBtn.title = "Copy code";
@@ -75,10 +78,39 @@
         pre.style.position = 'relative';
         pre.appendChild(copyBtn);
       });
+    });
+  }
+
+  $effect(() => {
+    if (container && content) {
+      // Skip if content hasn't changed (memoization)
+      if (content === lastRenderedContent) return;
+
+      // Clean up previous event listeners
+      cleanupFns.forEach(fn => fn());
+      cleanupFns = [];
+
+      // Cancel any pending render
+      if (pendingRender !== null) {
+        cancelAnimationFrame(pendingRender);
+      }
+
+      // Defer rendering to avoid blocking main thread during rapid updates
+      pendingRender = requestAnimationFrame(() => {
+        pendingRender = null;
+        if (container && container.isConnected) {
+          renderMarkdown(container, content);
+          lastRenderedContent = content;
+        }
+      });
     }
 
     // Return cleanup function for when effect re-runs or component unmounts
     return () => {
+      if (pendingRender !== null) {
+        cancelAnimationFrame(pendingRender);
+        pendingRender = null;
+      }
       cleanupFns.forEach(fn => fn());
       cleanupFns = [];
     };

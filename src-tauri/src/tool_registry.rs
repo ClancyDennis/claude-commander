@@ -96,6 +96,62 @@ impl ToolRegistry {
             }),
         });
 
+        tools.push(Tool {
+            name: "GetAgentTodoList".to_string(),
+            description: "Retrieves the current todo/task list from an agent. Agents use TodoWrite to track their progress through tasks. This tool lets you see what tasks an agent has planned, which are completed, which is in progress, and overall progress percentage. Call without agent_id to get todo lists for ALL agents at once.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Optional: The unique ID of the agent. If omitted, returns todo lists for ALL agents."
+                    }
+                },
+                "required": []
+            }),
+        });
+
+        tools.push(Tool {
+            name: "SearchRunHistory".to_string(),
+            description: "Search through historical agent runs stored in the database. Use this to find past work by directory, status, or keyword. Useful for questions like 'what work was done on project X?' or 'find crashed runs that can be resumed'.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "working_dir": {
+                        "type": "string",
+                        "description": "Filter by directory path (partial match). Example: '/home/user/project' matches any run in that directory or subdirectories."
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["running", "completed", "stopped", "crashed", "waiting_input"],
+                        "description": "Filter by run status."
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["ui", "meta", "pipeline", "pool", "manual"],
+                        "description": "Filter by how the agent was created."
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Search for keyword in the initial prompt. Case-insensitive partial match."
+                    },
+                    "days_back": {
+                        "type": "number",
+                        "description": "Limit to runs from the last N days. Default: 30."
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of results to return. Default: 20."
+                    },
+                    "resumable_only": {
+                        "type": "boolean",
+                        "description": "If true, only show crashed runs that can be resumed."
+                    }
+                },
+                "required": []
+            }),
+        });
+
         // UI Control Tools
         tools.push(Tool {
             name: "NavigateToAgent".to_string(),

@@ -55,16 +55,14 @@ pub(crate) async fn persist_output(
 }
 
 /// Store output in buffer, keeping last 100 outputs
-pub(crate) fn store_in_buffer(
+pub(crate) async fn store_in_buffer(
     output_event: AgentOutputEvent,
     buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
 ) {
-    tokio::spawn(async move {
-        let mut buffer = buffer.lock().await;
-        buffer.push(output_event);
-        let buffer_len = buffer.len();
-        if buffer_len > 100 {
-            buffer.drain(0..buffer_len - 100);
-        }
-    });
+    let mut buffer = buffer.lock().await;
+    buffer.push(output_event);
+    let buffer_len = buffer.len();
+    if buffer_len > 100 {
+        buffer.drain(0..buffer_len - 100);
+    }
 }
