@@ -63,6 +63,11 @@ export {
   // Voice icons
   Mic,
   MicOff,
+  Volume2,
+  VolumeX,
+
+  // Communication icons
+  MessageCircle,
 } from "lucide-svelte";
 
 // Icon size presets for consistency

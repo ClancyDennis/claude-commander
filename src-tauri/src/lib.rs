@@ -371,11 +371,21 @@ pub fn run() {
             commands::update_config_value,
             commands::update_config_batch,
             commands::validate_api_key,
-            // Voice commands
+            // Voice commands (Dictate mode)
             voice::start_voice_session,
             voice::send_voice_audio,
             voice::stop_voice_session,
-            voice::get_voice_status
+            voice::get_voice_status,
+            // Discuss mode commands
+            voice::start_discuss_session,
+            voice::send_discuss_audio,
+            voice::stop_discuss_session,
+            voice::get_discuss_status,
+            // Attention mode commands
+            voice::start_attention_session,
+            voice::send_attention_audio,
+            voice::stop_attention_session,
+            voice::get_attention_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

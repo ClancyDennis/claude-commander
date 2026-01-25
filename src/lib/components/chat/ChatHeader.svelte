@@ -1,17 +1,17 @@
 <script lang="ts">
   import { ViewHeader } from "$lib/components/ui/layout";
   import { IconButton } from "$lib/components/ui/button";
-  import { Trash2 } from "$lib/components/ui/icons";
+  import { Trash2, Mic } from "$lib/components/ui/icons";
   import HelpTip from "../new-agent/HelpTip.svelte";
-  import VoiceButton from "../voice/VoiceButton.svelte";
 
   interface Props {
     isThinking: boolean;
     onClear: () => void;
     hasOpenAiKey?: boolean;
+    onVoiceClick?: () => void;
   }
 
-  let { isThinking, onClear, hasOpenAiKey = false }: Props = $props();
+  let { isThinking, onClear, hasOpenAiKey = false, onVoiceClick }: Props = $props();
 </script>
 
 <ViewHeader emojiIcon="🎛️" title="System Commander">
@@ -26,7 +26,13 @@
   {/snippet}
   {#snippet actions()}
     {#if hasOpenAiKey}
-      <VoiceButton />
+      <IconButton
+        icon={Mic}
+        label="Voice"
+        variant="ghost"
+        onclick={onVoiceClick}
+        title="Open voice controls (Dictate or Discuss)"
+      />
     {/if}
     <IconButton
       icon={Trash2}

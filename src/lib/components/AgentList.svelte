@@ -1,6 +1,7 @@
 <script lang="ts">
   import { agents, selectedAgentId, viewMode, openChat, openAgent, toggleAgentInSelection, sidebarMode, historicalRuns, toggleSidebarMode, setHistoricalRuns, selectHistoricalRun } from "$lib/stores/agents";
   import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "$lib/stores/autoPipelines";
+  import { isAnyVoiceActive, voiceSidebarOpen } from "$lib/stores/voice";
   import type { AgentRun } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import RunningAgentsList from './agent-list/RunningAgentsList.svelte';
@@ -57,6 +58,10 @@
 
   function handleOpenChat() {
     openChat();
+    // If voice is active, also open the voice sidebar
+    if ($isAnyVoiceActive) {
+      voiceSidebarOpen.set(true);
+    }
   }
 
   function handleSelectPipeline(id: string) {
@@ -89,6 +94,7 @@
     <button
       class="system-control-btn"
       class:active={$viewMode === 'chat'}
+      class:recording={$isAnyVoiceActive}
       onclick={handleOpenChat}
     >
       <Radio size={16} />
@@ -243,6 +249,38 @@
     background: var(--accent-hex);
     border-color: var(--accent-hex);
     color: white;
+  }
+
+  .system-control-btn.recording {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgb(239, 68, 68);
+    color: rgb(239, 68, 68);
+    animation: recording-pulse 1.5s ease-in-out infinite;
+  }
+
+  .system-control-btn.recording.active {
+    background: rgb(239, 68, 68);
+    border-color: rgb(239, 68, 68);
+    color: white;
+    animation: recording-pulse-active 1.5s ease-in-out infinite;
+  }
+
+  @keyframes recording-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+  }
+
+  @keyframes recording-pulse-active {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    }
   }
 
   .sidebar-controls {

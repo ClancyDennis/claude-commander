@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import HelpTip from "./new-agent/HelpTip.svelte";
   import type { ConfigStatus, ConfigUpdate, ConfigUpdateResult, ApiKeyValidationResult } from "$lib/types";
+  import { attentionEnabled } from "$lib/stores/voice";
 
   let { onClose }: { onClose?: () => void } = $props();
 
@@ -444,6 +445,31 @@
             </span>
           </div>
         {/if}
+      </div>
+    </section>
+
+    <!-- Voice Settings -->
+    <section class="config-section">
+      <h3>Voice</h3>
+      <div class="advanced-setting-item">
+        <div class="advanced-setting-header">
+          <span class="advanced-setting-name">Voice Notifications on Task Completion</span>
+          <HelpTip text="When enabled, a voice announcement plays when agents complete their tasks. You can respond by voice or stay silent to auto-dismiss." placement="top" />
+        </div>
+        <p class="advanced-setting-description">
+          Automatically open a voice session to announce task completion results. The session will auto-close after 10 seconds of inactivity.
+        </p>
+        <div class="toggle-wrapper">
+          <label class="toggle">
+            <input
+              type="checkbox"
+              checked={$attentionEnabled}
+              onchange={(e) => attentionEnabled.set(e.currentTarget.checked)}
+            />
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">{$attentionEnabled ? "Enabled" : "Disabled"}</span>
+        </div>
       </div>
     </section>
 
