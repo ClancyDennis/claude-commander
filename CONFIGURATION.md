@@ -175,6 +175,44 @@ These scripts are automatically injected into agent PATH environments.
 
 ---
 
+## Voice Features (Beta)
+
+Voice features require an OpenAI API key with access to the Realtime API.
+
+### Requirements
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key for Realtime API access |
+
+### Voice Modes
+
+| Mode | Model | Purpose |
+|------|-------|---------|
+| Dictate | `gpt-realtime-mini` | Speech-to-text transcription |
+| Discuss | `gpt-realtime-mini` | Bidirectional voice conversation with tool access |
+| Attention | `gpt-realtime-mini` | Task completion notifications (auto-closes after 10s) |
+
+### Settings
+
+| Setting | Default | Location | Description |
+|---------|---------|----------|-------------|
+| Attention notifications | On | Settings panel | Auto-announce when tasks complete |
+| Audio mute | Off | Voice sidebar | Mute AI voice output |
+
+### Audio Configuration (Internal)
+
+These settings are hardcoded in the backend:
+
+- **Format**: PCM16 (base64-encoded)
+- **Transcription model**: Whisper-1
+- **Turn detection**: Server-side VAD
+  - Threshold: 0.5
+  - Silence duration: 700ms (dictate: 500ms)
+  - Prefix padding: 300ms
+
+---
+
 ## Security Monitoring
 
 Security monitoring is enabled by default. Configure via the security settings:

@@ -65,12 +65,41 @@ Claude Commander is a desktop application built with:
 
 | Module | File | Purpose |
 |--------|------|---------|
-| Agent Manager | `agent_manager.rs` | Agent lifecycle (create, start, stop, monitor) |
-| Meta Agent | `meta_agent.rs` | LLM-based supervisor that orchestrates agents |
-| Hook Server | `hook_server.rs` | HTTP server receiving Claude Code tool events |
-| AI Client | `ai_client.rs` | Unified client for Claude + OpenAI APIs |
+| Agent Manager | `agent_manager/mod.rs` | Agent lifecycle (create, start, stop, monitor) |
+| Meta Agent | `meta_agent/mod.rs` | LLM-based supervisor that orchestrates agents |
+| Hook Server | `hook_server/mod.rs` | HTTP server receiving Claude Code tool events |
+| AI Client | `ai_client/mod.rs` | Unified client for Claude + OpenAI APIs |
 | Types | `types.rs` | Shared type definitions |
 | Tool Registry | `tool_registry.rs` | Meta-agent tool definitions |
+| Error Types | `error.rs` | Unified structured error handling |
+| DB Utilities | `db_utils.rs` | Database operation helpers |
+
+#### Agent Manager (`agent_manager/`)
+
+| Module | Purpose |
+|--------|---------|
+| `mod.rs` | Main agent manager logic |
+| `process_spawner.rs` | Claude CLI subprocess management |
+| `message_handlers.rs` | Processes agent messages |
+| `result_handlers.rs` | Handles agent completion results |
+| `stream_handler.rs` | Real-time output streaming |
+| `stream_parser.rs` | Parses agent output streams |
+| `statistics.rs` | Agent metrics and stats |
+| `database_ops.rs` | Agent persistence operations |
+
+#### Meta Agent (`meta_agent/`)
+
+| Module | Purpose |
+|--------|---------|
+| `mod.rs` | Main meta-agent orchestration |
+| `conversation_manager.rs` | History management with image support |
+| `tool_loop_engine.rs` | Iterative tool execution cycle |
+| `system_prompt.rs` | System prompt generation |
+| `result_queue.rs` | Queued results for display |
+| `action_logger.rs` | Action logging utilities |
+| `tools/agent_tools.rs` | Agent management tools |
+| `tools/fs_tools.rs` | File system tools |
+| `tools/todo_tools.rs` | Task orchestration updates |
 
 ### Pipeline System
 
@@ -116,16 +145,37 @@ The verification engine supports multiple fusion strategies:
 - **Meta-Agent Review**: LLM reviews all outputs, picks best
 - **First Correct**: Returns first output passing validation
 
-### Security Monitoring
+### Security Monitoring (`security_monitor/`)
 
-| Module | File | Purpose |
-|--------|------|---------|
-| Security Monitor | `security_monitor/` | Prompt injection detection |
+| Module | Purpose |
+|--------|---------|
+| `mod.rs` | Main monitor orchestration |
+| `builder.rs` | Fluent API for monitor construction |
+| `pattern_matcher.rs` | Fast regex threat detection |
+| `llm_analyzer.rs` | AI-based threat analysis |
+| `prompts.rs` | LLM prompts for threat analysis |
+| `expectation_generator.rs` | Predicts expected tool usage |
+| `session_expectations.rs` | Tracks expected vs actual tool calls |
+| `response_handler.rs` | Threat response actions |
+| `anomaly_detection.rs` | Detects unusual behavior patterns |
+| `collector.rs` | Collects security events |
+| `rules.rs` | Security rule definitions |
+| `path_matching.rs` | File path security matching |
+| `parsing_utils.rs` | Security data parsing utilities |
 
 The security system uses a hybrid approach:
-1. **Fast regex patterns**: Known threat signatures
-2. **LLM semantic analysis**: Sophisticated attack detection
-3. **Session expectations**: Tracks expected vs. actual tool calls
+1. **Fast regex patterns**: Known threat signatures (pattern_matcher)
+2. **LLM semantic analysis**: Sophisticated attack detection (llm_analyzer + prompts)
+3. **Session expectations**: Tracks expected vs. actual tool calls (session_expectations)
+4. **Anomaly detection**: Flags unusual behavioral patterns
+
+#### Preset Configurations
+
+| Preset | Behavior |
+|--------|----------|
+| Default | Balanced monitoring with warnings |
+| Strict | Auto-terminate on critical threats |
+| Human Review | All actions require manual approval |
 
 ### Elevation System (Sudo Approval)
 
@@ -215,17 +265,62 @@ SCRIPT_HASH=$(echo "$PARENT_PID-$PARENT_CMD" | md5sum)
 curl "$COMMANDER_URL/elevated/check-scope/$SCRIPT_HASH"
 ```
 
+### Voice System (Beta)
+
+Real-time voice interaction powered by OpenAI Realtime API.
+
+| Module | File | Purpose |
+|--------|------|---------|
+| Session Registry | `voice/session_registry.rs` | Manages all voice session types |
+| Session Manager | `voice/session_manager.rs` | Common traits and event types |
+| Realtime (Dictate) | `voice/realtime.rs` | Speech-to-text transcription |
+| Discuss | `voice/discuss.rs` | Bidirectional conversation with tool access |
+| Attention | `voice/attention.rs` | Task completion notification overlay |
+| Voice Tools | `voice/tools.rs` | Tool execution routing for voice sessions |
+| Voice Commands | `voice/commands.rs` | Tauri command handlers |
+
+#### Voice Modes
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Dictate Mode                                                    │
+│  User speaks → Transcription → Text returned to chat            │
+├─────────────────────────────────────────────────────────────────┤
+│  Discuss Mode                                                    │
+│  User speaks ↔ AI responds (audio) ↔ Can call tools             │
+│  Tool: talk_to_mission_control → Routes to MetaAgent            │
+├─────────────────────────────────────────────────────────────────┤
+│  Attention Mode                                                  │
+│  Task completes → AI announces result → Auto-closes (10s)       │
+│  User can ask brief follow-ups before timeout                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Runs Database (`agent_runs_db/`)
+
+| Module | Purpose |
+|--------|---------|
+| `mod.rs` | Main database interface |
+| `crud.rs` | Create, read, update, delete operations |
+| `queries.rs` | Query builders and search |
+| `models.rs` | Data models and structs |
+| `schema.rs` | Database schema definitions |
+| `cost.rs` | Cost tracking persistence |
+| `orchestrator_events.rs` | Pipeline event storage |
+
 ### Supporting Systems
 
 | Module | File | Purpose |
 |--------|------|---------|
-| Cost Tracker | `cost_tracker.rs` | API cost tracking and persistence |
 | Instruction Manager | `instruction_manager.rs` | Markdown instruction handling |
+| Instruction Wizard | `commands/instruction_wizard.rs` | AI-assisted instruction generation |
 | Skill Generator | `skill_generator.rs` | Auto-generate skills from instructions |
 | Subagent Generator | `subagent_generator.rs` | Auto-generate sub-agents |
 | Claude.md Generator | `claudemd_generator.rs` | Task-specific context generation |
-| Agent Runs DB | `agent_runs_db.rs` | SQLite persistence for run history |
 | GitHub Integration | `github.rs` | GitHub API integration |
+| Logger | `logger.rs` | Centralized logging |
+| First Run | `first_run.rs` | Initial setup and wrapper installation |
+| Elevation | `elevation.rs` | Sudo/admin privilege handling |
 
 ---
 
@@ -248,14 +343,33 @@ src/
     │   ├── PoolDashboard.svelte  # Agent pool metrics
     │   ├── CostTracker.svelte    # Cost tracking interface
     │   ├── ToolActivity.svelte   # Tool execution tracking
-    │   └── OutputControls.svelte # Output search and export
+    │   ├── OutputControls.svelte # Output search and export
+    │   ├── InstructionWizard.svelte  # Instruction file wizard
+    │   ├── chat/
+    │   │   └── MetaTaskProgress.svelte  # Task progress display
+    │   ├── voice/
+    │   │   ├── VoiceSidebar.svelte      # Main voice interface
+    │   │   ├── DiscussMode.svelte       # Standalone discuss component
+    │   │   └── AttentionOverlay.svelte  # Notification overlay
+    │   ├── instruction-wizard/
+    │   │   ├── GoalInput.svelte         # Step 1: Goal input
+    │   │   ├── DraftPreview.svelte      # Step 2: Draft review
+    │   │   ├── TestRunner.svelte        # Step 4: Live testing
+    │   │   └── TestResults.svelte       # Test analysis display
+    │   └── wizard/
+    │       ├── WizardContainer.svelte   # Dialog wrapper
+    │       ├── WizardStep.svelte        # Step renderer
+    │       ├── WizardHeader.svelte      # Step header
+    │       └── WizardNavigation.svelte  # Navigation buttons
     ├── stores/
     │   ├── agents.ts             # Agent state and actions
     │   ├── pipelines.ts          # Pipeline state and progress
     │   ├── pipelineSettings.ts   # Pipeline configuration
     │   ├── costTracking.ts       # Cost data management
     │   ├── activity.ts           # Activity timeline
-    │   └── security.ts           # Security monitoring state
+    │   ├── security.ts           # Security monitoring state
+    │   ├── voice.ts              # Voice state (3 modes)
+    │   └── metaTodos.ts          # Meta-agent task tracking
     └── types.ts                  # TypeScript type definitions
 ```
 
@@ -330,25 +444,34 @@ claude-commander/
 ├── src/                           # Frontend source
 │   ├── lib/
 │   │   ├── components/            # Svelte components
+│   │   │   ├── voice/             # Voice UI components
+│   │   │   ├── chat/              # Chat view components
+│   │   │   ├── wizard/            # Reusable wizard components
+│   │   │   └── instruction-wizard/ # Instruction wizard steps
 │   │   ├── stores/                # State management
+│   │   │   ├── voice.ts           # Voice state (3 modes)
+│   │   │   └── metaTodos.ts       # Meta-agent tasks
+│   │   ├── hooks/                 # Svelte hooks
 │   │   └── types.ts               # TypeScript types
 │   ├── App.svelte                 # Main app component
 │   └── main.ts                    # Entry point
 ├── src-tauri/                     # Backend source
 │   ├── src/
-│   │   ├── agent_manager.rs       # Agent lifecycle
-│   │   ├── pipeline_manager.rs    # Pipeline orchestration
-│   │   ├── orchestrator.rs        # Task decomposition
-│   │   ├── agent_pool.rs          # Agent pool
-│   │   ├── verification_engine.rs # Verification
-│   │   ├── meta_agent.rs          # Meta-agent
+│   │   ├── agent_manager/         # Agent lifecycle (modular)
+│   │   ├── meta_agent/            # Meta-agent orchestration
+│   │   │   └── tools/             # Meta-agent tools
 │   │   ├── security_monitor/      # Security monitoring
-│   │   ├── cost_tracker.rs        # Cost tracking
-│   │   ├── hook_server.rs         # Hook server
-│   │   ├── ai_client.rs           # AI client
-│   │   ├── github.rs              # GitHub integration
+│   │   ├── agent_runs_db/         # SQLite persistence
+│   │   ├── voice/                 # Voice/Realtime API
+│   │   ├── hook_server/           # Hook server
+│   │   ├── ai_client/             # AI client
+│   │   ├── commands/              # Tauri command handlers
+│   │   ├── auto_pipeline/         # Pipeline orchestration
+│   │   ├── utils/                 # Shared utilities
 │   │   ├── tool_registry.rs       # Tool definitions
 │   │   ├── types.rs               # Type definitions
+│   │   ├── error.rs               # Error types
+│   │   ├── db_utils.rs            # Database utilities
 │   │   └── lib.rs                 # Tauri commands
 │   └── Cargo.toml
 ├── package.json

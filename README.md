@@ -34,7 +34,11 @@ New UI theme
 ## Key Features
 
 - **Run many Claude Code agents simultaneously** — parallelize any task across directories
-- **Voice mode (beta)** — talk to your agents using real-time voice interaction powered by OpenAI Realtime API
+- **Voice mode (beta)** — three modes powered by OpenAI Realtime API:
+  - **Dictate** — quick voice-to-text input
+  - **Discuss** — full conversation with AI that can execute tools
+  - **Attention** — brief notifications when tasks complete
+- **Instruction Wizard** — AI-assisted creation and testing of instruction files
 - **Guided instruction files** — walks you through connecting any service (OneDrive, Gmail, Azure, etc.)
 - **Automatic security detection** — catches prompt injection and dangerous commands before they run
 - **Sudo command approval** — agents can request elevated privileges with your explicit approval
@@ -413,7 +417,9 @@ Claude Commander builds on ideas from the AI agent community:
 - Cost tracking across all agents
 - Instruction file → Skills → Sub-agents transformation
 - Revised UI with streamlined settings and modern design
-- Voice mode (beta) — Real-time voice interaction using OpenAI Realtime API
+- Voice mode (beta) — Three modes: Dictate, Discuss, and Attention
+- Instruction Wizard — AI-assisted instruction file creation and testing
+- Meta-agent task progress — Visual orchestration with real-time tracking
 
 **In Progress:**
 - Pre-built binaries for Windows, macOS, Linux
