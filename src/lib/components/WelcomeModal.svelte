@@ -1,25 +1,22 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import logoIcon from "$lib/assets/claude-commander-icon.png";
   import * as Dialog from "$lib/components/ui/dialog";
-  import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import {
-    Sparkles,
-    Code,
-    FileText,
-    MessageSquare,
-    Play,
-    Settings,
-    FolderOpen,
     Check,
-    ChevronRight,
-    Keyboard,
     ArrowRight,
+    Terminal,
+    Key,
+    Loader2,
+    ExternalLink,
     Rocket,
-    Star
+    RefreshCw,
+    Copy,
+    ChevronDown,
+    ChevronUp,
+    AlertCircle
   } from "lucide-svelte";
 
   interface Props {
@@ -33,95 +30,208 @@
 
   // Wizard state
   let currentStep = $state(1);
-  let selectedPath = $state<"example" | "custom" | null>(null);
-  let apiKey = $state("");
-  let selectedFolder = $state("");
-  let projectType = $state<"web" | "cli" | "library" | "other" | null>(null);
-  let animationKey = $state(0);
-
-  const TOTAL_STEPS = 4;
+  const TOTAL_STEPS = 3;
   const STORAGE_KEY = "claude-commander-onboarding-complete";
 
-  // Derived state
-  let isApiConfigured = $derived(apiKey.length > 0);
-  let canProceedFromStep3 = $derived(selectedFolder.length > 0);
+  // Step 1: Claude Code Status
+  let claudeStatus = $state<{
+    checking: boolean;
+    installed: boolean;
+    path: string | null;
+    version: string | null;
+    authenticated: boolean;
+    authType: string | null;
+    subscriptionType: string | null;
+  }>({
+    checking: true,
+    installed: false,
+    path: null,
+    version: null,
+    authenticated: false,
+    authType: null,
+    subscriptionType: null
+  });
 
-  // Example use cases for Step 1
-  const useCases = [
-    {
-      icon: Code,
-      title: "Build Features",
-      description: "Describe what you want and let AI agents write the code"
-    },
-    {
-      icon: FileText,
-      title: "Refactor Code",
-      description: "Modernize legacy code or improve architecture automatically"
-    },
-    {
-      icon: MessageSquare,
-      title: "Debug Issues",
-      description: "Explain bugs in plain language and get fixes generated"
+  // Step 2: Authentication Options
+  let authConfig = $state<{
+    claudeAuth: { expanded: boolean; status: "unchecked" | "ready" };
+    anthropicKey: {
+      expanded: boolean;
+      value: string;
+      status: "unchecked" | "validating" | "valid" | "invalid";
+      message: string;
+    };
+    openaiKey: {
+      expanded: boolean;
+      value: string;
+      status: "unchecked" | "validating" | "valid" | "invalid";
+      message: string;
+    };
+  }>({
+    claudeAuth: { expanded: false, status: "unchecked" },
+    anthropicKey: { expanded: false, value: "", status: "unchecked", message: "" },
+    openaiKey: { expanded: false, value: "", status: "unchecked", message: "" }
+  });
+
+  // Command copied state
+  let commandCopied = $state(false);
+
+  // Derived: Can proceed from step 2 (at least one valid auth method)
+  let hasValidAuth = $derived(
+    authConfig.claudeAuth.status === "ready" ||
+      authConfig.anthropicKey.status === "valid" ||
+      authConfig.openaiKey.status === "valid"
+  );
+
+  // Check Claude Code on mount and when step 1 is shown
+  $effect(() => {
+    if (show && currentStep === 1 && claudeStatus.checking) {
+      checkClaudeCode();
     }
-  ];
+  });
 
-  // Keyboard shortcuts for Step 4
-  const shortcuts = [
-    { keys: ["Ctrl", "K"], description: "Open command palette" },
-    { keys: ["Ctrl", "Enter"], description: "Send message to agent" },
-    { keys: ["Ctrl", "Shift", "N"], description: "New agent" },
-    { keys: ["Esc"], description: "Cancel current operation" }
-  ];
+  async function checkClaudeCode() {
+    claudeStatus.checking = true;
+    try {
+      const status = await invoke<{
+        installed: boolean;
+        path: string | null;
+        version: string | null;
+        authenticated: boolean;
+        auth_type: string | null;
+        subscription_type: string | null;
+      }>("check_claude_code_installed");
 
-  // Project types for Step 3
-  const projectTypes = [
-    { id: "web", label: "Web App" },
-    { id: "cli", label: "CLI Tool" },
-    { id: "library", label: "Library" },
-    { id: "other", label: "Other" }
-  ] as const;
+      claudeStatus = {
+        checking: false,
+        installed: status.installed,
+        path: status.path,
+        version: status.version,
+        authenticated: status.authenticated,
+        authType: status.auth_type,
+        subscriptionType: status.subscription_type
+      };
+
+      // If Claude Code is already authenticated, set the auth status
+      if (status.authenticated) {
+        authConfig.claudeAuth.status = "ready";
+      }
+    } catch (e) {
+      console.error("Failed to check Claude Code:", e);
+      claudeStatus = {
+        checking: false,
+        installed: false,
+        path: null,
+        version: null,
+        authenticated: false,
+        authType: null,
+        subscriptionType: null
+      };
+    }
+  }
+
+  async function recheckClaudeCode() {
+    claudeStatus.checking = true;
+    await checkClaudeCode();
+  }
+
+  async function copyInstallCommand() {
+    try {
+      await navigator.clipboard.writeText("npm install -g @anthropic-ai/claude-code");
+      commandCopied = true;
+      setTimeout(() => (commandCopied = false), 2000);
+    } catch (e) {
+      console.error("Failed to copy:", e);
+    }
+  }
+
+  async function validateApiKey(provider: "anthropic" | "openai") {
+    const config = provider === "anthropic" ? authConfig.anthropicKey : authConfig.openaiKey;
+    if (!config.value.trim()) return;
+
+    if (provider === "anthropic") {
+      authConfig.anthropicKey.status = "validating";
+    } else {
+      authConfig.openaiKey.status = "validating";
+    }
+
+    try {
+      const result = await invoke<{ valid: boolean; message: string }>("validate_api_key", {
+        provider,
+        apiKey: config.value
+      });
+
+      if (provider === "anthropic") {
+        authConfig.anthropicKey.status = result.valid ? "valid" : "invalid";
+        authConfig.anthropicKey.message = result.message;
+      } else {
+        authConfig.openaiKey.status = result.valid ? "valid" : "invalid";
+        authConfig.openaiKey.message = result.message;
+      }
+    } catch (e) {
+      if (provider === "anthropic") {
+        authConfig.anthropicKey.status = "invalid";
+        authConfig.anthropicKey.message = String(e);
+      } else {
+        authConfig.openaiKey.status = "invalid";
+        authConfig.openaiKey.message = String(e);
+      }
+    }
+  }
+
+  async function saveApiKeys() {
+    const updates: { key: string; value: string }[] = [];
+
+    if (authConfig.anthropicKey.status === "valid" && authConfig.anthropicKey.value) {
+      updates.push({ key: "ANTHROPIC_API_KEY", value: authConfig.anthropicKey.value });
+    }
+    if (authConfig.openaiKey.status === "valid" && authConfig.openaiKey.value) {
+      updates.push({ key: "OPENAI_API_KEY", value: authConfig.openaiKey.value });
+    }
+
+    if (updates.length > 0) {
+      try {
+        await invoke("update_config_batch", { updates });
+      } catch (e) {
+        console.error("Failed to save API keys:", e);
+      }
+    }
+  }
+
+  function toggleAuthCard(card: "claudeAuth" | "anthropicKey" | "openaiKey") {
+    if (card === "claudeAuth") {
+      authConfig.claudeAuth.expanded = !authConfig.claudeAuth.expanded;
+    } else if (card === "anthropicKey") {
+      authConfig.anthropicKey.expanded = !authConfig.anthropicKey.expanded;
+    } else {
+      authConfig.openaiKey.expanded = !authConfig.openaiKey.expanded;
+    }
+  }
+
+  function markClaudeAuthReady() {
+    authConfig.claudeAuth.status = "ready";
+  }
 
   function goToStep(step: number) {
-    animationKey++;
     currentStep = step;
   }
 
-  function handleGetStarted() {
+  async function handleContinueToAuth() {
     goToStep(2);
   }
 
-  function handleChoosePath(path: "example" | "custom") {
-    selectedPath = path;
-    if (path === "example") {
-      goToStep(4);
-    } else {
-      goToStep(3);
-    }
-  }
-
-  async function handleSelectFolder() {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select Project Folder"
-      });
-      if (selected && typeof selected === "string") {
-        selectedFolder = selected;
-      }
-    } catch (e) {
-      console.error("Failed to open folder picker:", e);
-    }
-  }
-
-  function handleContinueFromSetup() {
-    goToStep(4);
+  async function handleContinueToReady() {
+    await saveApiKeys();
+    goToStep(3);
   }
 
   function handleStartTutorial() {
     completeOnboarding();
-    dispatch("startTutorial");
     onClose();
+    // Delay tour start to avoid click propagation to backdrop
+    setTimeout(() => {
+      dispatch("startTutorial");
+    }, 100);
   }
 
   function handleSkip() {
@@ -137,294 +247,360 @@
     }
   }
 
-  async function handleOpenConfigFolder() {
-    try {
-      await invoke("open_config_directory");
-    } catch (e) {
-      console.error("Failed to open config directory:", e);
-    }
-  }
-
-  function handleBack() {
-    if (currentStep === 3) {
-      goToStep(2);
-    } else if (currentStep === 4) {
-      if (selectedPath === "custom") {
-        goToStep(3);
-      } else {
-        goToStep(2);
-      }
-    } else if (currentStep === 2) {
-      goToStep(1);
-    }
-  }
+  // Keyboard shortcuts data
+  const shortcuts = [
+    { keys: ["Ctrl", "K"], label: "Command palette" },
+    { keys: ["Ctrl", "Enter"], label: "Send message" },
+    { keys: ["Ctrl", "Shift", "N"], label: "New agent" }
+  ];
 </script>
 
 <Dialog.Root bind:open={show}>
-  <Dialog.Content class="max-w-2xl p-0 overflow-hidden">
+  <Dialog.Content class="welcome-modal">
     <!-- Progress Indicator -->
-    <div class="flex items-center justify-center gap-2 pt-6 pb-2">
+    <div class="progress-dots">
       {#each Array(TOTAL_STEPS) as _, i}
         <div
-          class="h-2 rounded-full transition-all duration-300 {i + 1 === currentStep
-            ? 'w-8 bg-primary'
-            : i + 1 < currentStep
-              ? 'w-2 bg-primary/60'
-              : 'w-2 bg-muted'}"
+          class="progress-dot"
+          class:active={i + 1 === currentStep}
+          class:completed={i + 1 < currentStep}
         ></div>
       {/each}
     </div>
 
     <!-- Step Content -->
-    <div class="p-6 pt-2" key={animationKey}>
-      <!-- Step 1: Welcome -->
+    <div class="step-container">
+      <!-- Step 1: Claude Code Check -->
       {#if currentStep === 1}
-        <div class="animate-fade-in">
-          <div class="flex flex-col items-center text-center mb-6">
-            <div class="mb-4">
-              <img src={logoIcon} alt="Claude Commander" class="w-16 h-16 rounded-xl" />
-            </div>
-            <Dialog.Header class="items-center">
-              <Dialog.Title class="text-2xl">Welcome to Claude Commander</Dialog.Title>
-              <Dialog.Description class="text-base mt-2">
-                Claude Commander helps you get things done using AI assistants.
-                Describe what you want in plain language, and watch intelligent agents
-                handle the heavy lifting.
-              </Dialog.Description>
-            </Dialog.Header>
+        <div class="step-content animate-scale-in">
+          <!-- Welcome Header -->
+          <div class="welcome-header">
+            <img src={logoIcon} alt="Claude Commander" class="logo" />
+            <h1>Welcome to Claude Commander</h1>
+            <p class="subtitle">Let's get you set up in just a few steps</p>
           </div>
 
-          <div class="grid gap-3 mb-6">
-            {#each useCases as useCase}
-              <div class="flex items-start gap-4 p-4 rounded-lg bg-muted/50 border border-border">
-                <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <svelte:component this={useCase.icon} class="w-5 h-5 text-primary" />
+          <!-- Claude Code Status Card -->
+          <div class="status-card" class:success={claudeStatus.installed}>
+            <div
+              class="status-icon"
+              class:success={claudeStatus.installed}
+              class:checking={claudeStatus.checking}
+            >
+              {#if claudeStatus.checking}
+                <Loader2 class="icon-spin" />
+              {:else if claudeStatus.installed}
+                <Check />
+              {:else}
+                <Terminal />
+              {/if}
+            </div>
+
+            <div class="status-content">
+              <h3>Claude Code CLI</h3>
+              {#if claudeStatus.checking}
+                <p class="status-message">Checking installation...</p>
+              {:else if claudeStatus.installed}
+                <p class="status-message success">
+                  Installed
+                  {#if claudeStatus.version}
+                    <span class="version">({claudeStatus.version})</span>
+                  {/if}
+                  {#if claudeStatus.authenticated}
+                    <span class="auth-indicator"> · Authenticated</span>
+                    {#if claudeStatus.subscriptionType}
+                      <span class="subscription-badge">{claudeStatus.subscriptionType}</span>
+                    {/if}
+                  {/if}
+                </p>
+              {:else}
+                <p class="status-message warning">Not installed</p>
+              {/if}
+            </div>
+
+            {#if !claudeStatus.checking && claudeStatus.installed}
+              <div class="status-badge success">
+                <Check class="badge-icon" />
+                Ready
+              </div>
+            {/if}
+          </div>
+
+          <!-- Install Instructions (shown when not installed) -->
+          {#if !claudeStatus.installed && !claudeStatus.checking}
+            <div class="install-section">
+              <h4>Install with npm:</h4>
+              <div class="install-command-wrapper">
+                <code class="install-command">npm install -g @anthropic-ai/claude-code</code>
+                <button class="copy-btn" onclick={copyInstallCommand} title="Copy to clipboard">
+                  {#if commandCopied}
+                    <Check class="copy-icon success" />
+                  {:else}
+                    <Copy class="copy-icon" />
+                  {/if}
+                </button>
+              </div>
+
+              <div class="install-actions">
+                <Button variant="outline" onclick={recheckClaudeCode} class="recheck-btn">
+                  <RefreshCw class="btn-icon" />
+                  Re-check
+                </Button>
+                <Button
+                  variant="ghost"
+                  onclick={() =>
+                    window.open("https://docs.anthropic.com/en/docs/claude-code", "_blank")}
+                >
+                  <ExternalLink class="btn-icon" />
+                  Documentation
+                </Button>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Footer Actions -->
+          <div class="step-footer">
+            <div></div>
+            <div class="footer-right">
+              {#if claudeStatus.installed}
+                <Button onclick={handleContinueToAuth} size="lg" class="continue-btn">
+                  Continue
+                  <ArrowRight class="btn-icon-right" />
+                </Button>
+              {:else}
+                <Button variant="ghost" onclick={handleContinueToAuth}>Skip for now</Button>
+              {/if}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Step 2: Authentication Setup -->
+      {#if currentStep === 2}
+        <div class="step-content animate-slide-up">
+          <div class="step-header">
+            <h2>Authentication</h2>
+            <p class="subtitle">Choose one or more authentication methods</p>
+          </div>
+
+          <div class="auth-options">
+            <!-- Claude Code Authentication -->
+            <div class="auth-card" class:expanded={authConfig.claudeAuth.expanded}>
+              <button class="auth-toggle" onclick={() => toggleAuthCard("claudeAuth")}>
+                <div class="auth-icon claude">
+                  <Terminal />
                 </div>
-                <div class="flex-1">
-                  <h4 class="font-medium text-foreground">{useCase.title}</h4>
-                  <p class="text-sm text-muted-foreground">{useCase.description}</p>
+                <div class="auth-info">
+                  <h4>Claude Code Authentication</h4>
+                  <p>Use existing Claude Code login (run <code>claude</code> to authenticate)</p>
                 </div>
+                <div class="auth-toggle-icon">
+                  {#if authConfig.claudeAuth.status === "ready"}
+                    <div class="status-badge success small">
+                      <Check class="badge-icon" />
+                    </div>
+                  {:else if authConfig.claudeAuth.expanded}
+                    <ChevronUp />
+                  {:else}
+                    <ChevronDown />
+                  {/if}
+                </div>
+              </button>
+
+              {#if authConfig.claudeAuth.expanded}
+                <div class="auth-expand">
+                  <p class="auth-instructions">
+                    If you've already authenticated Claude Code in your terminal, click "I'm Ready"
+                    below. Otherwise, open a terminal and run <code>claude</code> to start the
+                    authentication process.
+                  </p>
+                  <Button
+                    onclick={markClaudeAuthReady}
+                    disabled={authConfig.claudeAuth.status === "ready"}
+                  >
+                    {#if authConfig.claudeAuth.status === "ready"}
+                      <Check class="btn-icon" />
+                      Authenticated
+                    {:else}
+                      I'm Ready
+                    {/if}
+                  </Button>
+                </div>
+              {/if}
+            </div>
+
+            <!-- Anthropic API Key -->
+            <div class="auth-card" class:expanded={authConfig.anthropicKey.expanded}>
+              <button class="auth-toggle" onclick={() => toggleAuthCard("anthropicKey")}>
+                <div class="auth-icon anthropic">
+                  <Key />
+                </div>
+                <div class="auth-info">
+                  <h4>Anthropic API Key</h4>
+                  <p>Use your own Anthropic API key for direct access</p>
+                </div>
+                <div class="auth-toggle-icon">
+                  {#if authConfig.anthropicKey.status === "valid"}
+                    <div class="status-badge success small">
+                      <Check class="badge-icon" />
+                    </div>
+                  {:else if authConfig.anthropicKey.status === "invalid"}
+                    <div class="status-badge error small">
+                      <AlertCircle class="badge-icon" />
+                    </div>
+                  {:else if authConfig.anthropicKey.expanded}
+                    <ChevronUp />
+                  {:else}
+                    <ChevronDown />
+                  {/if}
+                </div>
+              </button>
+
+              {#if authConfig.anthropicKey.expanded}
+                <div class="auth-expand">
+                  <div class="api-key-input-group">
+                    <input
+                      type="password"
+                      placeholder="sk-ant-..."
+                      bind:value={authConfig.anthropicKey.value}
+                      class="api-key-input"
+                    />
+                    <Button
+                      variant="outline"
+                      onclick={() => validateApiKey("anthropic")}
+                      disabled={authConfig.anthropicKey.status === "validating" ||
+                        !authConfig.anthropicKey.value}
+                    >
+                      {#if authConfig.anthropicKey.status === "validating"}
+                        <Loader2 class="btn-icon icon-spin" />
+                      {:else}
+                        Validate
+                      {/if}
+                    </Button>
+                  </div>
+                  {#if authConfig.anthropicKey.message}
+                    <p
+                      class="validation-message"
+                      class:success={authConfig.anthropicKey.status === "valid"}
+                      class:error={authConfig.anthropicKey.status === "invalid"}
+                    >
+                      {authConfig.anthropicKey.message}
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!-- OpenAI API Key -->
+            <div class="auth-card" class:expanded={authConfig.openaiKey.expanded}>
+              <button class="auth-toggle" onclick={() => toggleAuthCard("openaiKey")}>
+                <div class="auth-icon openai">
+                  <Key />
+                </div>
+                <div class="auth-info">
+                  <h4>OpenAI API Key</h4>
+                  <p>Use OpenAI models as an alternative provider</p>
+                </div>
+                <div class="auth-toggle-icon">
+                  {#if authConfig.openaiKey.status === "valid"}
+                    <div class="status-badge success small">
+                      <Check class="badge-icon" />
+                    </div>
+                  {:else if authConfig.openaiKey.status === "invalid"}
+                    <div class="status-badge error small">
+                      <AlertCircle class="badge-icon" />
+                    </div>
+                  {:else if authConfig.openaiKey.expanded}
+                    <ChevronUp />
+                  {:else}
+                    <ChevronDown />
+                  {/if}
+                </div>
+              </button>
+
+              {#if authConfig.openaiKey.expanded}
+                <div class="auth-expand">
+                  <div class="api-key-input-group">
+                    <input
+                      type="password"
+                      placeholder="sk-..."
+                      bind:value={authConfig.openaiKey.value}
+                      class="api-key-input"
+                    />
+                    <Button
+                      variant="outline"
+                      onclick={() => validateApiKey("openai")}
+                      disabled={authConfig.openaiKey.status === "validating" ||
+                        !authConfig.openaiKey.value}
+                    >
+                      {#if authConfig.openaiKey.status === "validating"}
+                        <Loader2 class="btn-icon icon-spin" />
+                      {:else}
+                        Validate
+                      {/if}
+                    </Button>
+                  </div>
+                  {#if authConfig.openaiKey.message}
+                    <p
+                      class="validation-message"
+                      class:success={authConfig.openaiKey.status === "valid"}
+                      class:error={authConfig.openaiKey.status === "invalid"}
+                    >
+                      {authConfig.openaiKey.message}
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Footer Actions -->
+          <div class="step-footer">
+            <Button variant="ghost" onclick={() => goToStep(1)}>Back</Button>
+            <div class="footer-right">
+              <Button variant="ghost" onclick={handleSkip}>Skip</Button>
+              <Button onclick={handleContinueToReady} disabled={!hasValidAuth} size="lg">
+                Continue
+                <ArrowRight class="btn-icon-right" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Step 3: Ready -->
+      {#if currentStep === 3}
+        <div class="step-content ready-step animate-scale-in">
+          <div class="success-icon">
+            <Check />
+          </div>
+
+          <h2>You're All Set!</h2>
+          <p class="subtitle">Claude Commander is ready to help you build amazing things.</p>
+
+          <!-- Quick Tips / Keyboard Shortcuts -->
+          <div class="quick-tips">
+            {#each shortcuts as shortcut}
+              <div class="tip">
+                <div class="tip-keys">
+                  {#each shortcut.keys as key, i}
+                    {#if i > 0}<span class="key-separator">+</span>{/if}
+                    <kbd>{key}</kbd>
+                  {/each}
+                </div>
+                <span class="tip-label">{shortcut.label}</span>
               </div>
             {/each}
           </div>
 
-          <Dialog.Footer class="justify-center">
-            <Button onclick={handleGetStarted} size="lg" class="gap-2">
-              Get Started
-              <ArrowRight class="w-4 h-4" />
-            </Button>
-          </Dialog.Footer>
-        </div>
-      {/if}
-
-      <!-- Step 2: Choose Path -->
-      {#if currentStep === 2}
-        <div class="animate-slide-in">
-          <Dialog.Header class="text-center mb-6">
-            <Dialog.Title class="text-xl">How would you like to start?</Dialog.Title>
-            <Dialog.Description>
-              Choose your preferred onboarding path
-            </Dialog.Description>
-          </Dialog.Header>
-
-          <div class="grid gap-4 mb-6">
-            <!-- Try an Example Card -->
-            <button
-              onclick={() => handleChoosePath("example")}
-              class="text-left w-full"
-            >
-              <Card.Root class="transition-all duration-200 hover:border-primary hover:shadow-md cursor-pointer {selectedPath === 'example' ? 'border-primary ring-2 ring-primary/20' : ''}">
-                <Card.Header class="pb-2">
-                  <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
-                      <Play class="w-6 h-6 text-success" />
-                    </div>
-                    <div class="flex-1">
-                      <div class="flex items-center gap-2">
-                        <Card.Title class="text-lg">Try an Example</Card.Title>
-                        <span class="px-2 py-0.5 text-xs font-medium bg-success/10 text-success rounded-full">
-                          Recommended
-                        </span>
-                      </div>
-                      <Card.Description>
-                        Jump right in with a pre-configured demo project
-                      </Card.Description>
-                    </div>
-                    <ChevronRight class="w-5 h-5 text-muted-foreground" />
-                  </div>
-                </Card.Header>
-              </Card.Root>
-            </button>
-
-            <!-- Set Up My Project Card -->
-            <button
-              onclick={() => handleChoosePath("custom")}
-              class="text-left w-full"
-            >
-              <Card.Root class="transition-all duration-200 hover:border-primary hover:shadow-md cursor-pointer {selectedPath === 'custom' ? 'border-primary ring-2 ring-primary/20' : ''}">
-                <Card.Header class="pb-2">
-                  <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Settings class="w-6 h-6 text-primary" />
-                    </div>
-                    <div class="flex-1">
-                      <Card.Title class="text-lg">Set Up My Project</Card.Title>
-                      <Card.Description>
-                        Configure Claude Commander for your own codebase
-                      </Card.Description>
-                    </div>
-                    <ChevronRight class="w-5 h-5 text-muted-foreground" />
-                  </div>
-                </Card.Header>
-              </Card.Root>
-            </button>
-          </div>
-
-          <Dialog.Footer class="justify-between">
-            <Button variant="ghost" onclick={handleBack}>
-              Back
-            </Button>
-            <Button variant="ghost" onclick={handleSkip}>
-              Skip for now
-            </Button>
-          </Dialog.Footer>
-        </div>
-      {/if}
-
-      <!-- Step 3: Quick Setup -->
-      {#if currentStep === 3}
-        <div class="animate-slide-in">
-          <Dialog.Header class="text-center mb-6">
-            <Dialog.Title class="text-xl">Quick Setup</Dialog.Title>
-            <Dialog.Description>
-              Configure the essentials to get started
-            </Dialog.Description>
-          </Dialog.Header>
-
-          <div class="space-y-4 mb-6">
-            <!-- API Key Input -->
-            <div class="space-y-2">
-              <label for="api-key" class="text-sm font-medium flex items-center gap-2">
-                API Key
-                <span class="text-xs text-muted-foreground">(optional - can be set later)</span>
-              </label>
-              <div class="flex gap-2">
-                <input
-                  id="api-key"
-                  type="password"
-                  bind:value={apiKey}
-                  placeholder="sk-..."
-                  class="flex-1 h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
-                <Button variant="outline" onclick={handleOpenConfigFolder}>
-                  <FolderOpen class="w-4 h-4" />
-                </Button>
-              </div>
-              <p class="text-xs text-muted-foreground">
-                Or set ANTHROPIC_API_KEY in your .env file
-              </p>
-            </div>
-
-            <!-- Folder Picker -->
-            <div class="space-y-2">
-              <label for="folder" class="text-sm font-medium">
-                Project Folder
-              </label>
-              <div class="flex gap-2">
-                <input
-                  id="folder"
-                  type="text"
-                  bind:value={selectedFolder}
-                  placeholder="Select a folder..."
-                  readonly
-                  class="flex-1 h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
-                  onclick={handleSelectFolder}
-                />
-                <Button variant="outline" onclick={handleSelectFolder}>
-                  <FolderOpen class="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            <!-- Project Type Selection -->
-            <div class="space-y-2">
-              <label class="text-sm font-medium flex items-center gap-2">
-                Project Type
-                <span class="text-xs text-muted-foreground">(optional)</span>
-              </label>
-              <div class="flex flex-wrap gap-2">
-                {#each projectTypes as type}
-                  <button
-                    onclick={() => (projectType = type.id)}
-                    class="px-3 py-1.5 text-sm rounded-md border transition-colors {projectType === type.id
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background border-input hover:bg-accent hover:text-accent-foreground'}"
-                  >
-                    {type.label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          </div>
-
-          <Dialog.Footer class="justify-between">
-            <Button variant="ghost" onclick={handleBack}>
-              Back
-            </Button>
-            <Button onclick={handleContinueFromSetup} class="gap-2">
-              Continue
-              <ArrowRight class="w-4 h-4" />
-            </Button>
-          </Dialog.Footer>
-        </div>
-      {/if}
-
-      <!-- Step 4: Ready -->
-      {#if currentStep === 4}
-        <div class="animate-slide-in">
-          <div class="flex flex-col items-center text-center mb-6">
-            <div class="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
-              <Check class="w-8 h-8 text-success" />
-            </div>
-            <Dialog.Header class="items-center">
-              <Dialog.Title class="text-2xl">You're all set!</Dialog.Title>
-              <Dialog.Description class="text-base mt-2">
-                Claude Commander is ready to help you build amazing things.
-              </Dialog.Description>
-            </Dialog.Header>
-          </div>
-
-          <!-- Keyboard Shortcuts -->
-          <div class="mb-6">
-            <h4 class="text-sm font-medium mb-3 flex items-center gap-2">
-              <Keyboard class="w-4 h-4" />
-              Keyboard Shortcuts
-            </h4>
-            <div class="grid grid-cols-2 gap-2">
-              {#each shortcuts as shortcut}
-                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
-                  <span class="text-sm text-muted-foreground">{shortcut.description}</span>
-                  <div class="flex gap-1">
-                    {#each shortcut.keys as key}
-                      <kbd class="px-2 py-1 text-xs font-medium bg-background border border-border rounded shadow-sm">
-                        {key}
-                      </kbd>
-                    {/each}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <Dialog.Footer class="flex-col gap-2">
-            <Button onclick={handleStartTutorial} size="lg" class="w-full gap-2">
-              <Rocket class="w-4 h-4" />
+          <!-- Footer Actions -->
+          <div class="step-footer final">
+            <Button onclick={handleStartTutorial} size="lg" class="tour-btn">
+              <Rocket class="btn-icon" />
               Take Interactive Tour
             </Button>
-            <Button variant="ghost" onclick={handleSkip} class="w-full">
-              Skip for now
-            </Button>
-          </Dialog.Footer>
+            <Button variant="ghost" onclick={handleSkip}>Skip and get started</Button>
+          </div>
         </div>
       {/if}
     </div>
@@ -432,46 +608,589 @@
 </Dialog.Root>
 
 <style>
-  /* Animation classes */
-  :global(.animate-fade-in) {
-    animation: fadeIn 0.3s ease-out;
+  /* ============================================
+     MODAL CONTAINER - Apple HIG
+     ============================================ */
+
+  :global(.welcome-modal) {
+    max-width: 560px !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border-radius: var(--radius-xl) !important;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-hex) !important;
+    box-shadow: var(--shadow-xl) !important;
   }
 
-  :global(.animate-slide-in) {
-    animation: slideIn 0.3s ease-out;
+  /* ============================================
+     PROGRESS INDICATOR
+     ============================================ */
+
+  .progress-dots {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-5) 0 var(--space-3);
   }
 
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
+  .progress-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--bg-elevated);
+    transition: all var(--transition-normal);
   }
 
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateX(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
+  .progress-dot.active {
+    width: 24px;
+    background: var(--accent-hex);
   }
 
-  /* Input styling */
-  input {
-    font-family: inherit;
+  .progress-dot.completed {
+    background: var(--accent-hex);
+    opacity: 0.5;
   }
 
-  input:read-only {
+  /* ============================================
+     STEP CONTAINER
+     ============================================ */
+
+  .step-container {
+    padding: 0 var(--space-8) var(--space-8);
+  }
+
+  .step-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  /* ============================================
+     WELCOME HEADER
+     ============================================ */
+
+  .welcome-header {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .logo {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: var(--leading-relaxed);
+  }
+
+  .step-header {
+    text-align: center;
+  }
+
+  .step-header .subtitle {
+    margin-top: var(--space-2);
+  }
+
+  /* ============================================
+     STATUS CARD
+     ============================================ */
+
+  .status-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-normal);
+  }
+
+  .status-card.success {
+    border-color: rgba(52, 199, 89, 0.3);
+    background: rgba(52, 199, 89, 0.08);
+  }
+
+  .status-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    transition: all var(--transition-normal);
+  }
+
+  .status-icon :global(svg) {
+    width: 24px;
+    height: 24px;
+  }
+
+  .status-icon.success {
+    background: var(--success-glow);
+    color: var(--success-hex);
+  }
+
+  .status-icon.checking {
+    background: var(--accent-glow);
+    color: var(--accent-hex);
+  }
+
+  .status-content {
+    flex: 1;
+  }
+
+  .status-content h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-medium);
+    margin: 0 0 var(--space-1);
+    color: var(--text-primary);
+  }
+
+  .status-message {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  .status-message.success {
+    color: var(--success-hex);
+  }
+
+  .status-message.warning {
+    color: var(--warning-hex);
+  }
+
+  .version {
+    opacity: 0.8;
+    font-size: var(--text-xs);
+  }
+
+  .auth-indicator {
+    color: var(--success-hex);
+  }
+
+  .subscription-badge {
+    display: inline-block;
+    margin-left: var(--space-2);
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    background: var(--accent-glow);
+    color: var(--accent-hex);
+    border-radius: var(--radius-full);
+    text-transform: capitalize;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+  }
+
+  .status-badge.success {
+    background: var(--success-glow);
+    color: var(--success-hex);
+  }
+
+  .status-badge.error {
+    background: var(--error-glow);
+    color: var(--error);
+  }
+
+  .status-badge.small {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .badge-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* ============================================
+     INSTALL SECTION
+     ============================================ */
+
+  .install-section {
+    padding: var(--space-5);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-lg);
+    text-align: center;
+  }
+
+  .install-section h4 {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin: 0 0 var(--space-3);
+    font-weight: var(--font-medium);
+  }
+
+  .install-command-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .install-command {
+    flex: 1;
+    display: block;
+    padding: var(--space-4);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: var(--text-sm);
+    color: var(--text-accent);
+    text-align: left;
+    user-select: all;
+    border: 1px solid var(--border-hex);
+  }
+
+  .copy-btn {
+    padding: var(--space-3);
+    background: var(--bg-elevated);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+  }
+
+  .copy-btn:hover {
+    background: var(--border-light);
+    color: var(--text-primary);
+  }
+
+  .copy-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .copy-icon.success {
+    color: var(--success-hex);
+  }
+
+  .install-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-3);
+  }
+
+  /* ============================================
+     AUTH CARDS
+     ============================================ */
+
+  .auth-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .auth-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-normal);
+  }
+
+  .auth-card.expanded {
+    border-color: var(--accent-hex);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .auth-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    background: transparent;
+    border: none;
     cursor: pointer;
+    text-align: left;
   }
 
-  /* Keyboard shortcut styling */
+  .auth-toggle:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .auth-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .auth-icon :global(svg) {
+    width: 20px;
+    height: 20px;
+  }
+
+  .auth-card.expanded .auth-icon {
+    background: var(--accent-glow);
+    color: var(--accent-hex);
+  }
+
+  .auth-icon.claude {
+    background: rgba(232, 102, 77, 0.15);
+    color: var(--accent-hex);
+  }
+
+  .auth-icon.anthropic {
+    background: rgba(232, 102, 77, 0.15);
+    color: var(--accent-hex);
+  }
+
+  .auth-icon.openai {
+    background: rgba(16, 163, 127, 0.15);
+    color: #10a37f;
+  }
+
+  .auth-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .auth-info h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-medium);
+    margin: 0 0 var(--space-1);
+    color: var(--text-primary);
+  }
+
+  .auth-info p {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  .auth-info code {
+    font-size: var(--text-xs);
+    padding: 2px 6px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    font-family: "SF Mono", ui-monospace, monospace;
+  }
+
+  .auth-toggle-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .auth-toggle-icon :global(svg) {
+    width: 18px;
+    height: 18px;
+  }
+
+  .auth-expand {
+    padding: 0 var(--space-5) var(--space-5);
+    animation: slideUp 0.2s var(--spring-bounce);
+  }
+
+  .auth-instructions {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-4);
+    line-height: var(--leading-relaxed);
+  }
+
+  .api-key-input-group {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .api-key-input {
+    flex: 1;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .api-key-input:focus {
+    border-color: var(--accent-hex);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    outline: none;
+  }
+
+  .validation-message {
+    font-size: var(--text-xs);
+    margin: var(--space-2) 0 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+  }
+
+  .validation-message.success {
+    background: var(--success-glow);
+    color: var(--success-hex);
+  }
+
+  .validation-message.error {
+    background: var(--error-glow);
+    color: var(--error);
+  }
+
+  /* ============================================
+     READY STEP
+     ============================================ */
+
+  .ready-step {
+    text-align: center;
+    align-items: center;
+  }
+
+  .success-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-full);
+    background: var(--success-glow);
+    color: var(--success-hex);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .success-icon :global(svg) {
+    width: 32px;
+    height: 32px;
+  }
+
+  .quick-tips {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-lg);
+    width: 100%;
+  }
+
+  .tip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .tip-keys {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
   kbd {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-sm);
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  .key-separator {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .tip-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  /* ============================================
+     FOOTER
+     ============================================ */
+
+  .step-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-hex);
+  }
+
+  .step-footer.final {
+    flex-direction: column;
+    gap: var(--space-3);
+    border-top: none;
+    padding-top: var(--space-2);
+  }
+
+  .footer-right {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  :global(.tour-btn) {
+    width: 100%;
+  }
+
+  /* ============================================
+     UTILITIES
+     ============================================ */
+
+  .btn-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: var(--space-2);
+  }
+
+  .btn-icon-right {
+    width: 16px;
+    height: 16px;
+    margin-left: var(--space-2);
+  }
+
+  .icon-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

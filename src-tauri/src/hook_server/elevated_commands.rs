@@ -137,9 +137,9 @@ pub(crate) async fn handle_elevated_request(
     let event = ElevatedCommandRequestEvent {
         request: pending_cmd,
     };
-    let _ = state
-        .app_handle
-        .emit("elevated:request", serde_json::to_value(event).unwrap());
+    if let Ok(event_value) = serde_json::to_value(&event) {
+        let _ = state.app_handle.emit("elevated:request", event_value);
+    }
 
     (
         StatusCode::OK,
@@ -258,9 +258,9 @@ pub async fn approve_elevated_request(
         status: ElevatedCommandStatus::Approved,
         error: None,
     };
-    let _ = state
-        .app_handle
-        .emit("elevated:status", serde_json::to_value(event).unwrap());
+    if let Ok(event_value) = serde_json::to_value(&event) {
+        let _ = state.app_handle.emit("elevated:status", event_value);
+    }
 
     Ok(())
 }
@@ -289,9 +289,9 @@ pub async fn deny_elevated_request(
         status: ElevatedCommandStatus::Denied,
         error: None,
     };
-    let _ = state
-        .app_handle
-        .emit("elevated:status", serde_json::to_value(event).unwrap());
+    if let Ok(event_value) = serde_json::to_value(&event) {
+        let _ = state.app_handle.emit("elevated:status", event_value);
+    }
 
     Ok(())
 }

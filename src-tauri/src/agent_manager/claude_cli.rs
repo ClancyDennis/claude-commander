@@ -4,7 +4,7 @@
 // locations and managing the elevation-bin path for sudo wrapper functionality.
 
 /// Attempt to find the Claude CLI in common installation locations
-pub(crate) fn find_claude_cli() -> Result<String, std::env::VarError> {
+pub fn find_claude_cli() -> Result<String, std::env::VarError> {
     #[cfg(windows)]
     {
         // Check npm global install location on Windows

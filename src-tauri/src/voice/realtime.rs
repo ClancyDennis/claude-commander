@@ -1,3 +1,4 @@
+use super::session_manager::{AudioCb, ResponseCb, TranscriptCb, VoiceCallbacks};
 use async_openai::types::realtime::{ClientEvent, InputAudioBufferAppendEvent, ServerEvent};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
@@ -25,21 +26,14 @@ impl VoiceSession {
     }
 
     /// Connect to OpenAI Realtime API
-    pub async fn connect<F, R, A>(
+    pub async fn connect(
         &mut self,
         api_key: &str,
-        on_transcript: F,
-        on_response: R,
-        on_audio: A,
-    ) -> Result<(), String>
-    where
-        F: Fn(String) + Send + Sync + 'static,
-        R: Fn(String) + Send + Sync + 'static,
-        A: Fn(String) + Send + Sync + 'static,
-    {
-        let on_transcript = Arc::new(on_transcript);
-        let on_response = Arc::new(on_response);
-        let on_audio = Arc::new(on_audio);
+        callbacks: VoiceCallbacks,
+    ) -> Result<(), String> {
+        let on_transcript = callbacks.on_transcript;
+        let on_response = callbacks.on_response;
+        let on_audio = callbacks.on_audio;
         let model = std::env::var("OPENAI_REALTIME_MODEL")
             .unwrap_or_else(|_| "gpt-realtime-mini".to_string());
 
@@ -191,15 +185,12 @@ impl VoiceSession {
         Ok(())
     }
 
-    async fn handle_server_event<F, R>(
+    async fn handle_server_event(
         event: ServerEvent,
         transcript: &Arc<Mutex<String>>,
-        on_transcript: &Arc<F>,
-        _on_response: &Arc<R>,
-    ) where
-        F: Fn(String) + Send + Sync,
-        R: Fn(String) + Send + Sync,
-    {
+        on_transcript: &TranscriptCb,
+        _on_response: &ResponseCb,
+    ) {
         match event {
             ServerEvent::ConversationItemInputAudioTranscriptionCompleted(e) => {
                 println!("[Voice] Transcript completed: {}", e.transcript);
@@ -235,17 +226,13 @@ impl VoiceSession {
     }
 
     /// Handle events that async-openai types can't parse correctly
-    async fn handle_raw_event<F, R, A>(
+    async fn handle_raw_event(
         raw: &serde_json::Value,
         transcript: &Arc<Mutex<String>>,
-        on_transcript: &Arc<F>,
-        on_response: &Arc<R>,
-        on_audio: &Arc<A>,
-    ) where
-        F: Fn(String) + Send + Sync,
-        R: Fn(String) + Send + Sync,
-        A: Fn(String) + Send + Sync,
-    {
+        on_transcript: &TranscriptCb,
+        on_response: &ResponseCb,
+        on_audio: &AudioCb,
+    ) {
         let event_type = raw.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
         match event_type {

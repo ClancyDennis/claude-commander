@@ -1,7 +1,16 @@
 // Chat/Meta-agent related Tauri commands
 
+use serde::Serialize;
+
+use crate::meta_agent::CommanderPersonality;
 use crate::types::{ChatMessage, ChatResponse, ImageAttachment};
 use crate::AppState;
+
+#[derive(Debug, Serialize)]
+pub struct SystemPromptResponse {
+    pub prompt: String,
+    pub source: String,
+}
 
 #[tauri::command]
 pub async fn send_chat_message(
@@ -127,4 +136,43 @@ pub async fn process_agent_results(
         .map_err(|e| e.to_string())?;
 
     Ok(response)
+}
+
+#[tauri::command]
+pub async fn set_commander_personality(
+    personality: CommanderPersonality,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    eprintln!(
+        "[set_commander_personality] Updating personality: strictness={}, tone={}",
+        personality.strictness, personality.tone
+    );
+
+    let mut meta_agent = state.meta_agent.lock().await;
+    meta_agent.set_personality(personality).await
+}
+
+#[tauri::command]
+pub async fn get_commander_system_prompt(
+    state: tauri::State<'_, AppState>,
+) -> Result<SystemPromptResponse, String> {
+    let meta_agent = state.meta_agent.lock().await;
+    let (prompt, personalized) = meta_agent.get_system_prompt_snapshot();
+
+    Ok(SystemPromptResponse {
+        prompt,
+        source: if personalized {
+            "personalized".to_string()
+        } else {
+            "base".to_string()
+        },
+    })
+}
+
+#[tauri::command]
+pub async fn reset_commander_personality(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    eprintln!("[reset_commander_personality] Clearing personality and cached prompt");
+
+    let mut meta_agent = state.meta_agent.lock().await;
+    meta_agent.clear_personality()
 }

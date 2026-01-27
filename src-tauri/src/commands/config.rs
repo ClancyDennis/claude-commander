@@ -17,10 +17,21 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 #[derive(Debug, Serialize)]
+pub struct ClaudeCodeStatus {
+    pub installed: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub authenticated: bool,
+    pub auth_type: Option<String>,
+    pub subscription_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ModelConfig {
     pub name: String,
     pub value: Option<String>,
     pub is_default: bool,
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +68,90 @@ pub struct ConfigUpdateResult {
 // ============================================================================
 // Tauri Commands - Status & Information
 // ============================================================================
+
+#[tauri::command]
+pub async fn check_claude_code_installed() -> Result<ClaudeCodeStatus, String> {
+    use crate::agent_manager::claude_cli::find_claude_cli;
+
+    // Check installation
+    let (installed, path, version) = match find_claude_cli() {
+        Ok(p) => {
+            let v = get_claude_version(&p).await.ok();
+            (true, Some(p), v)
+        }
+        Err(_) => (false, None, None),
+    };
+
+    // Check authentication by reading ~/.claude/.credentials.json
+    let (authenticated, auth_type, subscription_type) = check_claude_auth();
+
+    Ok(ClaudeCodeStatus {
+        installed,
+        path,
+        version,
+        authenticated,
+        auth_type,
+        subscription_type,
+    })
+}
+
+/// Check if Claude Code is authenticated by reading the credentials file
+fn check_claude_auth() -> (bool, Option<String>, Option<String>) {
+    if let Some(home) = dirs::home_dir() {
+        let credentials_path = home.join(".claude").join(".credentials.json");
+
+        if credentials_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&credentials_path) {
+                // Parse the JSON to check for valid tokens
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    // Check for OAuth credentials
+                    if let Some(oauth) = json.get("claudeAiOauth") {
+                        if oauth.get("accessToken").is_some() {
+                            // Check if token has expired
+                            let is_valid = if let Some(expires_at) = oauth.get("expiresAt") {
+                                if let Some(exp) = expires_at.as_i64() {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_millis() as i64)
+                                        .unwrap_or(0);
+                                    exp > now
+                                } else {
+                                    true // No expiry info, assume valid
+                                }
+                            } else {
+                                true
+                            };
+
+                            if is_valid {
+                                let sub_type = oauth
+                                    .get("subscriptionType")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+
+                                return (true, Some("oauth".to_string()), sub_type);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (false, None, None)
+}
+
+/// Get the Claude CLI version by running `claude --version`
+async fn get_claude_version(cli_path: &str) -> Result<String, String> {
+    let output = tokio::process::Command::new(cli_path)
+        .arg("--version")
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    String::from_utf8(output.stdout)
+        .map(|s| s.trim().to_string())
+        .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub async fn get_config_status() -> Result<ConfigStatus, String> {
@@ -218,12 +313,29 @@ fn build_model_configs() -> Vec<ModelConfig> {
 
     model_keys
         .iter()
-        .map(|&key| ModelConfig {
-            name: key.to_string(),
-            value: std::env::var(key).ok(),
-            is_default: std::env::var(key).is_err(),
+        .map(|&key| {
+            let value = std::env::var(key).ok();
+            let is_default = value.is_none();
+            let default_value = get_default_for_model_key(key);
+            ModelConfig {
+                name: key.to_string(),
+                value,
+                is_default,
+                default_value,
+            }
         })
         .collect()
+}
+
+/// Get the default value for a model configuration key
+fn get_default_for_model_key(key: &str) -> Option<String> {
+    match key {
+        env_keys::ANTHROPIC_MODEL => Some(models::get_default_claude_model()),
+        env_keys::SECURITY_MODEL => Some(models::get_default_claude_model()), // Falls back to main model
+        env_keys::LIGHT_TASK_MODEL => Some("claude-haiku-4-5-20251101".to_string()), // Faster/cheaper model
+        env_keys::OPENAI_MODEL => Some("gpt-4o".to_string()),
+        _ => None, // Settings like CLAUDE_CODE_API_KEY_MODE don't have model defaults
+    }
 }
 
 /// Fetch available OpenAI models, falling back to defaults on error

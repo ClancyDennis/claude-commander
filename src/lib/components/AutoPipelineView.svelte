@@ -9,6 +9,7 @@
     orchestratorCurrentState
   } from '../stores/agents';
   import { autoPipelines } from '../stores/autoPipelines';
+  import { useAsyncData } from '$lib/hooks/useAsyncData.svelte';
 
   // Import sub-components and utilities
   import { PageLayout } from './ui/layout';
@@ -24,11 +25,36 @@
 
   let { pipelineId }: { pipelineId: string } = $props();
 
-  let pipeline: AutoPipeline | null = $state(null);
-  let pipelineHistory: PipelineHistoryBundle | null = $state(null);
-  let loading = $state(true);
-  let error: string | null = $state(null);
   let unlistenFns: UnlistenFn[] = [];
+
+  // Track the pipeline ID for fetch closures
+  let fetchPipelineId = $state<string | null>(null);
+
+  // Async data for pipeline
+  const asyncPipeline = useAsyncData(async () => {
+    if (!fetchPipelineId) return null;
+
+    // Check store first
+    const storedPipelines = get(autoPipelines);
+    const storedPipeline = storedPipelines.get(fetchPipelineId);
+    if (storedPipeline) {
+      return storedPipeline;
+    }
+
+    return await invoke<AutoPipeline>('get_auto_pipeline', { pipelineId: fetchPipelineId });
+  });
+
+  // Async data for pipeline history
+  const asyncHistory = useAsyncData(async () => {
+    if (!fetchPipelineId) return null;
+    return await invoke<PipelineHistoryBundle>('get_pipeline_history', { pipelineId: fetchPipelineId });
+  });
+
+  // Derived for convenience (maintains backward compatibility in template)
+  const pipeline = $derived(asyncPipeline.data);
+  const pipelineHistory = $derived(asyncHistory.data);
+  const loading = $derived(asyncPipeline.loading);
+  const error = $derived(asyncPipeline.error);
 
   // Filter state
   let stageFilter = $state<'all' | 'Orchestrator' | 'Planning' | 'Building' | 'Verifying'>('all');
@@ -46,8 +72,7 @@
   $effect(() => {
     const storedPipeline = $autoPipelines.get(pipelineId);
     if (storedPipeline) {
-      pipeline = storedPipeline;
-      loading = false;
+      asyncPipeline.setData(storedPipeline);
     }
   });
 
@@ -80,36 +105,9 @@
   });
 
   async function loadPipeline(id: string) {
-    error = null;
-    const storedPipelines = get(autoPipelines);
-    const storedPipeline = storedPipelines.get(id);
-
-    if (storedPipeline) {
-      pipeline = storedPipeline;
-      loading = false;
-      await loadPipelineHistory(id);
-      return;
-    }
-
-    loading = true;
-    pipeline = null;
-
-    try {
-      pipeline = await invoke<AutoPipeline>('get_auto_pipeline', { pipelineId: id });
-      await loadPipelineHistory(id);
-      loading = false;
-    } catch (e) {
-      error = String(e);
-      loading = false;
-    }
-  }
-
-  async function loadPipelineHistory(id: string) {
-    try {
-      pipelineHistory = await invoke<PipelineHistoryBundle>('get_pipeline_history', { pipelineId: id });
-    } catch (e) {
-      console.error('[AutoPipelineView] Failed to load pipeline history:', e);
-    }
+    fetchPipelineId = id;
+    await asyncPipeline.fetch();
+    await asyncHistory.fetch();
   }
 
   onMount(async () => {
@@ -134,8 +132,11 @@
 
   async function refreshPipeline() {
     try {
-      pipeline = await invoke<AutoPipeline>('get_auto_pipeline', { pipelineId });
-      await loadPipelineHistory(pipelineId);
+      fetchPipelineId = pipelineId;
+      // Fetch fresh data from backend (bypass store check)
+      const freshPipeline = await invoke<AutoPipeline>('get_auto_pipeline', { pipelineId });
+      asyncPipeline.setData(freshPipeline);
+      await asyncHistory.fetch();
     } catch (e) {
       console.error('Failed to refresh pipeline:', e);
     }

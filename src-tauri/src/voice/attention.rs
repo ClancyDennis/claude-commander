@@ -1,3 +1,6 @@
+use super::session_manager::{
+    AudioCb, ResponseCb, ToolCb, TranscriptCb, VoiceCallbacks, VoiceSettings,
+};
 use async_openai::types::realtime::{ClientEvent, InputAudioBufferAppendEvent};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -5,9 +8,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-/// Inactivity timeout for attention mode (10 seconds)
-const INACTIVITY_TIMEOUT_SECS: u64 = 10;
 
 /// Attention mode session - announces task completion and allows follow-up
 /// Auto-closes after inactivity timeout
@@ -38,27 +38,21 @@ impl AttentionSession {
     }
 
     /// Connect to OpenAI Realtime API in attention mode
-    pub async fn connect<F, R, A, T, O>(
+    pub async fn connect(
         &mut self,
         api_key: &str,
-        on_transcript: F,
-        on_response: R,
-        on_audio: A,
-        on_tool_call: T,
-        on_timeout: O,
-    ) -> Result<(), String>
-    where
-        F: Fn(String) + Send + Sync + 'static,
-        R: Fn(String) + Send + Sync + 'static,
-        A: Fn(String) + Send + Sync + 'static,
-        T: Fn(String, String, String) -> String + Send + Sync + 'static,
-        O: Fn() + Send + Sync + 'static,
-    {
-        let on_transcript = Arc::new(on_transcript);
-        let on_response = Arc::new(on_response);
-        let on_audio = Arc::new(on_audio);
-        let on_tool_call = Arc::new(on_tool_call);
-        let on_timeout = Arc::new(on_timeout);
+        settings: VoiceSettings,
+        callbacks: VoiceCallbacks,
+    ) -> Result<(), String> {
+        let on_transcript = callbacks.on_transcript;
+        let on_response = callbacks.on_response;
+        let on_audio = callbacks.on_audio;
+        let on_tool_call = callbacks
+            .on_tool_call
+            .expect("Attention mode requires on_tool_call callback");
+        let on_timeout = callbacks
+            .on_timeout
+            .expect("Attention mode requires on_timeout callback");
 
         let model = std::env::var("OPENAI_REALTIME_MODEL")
             .unwrap_or_else(|_| "gpt-4o-realtime-preview".to_string());
@@ -104,7 +98,7 @@ impl AttentionSession {
                     Read the provided result briefly (1-2 sentences max), then ask if they need anything else. \
                     Be concise - this is a voice notification. If the user stays silent, the session will close automatically. \
                     When you need to perform any action, use the talk_to_mission_control tool.",
-                "voice": "alloy",
+                "voice": settings.voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "input_audio_transcription": {
@@ -237,6 +231,7 @@ impl AttentionSession {
         // Spawn inactivity timeout checker
         let is_active_timeout = is_active.clone();
         let last_activity_timeout = last_activity.clone();
+        let timeout_duration = Duration::from_secs(settings.timeout_secs);
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
@@ -246,8 +241,11 @@ impl AttentionSession {
                 }
 
                 let last = *last_activity_timeout.lock().await;
-                if last.elapsed() >= Duration::from_secs(INACTIVITY_TIMEOUT_SECS) {
-                    println!("[Attention] Inactivity timeout reached");
+                if last.elapsed() >= timeout_duration {
+                    println!(
+                        "[Attention] Inactivity timeout reached ({}s)",
+                        timeout_duration.as_secs()
+                    );
                     *is_active_timeout.lock().await = false;
                     (on_timeout)();
                     break;
@@ -259,21 +257,16 @@ impl AttentionSession {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn handle_event<F, R, A, T>(
+    async fn handle_event(
         raw: &Value,
         messages: &Arc<Mutex<Vec<Value>>>,
         ws_sender: &mpsc::Sender<String>,
         last_activity: &Arc<Mutex<Instant>>,
-        on_transcript: &Arc<F>,
-        on_response: &Arc<R>,
-        on_audio: &Arc<A>,
-        on_tool_call: &Arc<T>,
-    ) where
-        F: Fn(String) + Send + Sync,
-        R: Fn(String) + Send + Sync,
-        A: Fn(String) + Send + Sync,
-        T: Fn(String, String, String) -> String + Send + Sync,
-    {
+        on_transcript: &TranscriptCb,
+        on_response: &ResponseCb,
+        on_audio: &AudioCb,
+        on_tool_call: &ToolCb,
+    ) {
         let event_type = raw.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
         match event_type {

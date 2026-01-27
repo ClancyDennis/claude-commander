@@ -295,6 +295,9 @@ pub fn run() {
             commands::get_chat_history,
             commands::clear_chat_history,
             commands::process_agent_results,
+            commands::set_commander_personality,
+            commands::get_commander_system_prompt,
+            commands::reset_commander_personality,
             // Cost commands
             commands::get_cost_summary,
             commands::get_cost_by_date_range,
@@ -368,6 +371,7 @@ pub fn run() {
             commands::get_pipeline_history,
             commands::clear_pipeline_events,
             // Config commands
+            commands::check_claude_code_installed,
             commands::get_config_status,
             commands::open_config_directory,
             commands::create_env_placeholder,

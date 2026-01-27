@@ -141,6 +141,7 @@
         id: result.agent_id,
         workingDir: runToResume.working_dir,
         status: "running",
+        createdAt: new Date(),
         isProcessing: autoStart,  // Only processing if auto-started
         pendingInput: !autoStart,  // Waiting for input if not auto-started
         lastActivity: new Date(),

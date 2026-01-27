@@ -156,9 +156,14 @@ async fn handle_pre_tool_use(
         timestamp: now,
     };
 
-    let _ = state
-        .app_handle
-        .emit("agent:tool", serde_json::to_value(event).unwrap());
+    if let Ok(event_value) = serde_json::to_value(&event) {
+        let _ = state.app_handle.emit("agent:tool", event_value);
+    } else {
+        eprintln!(
+            "[WARN] Failed to serialize tool event for agent {}",
+            agent_id
+        );
+    }
 
     // Emit enhanced activity event for UI status display
     // Use "agent:activity:detail" channel to avoid collision with AgentActivityEvent
@@ -170,10 +175,16 @@ async fn handle_pre_tool_use(
         tool_name: tool_name.to_string(),
         timestamp: now,
     };
-    let _ = state.app_handle.emit(
-        "agent:activity:detail",
-        serde_json::to_value(activity_event).unwrap(),
-    );
+    if let Ok(activity_value) = serde_json::to_value(&activity_event) {
+        let _ = state
+            .app_handle
+            .emit("agent:activity:detail", activity_value);
+    } else {
+        eprintln!(
+            "[WARN] Failed to serialize activity event for agent {}",
+            agent_id
+        );
+    }
 }
 
 /// Handle PostToolUse event - find matching pre-call, calculate duration, emit event
@@ -255,9 +266,14 @@ async fn handle_post_tool_use(
         timestamp: start_time,
     };
 
-    let _ = state
-        .app_handle
-        .emit("agent:tool", serde_json::to_value(event).unwrap());
+    if let Ok(event_value) = serde_json::to_value(&event) {
+        let _ = state.app_handle.emit("agent:tool", event_value);
+    } else {
+        eprintln!(
+            "[WARN] Failed to serialize post-tool event for agent {}",
+            agent_id
+        );
+    }
 }
 
 /// Forward tool events to the security monitor for analysis

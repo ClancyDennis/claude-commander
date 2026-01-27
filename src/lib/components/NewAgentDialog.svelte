@@ -10,6 +10,7 @@
     createAutoPipeline,
   } from "../services/agentCreation";
   import { useSkillGeneration } from "../hooks/useSkillGeneration.svelte";
+  import { useAsyncData } from "../hooks/useAsyncData.svelte";
 
   import CreationTypeSelector from "./new-agent/CreationTypeSelector.svelte";
   import WorkingDirectoryInput from "./new-agent/WorkingDirectoryInput.svelte";
@@ -22,7 +23,10 @@
 
   let { onClose }: { onClose: () => void } = $props();
 
-  // Form state
+  // Async data for home directory
+  const homeDirData = useAsyncData(() => homeDir());
+
+  // Form state - workingDir syncs with homeDirData when loaded
   let workingDir = $state("");
   let githubUrl = $state("");
   let pipelineTask = $state("");
@@ -35,6 +39,13 @@
   // Skill generation tracking via hook
   const skillGen = useSkillGeneration();
 
+  // Sync workingDir when homeDir loads
+  $effect(() => {
+    if (homeDirData.data && !workingDir) {
+      workingDir = homeDirData.data;
+    }
+  });
+
   // Derived validation state
   let canCreate = $derived(
     workingDir.trim() !== '' &&
@@ -42,12 +53,7 @@
   );
 
   onMount(async () => {
-    try {
-      workingDir = await homeDir();
-    } catch (e) {
-      console.error("Failed to get home directory:", e);
-    }
-
+    await homeDirData.fetch();
     skillGen.start();
     return () => skillGen.cleanup();
   });

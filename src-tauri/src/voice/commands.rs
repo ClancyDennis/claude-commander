@@ -7,13 +7,26 @@ use super::attention::AttentionSession;
 use super::discuss::DiscussSession;
 use super::realtime::VoiceSession;
 use super::session_manager::{
-    get_api_key, AttentionTimeoutEvent, ToolCallEvent, VoiceAudioEvent, VoiceResponseEvent,
-    VoiceStatus, VoiceTranscriptEvent,
+    get_api_key, AttentionTimeoutEvent, ToolCallEvent, VoiceAudioEvent, VoiceCallbacks,
+    VoiceResponseEvent, VoiceSettings, VoiceStatus, VoiceTranscriptEvent,
 };
 use super::session_registry::{attention_session, discuss_session, voice_session, SessionOps};
 use super::tools;
 use crate::AppState;
 use tauri::Emitter;
+
+/// Get voice settings from the meta agent's personality
+async fn get_voice_settings(state: &tauri::State<'_, AppState>) -> VoiceSettings {
+    let meta_agent = state.meta_agent.lock().await;
+    if let Some(personality) = meta_agent.get_personality() {
+        VoiceSettings {
+            voice: personality.openai_voice.clone(),
+            timeout_secs: personality.listen_timeout as u64,
+        }
+    } else {
+        VoiceSettings::default()
+    }
+}
 
 // ============================================================================
 // Voice Mode Commands (Dictate)
@@ -37,20 +50,19 @@ pub async fn start_voice_session(app_handle: tauri::AppHandle) -> Result<(), Str
     let mut session = VoiceSession::new();
     let (app_t, app_r, app_a) = (app_handle.clone(), app_handle.clone(), app_handle.clone());
 
-    session
-        .connect(
-            &api_key,
-            move |transcript| {
-                let _ = app_t.emit("voice:transcript", VoiceTranscriptEvent { transcript });
-            },
-            move |delta| {
-                let _ = app_r.emit("voice:response", VoiceResponseEvent { delta });
-            },
-            move |audio| {
-                let _ = app_a.emit("voice:audio", VoiceAudioEvent { audio });
-            },
-        )
-        .await?;
+    let callbacks = VoiceCallbacks::basic(
+        move |transcript| {
+            let _ = app_t.emit("voice:transcript", VoiceTranscriptEvent { transcript });
+        },
+        move |delta| {
+            let _ = app_r.emit("voice:response", VoiceResponseEvent { delta });
+        },
+        move |audio| {
+            let _ = app_a.emit("voice:audio", VoiceAudioEvent { audio });
+        },
+    );
+
+    session.connect(&api_key, callbacks).await?;
 
     *session_guard = Some(session);
     let _ = app_handle.emit(
@@ -110,6 +122,8 @@ pub async fn start_discuss_session(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let api_key = get_api_key()?;
+    let voice_settings = get_voice_settings(&state).await;
+
     let session_lock = discuss_session();
     let mut session_guard = session_lock.lock().await;
 
@@ -134,42 +148,45 @@ pub async fn start_discuss_session(
     let meta_agent = state.meta_agent.clone();
     let agent_manager = state.agent_manager.clone();
 
-    session
-        .connect(
-            &api_key,
-            move |transcript| {
-                let _ = app_t.emit("discuss:transcript", VoiceTranscriptEvent { transcript });
-            },
-            move |delta| {
-                let _ = app_r.emit("discuss:response", VoiceResponseEvent { delta });
-            },
-            move |audio| {
-                let _ = app_a.emit("discuss:audio", VoiceAudioEvent { audio });
-            },
-            move |name, call_id, args| {
-                let app = app_tool.clone();
-                let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
-                let (n, a) = (name.clone(), args.clone());
+    println!("[Discuss] Using voice: {}", voice_settings.voice);
 
-                let _ = app.emit(
-                    "discuss:tool_call",
-                    ToolCallEvent {
-                        name: name.clone(),
-                        call_id: call_id.clone(),
-                        args: args.clone(),
-                    },
-                );
+    let callbacks = VoiceCallbacks::basic(
+        move |transcript| {
+            let _ = app_t.emit("discuss:transcript", VoiceTranscriptEvent { transcript });
+        },
+        move |delta| {
+            let _ = app_r.emit("discuss:response", VoiceResponseEvent { delta });
+        },
+        move |audio| {
+            let _ = app_a.emit("discuss:audio", VoiceAudioEvent { audio });
+        },
+    )
+    .with_tool_call(move |name, call_id, args| {
+        let app = app_tool.clone();
+        let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
+        let (n, a) = (name.clone(), args.clone());
 
-                execute_tool_blocking(n, a, meta, mgr, app)
+        let _ = app.emit(
+            "discuss:tool_call",
+            ToolCallEvent {
+                name: name.clone(),
+                call_id: call_id.clone(),
+                args: args.clone(),
             },
-            move || {
-                let _ = app_user.emit("discuss:user_turn_complete", ());
-            },
-            move || {
-                let _ = app_asst.emit("discuss:assistant_turn_complete", ());
-            },
-        )
-        .await?;
+        );
+
+        execute_tool_blocking(n, a, meta, mgr, app)
+    })
+    .with_turn_callbacks(
+        move || {
+            let _ = app_user.emit("discuss:user_turn_complete", ());
+        },
+        move || {
+            let _ = app_asst.emit("discuss:assistant_turn_complete", ());
+        },
+    );
+
+    session.connect(&api_key, voice_settings, callbacks).await?;
 
     *session_guard = Some(session);
     let _ = app_handle.emit(
@@ -232,6 +249,8 @@ pub async fn start_attention_session(
     summary: String,
 ) -> Result<(), String> {
     let api_key = get_api_key()?;
+    let voice_settings = get_voice_settings(&state).await;
+
     let session_lock = attention_session();
     let mut session_guard = session_lock.lock().await;
 
@@ -256,44 +275,48 @@ pub async fn start_attention_session(
     let agent_manager = state.agent_manager.clone();
     let agent_id_timeout = agent_id.clone();
 
-    session
-        .connect(
-            &api_key,
-            move |transcript| {
-                let _ = app_t.emit("attention:transcript", VoiceTranscriptEvent { transcript });
-            },
-            move |delta| {
-                let _ = app_r.emit("attention:response", VoiceResponseEvent { delta });
-            },
-            move |audio| {
-                let _ = app_a.emit("attention:audio", VoiceAudioEvent { audio });
-            },
-            move |name, call_id, args| {
-                let app = app_tool.clone();
-                let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
-                let (n, a) = (name.clone(), args.clone());
+    println!(
+        "[Attention] Using voice: {}, timeout: {}s",
+        voice_settings.voice, voice_settings.timeout_secs
+    );
 
-                let _ = app.emit(
-                    "attention:tool_call",
-                    ToolCallEvent {
-                        name: name.clone(),
-                        call_id: call_id.clone(),
-                        args: args.clone(),
-                    },
-                );
+    let callbacks = VoiceCallbacks::basic(
+        move |transcript| {
+            let _ = app_t.emit("attention:transcript", VoiceTranscriptEvent { transcript });
+        },
+        move |delta| {
+            let _ = app_r.emit("attention:response", VoiceResponseEvent { delta });
+        },
+        move |audio| {
+            let _ = app_a.emit("attention:audio", VoiceAudioEvent { audio });
+        },
+    )
+    .with_tool_call(move |name, call_id, args| {
+        let app = app_tool.clone();
+        let (meta, mgr) = (meta_agent.clone(), agent_manager.clone());
+        let (n, a) = (name.clone(), args.clone());
 
-                execute_tool_blocking(n, a, meta, mgr, app)
+        let _ = app.emit(
+            "attention:tool_call",
+            ToolCallEvent {
+                name: name.clone(),
+                call_id: call_id.clone(),
+                args: args.clone(),
             },
-            move || {
-                let _ = app_timeout.emit(
-                    "attention:timeout",
-                    AttentionTimeoutEvent {
-                        agent_id: agent_id_timeout.clone(),
-                    },
-                );
+        );
+
+        execute_tool_blocking(n, a, meta, mgr, app)
+    })
+    .with_timeout(move || {
+        let _ = app_timeout.emit(
+            "attention:timeout",
+            AttentionTimeoutEvent {
+                agent_id: agent_id_timeout.clone(),
             },
-        )
-        .await?;
+        );
+    });
+
+    session.connect(&api_key, voice_settings, callbacks).await?;
 
     // Send initial prompt with the summary
     session.send_initial_prompt(&summary).await?;
@@ -364,12 +387,21 @@ fn execute_tool_blocking(
     app_handle: tauri::AppHandle,
 ) -> String {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                eprintln!(
+                    "[ERROR] Failed to create tokio runtime for tool execution: {}",
+                    e
+                );
+                return format!("Tool execution failed: could not create runtime - {}", e);
+            }
+        };
         rt.block_on(async {
             tools::execute_tool_with_state(&name, &args, meta_agent, agent_manager, app_handle)
                 .await
         })
     })
     .join()
-    .unwrap_or_else(|_| "Tool execution failed".to_string())
+    .unwrap_or_else(|_| "Tool execution failed: thread panicked".to_string())
 }

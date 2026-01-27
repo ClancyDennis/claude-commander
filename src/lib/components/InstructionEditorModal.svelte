@@ -8,6 +8,7 @@
   import DraftEditor from "./instruction-editor/DraftEditor.svelte";
   import AnalysisPanel from "./instruction-editor/AnalysisPanel.svelte";
   import DiffView from "./instruction-editor/DiffView.svelte";
+  import { useAsyncData } from "../hooks/useAsyncData.svelte";
 
   type EditorMode = "draft" | "analyzing" | "review" | "saving";
 
@@ -29,11 +30,33 @@
   let filename = $state((() => existingFile?.name || "")());
   let content = $state("");
   let context = $state("");
-  let error = $state("");
 
   // Analysis state
-  let analysis = $state<InstructionAnalysisResult | null>(null);
   let suggestionStatuses = $state<Map<string, SuggestionStatus>>(new Map());
+
+  // Async data hooks
+  const fileLoader = useAsyncData(() =>
+    invoke<string>("get_instruction_file_content", {
+      filePath: existingFile?.path,
+    })
+  );
+
+  const analysisData = useAsyncData(() =>
+    invoke<InstructionAnalysisResult>("analyze_instruction_content", {
+      content: content,
+      context: context.trim() || null,
+    })
+  );
+
+  // Track whether to apply changes for save operation
+  let saveWithChanges = $state(false);
+  const saveAction = useAsyncData(() => performSave());
+
+  // Combined error state from all async operations
+  let error = $derived(fileLoader.error || analysisData.error || saveAction.error || "");
+
+  // Analysis result derived from hook
+  let analysis = $derived(analysisData.data);
 
   // Load existing file content if editing
   $effect(() => {
@@ -42,89 +65,85 @@
     }
   });
 
+  // Sync content when file loads
+  $effect(() => {
+    if (fileLoader.data) {
+      content = fileLoader.data;
+    }
+  });
+
+  // Handle analysis completion
+  $effect(() => {
+    if (analysisData.data && mode === "analyzing") {
+      suggestionStatuses = new Map(
+        analysisData.data.suggestions.map((s) => [s.id, "pending" as SuggestionStatus])
+      );
+      mode = "review";
+    }
+  });
+
   async function loadExistingContent() {
     if (!existingFile?.path) return;
-    try {
-      const fileContent = await invoke<string>("get_instruction_file_content", {
-        filePath: existingFile.path,
-      });
-      content = fileContent;
-    } catch (e) {
-      error = `Failed to load file: ${e}`;
-    }
+    await fileLoader.fetch();
   }
 
   async function analyzeContent() {
     if (!content.trim()) {
-      error = "Please enter some content to analyze";
+      analysisData.setError("Please enter some content to analyze");
       return;
     }
 
     mode = "analyzing";
-    error = "";
-
-    try {
-      const result = await invoke<InstructionAnalysisResult>(
-        "analyze_instruction_content",
-        {
-          content: content,
-          context: context.trim() || null,
-        }
-      );
-
-      analysis = result;
-      suggestionStatuses = new Map(
-        result.suggestions.map((s) => [s.id, "pending" as SuggestionStatus])
-      );
-      mode = "review";
-    } catch (e) {
-      error = `Analysis failed: ${e}`;
+    analysisData.reset();
+    const result = await analysisData.fetch();
+    if (!result) {
       mode = "draft";
     }
   }
 
-  async function saveContent(applyChanges: boolean) {
+  async function performSave(): Promise<void> {
     // Validate filename
     let finalFilename = filename.trim();
     if (!finalFilename) {
-      error = "Please enter a filename";
-      return;
+      throw new Error("Please enter a filename");
     }
     if (!finalFilename.endsWith(".md") && !finalFilename.endsWith(".txt")) {
       finalFilename += ".md";
     }
 
-    mode = "saving";
-    error = "";
+    let finalContent = content;
 
-    try {
-      let finalContent = content;
+    if (saveWithChanges && analysis) {
+      // Get accepted suggestion IDs
+      const acceptedIds = Array.from(suggestionStatuses.entries())
+        .filter(([_, status]) => status === "accepted")
+        .map(([id, _]) => id);
 
-      if (applyChanges && analysis) {
-        // Get accepted suggestion IDs
-        const acceptedIds = Array.from(suggestionStatuses.entries())
-          .filter(([_, status]) => status === "accepted")
-          .map(([id, _]) => id);
-
-        if (acceptedIds.length > 0) {
-          finalContent = await invoke<string>("apply_instruction_suggestions", {
-            originalContent: content,
-            acceptedSuggestionIds: acceptedIds,
-            analysisResult: analysis,
-          });
-        }
+      if (acceptedIds.length > 0) {
+        finalContent = await invoke<string>("apply_instruction_suggestions", {
+          originalContent: content,
+          acceptedSuggestionIds: acceptedIds,
+          analysisResult: analysis,
+        });
       }
+    }
 
-      await invoke("save_instruction_file", {
-        workingDir,
-        filename: finalFilename,
-        content: finalContent,
-      });
+    await invoke("save_instruction_file", {
+      workingDir,
+      filename: finalFilename,
+      content: finalContent,
+    });
 
-      onSaved(finalFilename);
-      onClose();
-    } catch (e) {
-      error = `Failed to save: ${e}`;
+    onSaved(finalFilename);
+    onClose();
+  }
+
+  async function saveContent(applyChanges: boolean) {
+    saveWithChanges = applyChanges;
+    mode = "saving";
+    saveAction.reset();
+    const result = await saveAction.fetch();
+    if (result === null && saveAction.error) {
       mode = "review";
     }
   }

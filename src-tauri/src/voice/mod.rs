@@ -10,5 +10,7 @@ pub use attention::AttentionSession;
 pub use commands::*;
 pub use discuss::DiscussSession;
 pub use realtime::VoiceSession;
-pub use session_manager::{VoiceAudioEvent, VoiceResponseEvent, VoiceStatus, VoiceTranscriptEvent};
+pub use session_manager::{
+    VoiceAudioEvent, VoiceResponseEvent, VoiceSettings, VoiceStatus, VoiceTranscriptEvent,
+};
 pub use session_registry::{SessionRegistry, SessionType};

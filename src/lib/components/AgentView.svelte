@@ -14,7 +14,7 @@
   import AgentHeader from "./agent-view/AgentHeader.svelte";
   import AgentInput from "./agent-view/AgentInput.svelte";
   import AgentOutputList from "./agent-view/AgentOutputList.svelte";
-  import ToolActivity from "./ToolActivity.svelte";
+  import { ToolActivity } from "./tool-activity";
   import AgentStats from "./AgentStats.svelte";
   import OutputControls from "./OutputControls.svelte";
   import ExportDialog from "./ExportDialog.svelte";

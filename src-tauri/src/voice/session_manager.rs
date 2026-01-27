@@ -61,26 +61,106 @@ pub struct AttentionTimeoutEvent {
     pub agent_id: String,
 }
 
-/// Callback types used by session handlers.
-/// These are type aliases to document the expected callback signatures.
-pub mod callbacks {
-    /// Callback for transcript events (user's speech).
-    pub type OnTranscript = Box<dyn Fn(String) + Send + Sync + 'static>;
+use std::sync::Arc;
 
-    /// Callback for response events (AI's response text).
-    pub type OnResponse = Box<dyn Fn(String) + Send + Sync + 'static>;
+/// Arc-wrapped callback type aliases for use in async contexts.
+pub type TranscriptCb = Arc<dyn Fn(String) + Send + Sync>;
+pub type ResponseCb = Arc<dyn Fn(String) + Send + Sync>;
+pub type AudioCb = Arc<dyn Fn(String) + Send + Sync>;
+pub type ToolCb = Arc<dyn Fn(String, String, String) -> String + Send + Sync>;
+pub type SimpleCb = Arc<dyn Fn() + Send + Sync>;
 
-    /// Callback for audio events (AI's response audio).
-    pub type OnAudio = Box<dyn Fn(String) + Send + Sync + 'static>;
+/// Unified callbacks for voice sessions.
+///
+/// This struct consolidates all possible callbacks used across
+/// VoiceSession, DiscussSession, and AttentionSession types.
+/// Optional callbacks are used for mode-specific functionality.
+pub struct VoiceCallbacks {
+    /// Called when user speech is transcribed
+    pub on_transcript: TranscriptCb,
+    /// Called when assistant response text is received
+    pub on_response: ResponseCb,
+    /// Called when audio data is received
+    pub on_audio: AudioCb,
+    /// Called when a tool call is needed (discuss, attention)
+    pub on_tool_call: Option<ToolCb>,
+    /// Called on inactivity timeout (attention only)
+    pub on_timeout: Option<SimpleCb>,
+    /// Called when user turn completes (discuss only)
+    pub on_user_turn_complete: Option<SimpleCb>,
+    /// Called when assistant turn completes (discuss only)
+    pub on_assistant_turn_complete: Option<SimpleCb>,
+}
 
-    /// Callback for tool call events. Returns the tool result.
-    pub type OnToolCall = Box<dyn Fn(String, String, String) -> String + Send + Sync + 'static>;
+impl VoiceCallbacks {
+    /// Create callbacks for basic voice mode (transcript, response, audio only)
+    pub fn basic<F, R, A>(on_transcript: F, on_response: R, on_audio: A) -> Self
+    where
+        F: Fn(String) + Send + Sync + 'static,
+        R: Fn(String) + Send + Sync + 'static,
+        A: Fn(String) + Send + Sync + 'static,
+    {
+        Self {
+            on_transcript: Arc::new(on_transcript),
+            on_response: Arc::new(on_response),
+            on_audio: Arc::new(on_audio),
+            on_tool_call: None,
+            on_timeout: None,
+            on_user_turn_complete: None,
+            on_assistant_turn_complete: None,
+        }
+    }
 
-    /// Callback for turn completion events.
-    pub type OnTurnComplete = Box<dyn Fn() + Send + Sync + 'static>;
+    /// Add tool call callback
+    pub fn with_tool_call<T>(mut self, on_tool_call: T) -> Self
+    where
+        T: Fn(String, String, String) -> String + Send + Sync + 'static,
+    {
+        self.on_tool_call = Some(Arc::new(on_tool_call));
+        self
+    }
 
-    /// Callback for timeout events (attention mode).
-    pub type OnTimeout = Box<dyn Fn() + Send + Sync + 'static>;
+    /// Add timeout callback (for attention mode)
+    pub fn with_timeout<O>(mut self, on_timeout: O) -> Self
+    where
+        O: Fn() + Send + Sync + 'static,
+    {
+        self.on_timeout = Some(Arc::new(on_timeout));
+        self
+    }
+
+    /// Add turn completion callbacks (for discuss mode)
+    pub fn with_turn_callbacks<U, V>(
+        mut self,
+        on_user_turn_complete: U,
+        on_assistant_turn_complete: V,
+    ) -> Self
+    where
+        U: Fn() + Send + Sync + 'static,
+        V: Fn() + Send + Sync + 'static,
+    {
+        self.on_user_turn_complete = Some(Arc::new(on_user_turn_complete));
+        self.on_assistant_turn_complete = Some(Arc::new(on_assistant_turn_complete));
+        self
+    }
+}
+
+/// Voice settings from commander personality
+#[derive(Clone, Debug)]
+pub struct VoiceSettings {
+    /// OpenAI voice: alloy, ash, ballad, coral, echo, sage, shimmer, verse
+    pub voice: String,
+    /// Listen timeout in seconds (for attention mode)
+    pub timeout_secs: u64,
+}
+
+impl Default for VoiceSettings {
+    fn default() -> Self {
+        Self {
+            voice: "alloy".to_string(),
+            timeout_secs: 10,
+        }
+    }
 }
 
 /// Helper to get API key from environment.

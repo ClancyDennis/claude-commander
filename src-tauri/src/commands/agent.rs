@@ -86,6 +86,19 @@ pub async fn create_agent(
                 }
 
                 if instruction_path.exists() {
+                    // Convert path to string, skip if invalid encoding
+                    let instruction_path_str = match instruction_path.to_str() {
+                        Some(s) => s,
+                        None => {
+                            eprintln!(
+                                "⚠ Skipping instruction file with invalid path encoding: {:?}",
+                                instruction_path
+                            );
+                            failed += 1;
+                            continue;
+                        }
+                    };
+
                     eprintln!("Generating skill from: {}", instruction_path.display());
 
                     // Emit progress event
@@ -99,7 +112,7 @@ pub async fn create_agent(
                     );
 
                     match skill_generator::generate_skill_from_instruction(
-                        instruction_path.to_str().unwrap(),
+                        instruction_path_str,
                         &working_dir,
                         ai_client,
                     )
@@ -132,7 +145,7 @@ pub async fn create_agent(
                                 );
 
                                 match skill_generator::create_fallback_skill_from_instruction(
-                                    instruction_path.to_str().unwrap(),
+                                    instruction_path_str,
                                     &working_dir,
                                 ) {
                                     Ok(skill) => {

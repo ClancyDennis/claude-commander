@@ -295,6 +295,61 @@ impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
     }
 }
 
+/// Extension trait for logging errors that are intentionally discarded.
+/// Use this instead of `.ok()` when you want visibility into what errors are being ignored.
+pub trait LogOnError<T> {
+    /// Convert Result to Option, logging the error at WARN level if present
+    fn log_err(self, context: &str) -> Option<T>;
+
+    /// Convert Result to Option, logging at DEBUG level (for expected/routine errors)
+    fn log_err_debug(self, context: &str) -> Option<T>;
+}
+
+impl<T, E: std::fmt::Display> LogOnError<T> for Result<T, E> {
+    fn log_err(self, context: &str) -> Option<T> {
+        match self {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("[WARN] {}: {}", context, e);
+                None
+            }
+        }
+    }
+
+    fn log_err_debug(self, context: &str) -> Option<T> {
+        match self {
+            Ok(v) => Some(v),
+            Err(e) => {
+                // Debug level - only log in debug builds
+                #[cfg(debug_assertions)]
+                eprintln!("[DEBUG] {}: {}", context, e);
+                let _ = e; // Suppress unused warning in release
+                None
+            }
+        }
+    }
+}
+
+/// Extension trait for converting Option to AppResult with a custom error message.
+/// Use this instead of `.ok_or_else(|| "message".to_string())` for cleaner code.
+pub trait OptionExt<T> {
+    /// Convert Option to AppResult with an Internal error
+    fn ok_or_app(self, msg: impl Into<String>) -> AppResult<T>;
+
+    /// Convert Option to AppResult with a Validation error (for user input)
+    fn ok_or_validation(self, field: impl Into<String>) -> AppResult<T>;
+}
+
+impl<T> OptionExt<T> for Option<T> {
+    fn ok_or_app(self, msg: impl Into<String>) -> AppResult<T> {
+        self.ok_or_else(|| AppError::Internal(msg.into()))
+    }
+
+    fn ok_or_validation(self, field: impl Into<String>) -> AppResult<T> {
+        self.ok_or_else(|| AppError::Validation(ValidationError::MissingField(field.into())))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

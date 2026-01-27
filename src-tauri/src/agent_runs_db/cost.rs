@@ -80,9 +80,9 @@ impl<'a> CostOperations<'a> {
         let naive_now = now.naive_utc();
         let start_of_month =
             chrono::NaiveDate::from_ymd_opt(naive_now.year(), naive_now.month(), 1)
-                .unwrap()
+                .ok_or_else(|| "Invalid date for start of month calculation".to_string())?
                 .and_hms_opt(0, 0, 0)
-                .unwrap()
+                .ok_or_else(|| "Invalid time for start of month calculation".to_string())?
                 .and_utc()
                 .timestamp_millis();
 
@@ -106,7 +106,7 @@ impl<'a> CostOperations<'a> {
         let today_start = chrono::Utc::now()
             .date_naive()
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| "Invalid time for today's start calculation".to_string())?
             .and_utc()
             .timestamp_millis();
 

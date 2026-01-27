@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import './lib/styles/animations.css';
+@import './lib/components/commander-settings/commander-settings.css';
 
 /* Tailwind v4 theme configuration */
 @theme {

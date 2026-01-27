@@ -10,9 +10,45 @@
   let lastRenderedContent: string | null = null;
   let pendingRender: number | null = null;
 
+  /**
+   * Escape angle brackets that look like placeholders (e.g., <title>, <name>)
+   * but preserve valid HTML-like patterns used in markdown (e.g., code blocks).
+   */
+  function escapeAngleBracketPlaceholders(text: string): string {
+    // Match <word> patterns that look like placeholders (single word, no attributes)
+    // but NOT valid markdown/HTML like <pre>, <code>, <a href=...>, etc.
+    return text.replace(/<([a-zA-Z_][a-zA-Z0-9_-]*)>/g, (match, word) => {
+      // List of common HTML tags we want to preserve
+      const htmlTags = ['a', 'b', 'i', 'u', 'p', 'br', 'hr', 'em', 'strong', 'code', 'pre', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'span', 'img', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'blockquote'];
+      if (htmlTags.includes(word.toLowerCase())) {
+        return match; // Keep valid HTML tags
+      }
+      return `&lt;${word}&gt;`; // Escape placeholder-style angle brackets
+    });
+  }
+
+  /**
+   * Fix unclosed code fences that would cause the rest of content to render as code.
+   */
+  function fixUnclosedCodeFences(text: string): string {
+    // Count occurrences of ``` (code fence markers)
+    const fenceMatches = text.match(/^```/gm);
+    if (!fenceMatches) return text;
+
+    // If odd number of fences, add a closing fence
+    if (fenceMatches.length % 2 !== 0) {
+      return text + '\n```';
+    }
+    return text;
+  }
+
   function renderMarkdown(targetContainer: HTMLDivElement, markdownContent: string) {
+    // Fix unclosed code fences first
+    let preprocessed = fixUnclosedCodeFences(markdownContent);
+    // Escape placeholder-style angle brackets before parsing
+    preprocessed = escapeAngleBracketPlaceholders(preprocessed);
     // Parse markdown synchronously
-    const rawHtml = marked.parse(markdownContent, { async: false }) as string;
+    const rawHtml = marked.parse(preprocessed, { async: false }) as string;
     // Sanitize
     const cleanHtml = DOMPurify.sanitize(rawHtml);
     // Update DOM

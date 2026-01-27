@@ -2,6 +2,7 @@
   import type { AgentOutput } from "../types";
   import { invoke } from "@tauri-apps/api/core";
   import HelpTip from "./new-agent/HelpTip.svelte";
+  import { useAsyncData } from "../hooks/useAsyncData.svelte";
 
   let {
     outputs,
@@ -18,8 +19,9 @@
   let includeToolCalls = $state(true);
   let includeMetadata = $state(true);
   let filterType = $state<string>("all");
-  let isExporting = $state(false);
-  let error = $state("");
+
+  // Export action state via useAsyncData
+  const exportAction = useAsyncData<void>(() => performExport());
 
   // Get unique output types
   const outputTypes = $derived.by(() => {
@@ -220,49 +222,43 @@
       .replace(/'/g, "&#039;");
   }
 
-  async function handleExport() {
-    isExporting = true;
-    error = "";
+  async function performExport(): Promise<void> {
+    let content = "";
+    let filename = "";
 
-    try {
-      let content = "";
-      let filename = "";
-
-      switch (format) {
-        case "json":
-          content = formatJSON(filteredOutputs);
-          filename = `agent-${agentId}-output-${Date.now()}.json`;
-          break;
-        case "markdown":
-          content = formatMarkdown(filteredOutputs);
-          filename = `agent-${agentId}-output-${Date.now()}.md`;
-          break;
-        case "html":
-          content = formatHTML(filteredOutputs);
-          filename = `agent-${agentId}-output-${Date.now()}.html`;
-          break;
-        case "text":
-          content = formatText(filteredOutputs);
-          filename = `agent-${agentId}-output-${Date.now()}.txt`;
-          break;
-      }
-
-      // Use the browser's download API
-      const blob = new Blob([content], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      onClose();
-    } catch (e) {
-      console.error("Export failed:", e);
-      error = `Export failed: ${e}`;
-    } finally {
-      isExporting = false;
+    switch (format) {
+      case "json":
+        content = formatJSON(filteredOutputs);
+        filename = `agent-${agentId}-output-${Date.now()}.json`;
+        break;
+      case "markdown":
+        content = formatMarkdown(filteredOutputs);
+        filename = `agent-${agentId}-output-${Date.now()}.md`;
+        break;
+      case "html":
+        content = formatHTML(filteredOutputs);
+        filename = `agent-${agentId}-output-${Date.now()}.html`;
+        break;
+      case "text":
+        content = formatText(filteredOutputs);
+        filename = `agent-${agentId}-output-${Date.now()}.txt`;
+        break;
     }
+
+    // Use the browser's download API
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    onClose();
+  }
+
+  async function handleExport() {
+    await exportAction.fetch();
   }
 
   // Preview content
@@ -369,9 +365,9 @@
       </div>
     </div>
 
-    {#if error}
+    {#if exportAction.error}
       <div class="error">
-        {error}
+        Export failed: {exportAction.error}
       </div>
     {/if}
 
@@ -381,11 +377,11 @@
   </div>
 
   <footer>
-    <button class="secondary" onclick={onClose} disabled={isExporting}>
+    <button class="secondary" onclick={onClose} disabled={exportAction.loading}>
       Cancel
     </button>
-    <button class="primary" onclick={handleExport} disabled={isExporting}>
-      {#if isExporting}
+    <button class="primary" onclick={handleExport} disabled={exportAction.loading}>
+      {#if exportAction.loading}
         <div class="spinner"></div>
         Exporting...
       {:else}

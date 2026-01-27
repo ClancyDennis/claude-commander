@@ -6,10 +6,13 @@
 mod action_logger;
 mod conversation_manager;
 pub mod helpers;
+mod prompt_generator;
 mod result_queue;
 mod system_prompt;
 mod tool_loop_engine;
 pub mod tools;
+
+pub use prompt_generator::CommanderPersonality;
 
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -39,16 +42,39 @@ pub struct MetaAgent {
     ai_client: AIClient,
     result_queue: ResultQueue,
     tool_loop: ToolLoopEngine,
+    // Commander personality settings
+    personality: Option<CommanderPersonality>,
+    cached_prompt: Option<String>,
+    cached_prompt_hash: Option<u64>,
 }
 
 impl MetaAgent {
     pub fn new_with_client(ai_client: AIClient) -> Self {
+        // Try to load cached prompt from disk
+        let (cached_prompt, cached_prompt_hash, personality) =
+            if let Some(cache) = prompt_generator::load_cached_prompt() {
+                eprintln!(
+                    "[MetaAgent] Restored cached prompt from disk (hash: {})",
+                    cache.settings_hash
+                );
+                (
+                    Some(cache.prompt),
+                    Some(cache.settings_hash),
+                    Some(cache.personality),
+                )
+            } else {
+                (None, None, None)
+            };
+
         Self {
             conversation: ConversationManager::new(),
             tool_registry: ToolRegistry::new(),
             ai_client,
             result_queue: ResultQueue::new(),
             tool_loop: ToolLoopEngine::new(),
+            personality,
+            cached_prompt,
+            cached_prompt_hash,
         }
     }
 
@@ -145,12 +171,13 @@ impl MetaAgent {
         // Get a mutable reference to the conversation history for the tool loop
         let mut history = self.conversation.clone_history();
 
-        // Run the tool loop
+        // Run the tool loop with personalized prompt if available
+        let system_prompt = self.get_system_prompt();
         let result = self
             .tool_loop
             .run_loop(
                 &self.ai_client,
-                META_AGENT_SYSTEM_PROMPT,
+                system_prompt,
                 &mut history,
                 self.tool_registry.get_all_tools().to_vec(),
                 agent_manager,
@@ -188,12 +215,13 @@ impl MetaAgent {
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
+        // Get personalized prompt (clone to avoid borrow conflicts)
+        let system_prompt = self.get_system_prompt().to_string();
+
         // Build rich messages with the image for the first API call
-        let rich_messages = self.conversation.build_rich_messages_with_image(
-            &user_message,
-            &image,
-            META_AGENT_SYSTEM_PROMPT,
-        );
+        let rich_messages =
+            self.conversation
+                .build_rich_messages_with_image(&user_message, &image, &system_prompt);
 
         // Add to simple conversation history for future reference
         self.conversation
@@ -207,7 +235,7 @@ impl MetaAgent {
             .tool_loop
             .run_loop_with_initial_rich_messages(
                 &self.ai_client,
-                META_AGENT_SYSTEM_PROMPT,
+                &system_prompt,
                 rich_messages,
                 &mut history,
                 self.tool_registry.get_all_tools().to_vec(),
@@ -258,5 +286,88 @@ impl MetaAgent {
 
     pub fn get_chat_messages(&self) -> Vec<ChatMessage> {
         self.conversation.to_chat_messages()
+    }
+
+    // =========================================================================
+    // Commander Personality
+    // =========================================================================
+
+    /// Set the commander personality and regenerate the cached prompt if needed
+    pub async fn set_personality(
+        &mut self,
+        personality: CommanderPersonality,
+    ) -> Result<(), String> {
+        let new_hash = personality.settings_hash();
+
+        // Only regenerate if settings actually changed
+        if self.cached_prompt_hash != Some(new_hash) {
+            eprintln!(
+                "[MetaAgent] Personality changed, regenerating prompt (hash: {} -> {})",
+                self.cached_prompt_hash.unwrap_or(0),
+                new_hash
+            );
+
+            let generated = prompt_generator::generate_personalized_prompt(
+                &self.ai_client,
+                META_AGENT_SYSTEM_PROMPT,
+                &personality,
+            )
+            .await?;
+
+            eprintln!(
+                "[MetaAgent] Generated personalized prompt ({} chars)",
+                generated.len()
+            );
+
+            self.cached_prompt = Some(generated.clone());
+            self.cached_prompt_hash = Some(new_hash);
+
+            // Persist to disk
+            let cache = prompt_generator::PromptCache {
+                prompt: generated,
+                settings_hash: new_hash,
+                personality: personality.clone(),
+            };
+            if let Err(e) = prompt_generator::save_cached_prompt(&cache) {
+                eprintln!("[MetaAgent] Warning: Failed to persist prompt cache: {}", e);
+            }
+        }
+
+        self.personality = Some(personality);
+        Ok(())
+    }
+
+    /// Get the current system prompt (personalized if available, base otherwise)
+    fn get_system_prompt(&self) -> &str {
+        self.cached_prompt
+            .as_deref()
+            .unwrap_or(META_AGENT_SYSTEM_PROMPT)
+    }
+
+    /// Get the current personality settings
+    pub fn get_personality(&self) -> Option<&CommanderPersonality> {
+        self.personality.as_ref()
+    }
+
+    /// Clear the personality and cached prompt, reverting to base prompt
+    pub fn clear_personality(&mut self) -> Result<(), String> {
+        // Clear in-memory state
+        self.personality = None;
+        self.cached_prompt = None;
+        self.cached_prompt_hash = None;
+
+        // Clear from disk
+        prompt_generator::clear_cached_prompt()?;
+
+        eprintln!("[MetaAgent] Cleared personality and reverted to base prompt");
+        Ok(())
+    }
+
+    /// Get the current system prompt and whether it is personalized
+    pub fn get_system_prompt_snapshot(&self) -> (String, bool) {
+        match &self.cached_prompt {
+            Some(prompt) => (prompt.clone(), true),
+            None => (META_AGENT_SYSTEM_PROMPT.to_string(), false),
+        }
     }
 }

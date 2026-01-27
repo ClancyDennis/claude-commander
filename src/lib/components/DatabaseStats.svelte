@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from "svelte";
   import HelpTip from "./new-agent/HelpTip.svelte";
   import { formatCost } from '$lib/utils/formatting';
+  import { useAsyncData } from '$lib/hooks/useAsyncData.svelte';
 
   interface DatabaseStats {
     db_size_bytes: number;
@@ -22,22 +23,41 @@
     allTime: number;
   }
 
-  let stats = $state<DatabaseStats | null>(null);
-  let costMetrics = $state<CostMetrics | null>(null);
-  let loading = $state(true);
   let autoRefresh = $state(true);
   let refreshInterval: number;
 
-  async function fetchDatabaseStats() {
-    try {
-      loading = true;
-      stats = await invoke<DatabaseStats>("get_database_stats");
-    } catch (err) {
-      console.error("Failed to fetch database stats:", err);
-    } finally {
-      loading = false;
-    }
-  }
+  const asyncStats = useAsyncData(() => invoke<DatabaseStats>("get_database_stats"));
+
+  const asyncCostMetrics = useAsyncData(async () => {
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const [todayCost, monthCost, summary, last24HoursData, weekData] = await Promise.all([
+      invoke<number>('get_today_cost'),
+      invoke<number>('get_current_month_cost'),
+      invoke<{ total_cost_usd: number }>('get_cost_summary'),
+      invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
+        startDate: twentyFourHoursAgo.toISOString(),
+        endDate: null
+      }),
+      invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
+        startDate: weekAgo.toISOString(),
+        endDate: null
+      })
+    ]);
+
+    return {
+      today: todayCost,
+      last24Hours: last24HoursData.total_cost_usd,
+      thisWeek: weekData.total_cost_usd,
+      thisMonth: monthCost,
+      allTime: summary.total_cost_usd
+    };
+  });
+
+  // Derived for combined loading state
+  const loading = $derived(asyncStats.loading && !asyncStats.data);
 
   onMount(() => {
     refreshAll();
@@ -60,40 +80,8 @@
     return status;
   }
 
-  async function fetchCostMetrics() {
-    try {
-      const now = new Date();
-      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-      const [todayCost, monthCost, summary, last24HoursData, weekData] = await Promise.all([
-        invoke<number>('get_today_cost'),
-        invoke<number>('get_current_month_cost'),
-        invoke<{ total_cost_usd: number }>('get_cost_summary'),
-        invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
-          startDate: twentyFourHoursAgo.toISOString(),
-          endDate: null
-        }),
-        invoke<{ total_cost_usd: number }>('get_cost_by_date_range', {
-          startDate: weekAgo.toISOString(),
-          endDate: null
-        })
-      ]);
-
-      costMetrics = {
-        today: todayCost,
-        last24Hours: last24HoursData.total_cost_usd,
-        thisWeek: weekData.total_cost_usd,
-        thisMonth: monthCost,
-        allTime: summary.total_cost_usd
-      };
-    } catch (err) {
-      console.error("Failed to fetch cost metrics:", err);
-    }
-  }
-
   async function refreshAll() {
-    await Promise.all([fetchDatabaseStats(), fetchCostMetrics()]);
+    await Promise.all([asyncStats.fetch(), asyncCostMetrics.fetch()]);
   }
 </script>
 
@@ -108,23 +96,23 @@
     </button>
   </header>
 
-  {#if loading && !stats}
+  {#if loading && !asyncStats.data}
     <div class="loading-state">
       <div class="spinner"></div>
       <p>Loading statistics...</p>
     </div>
-  {:else if stats}
+  {:else if asyncStats.data}
     <!-- Storage Section -->
     <section class="section">
       <h3 class="section-title">Storage</h3>
       <div class="list-group">
         <div class="list-row">
           <span class="list-label">Database Size <HelpTip text="Total size of the SQLite database." placement="right" /></span>
-          <span class="list-value">{stats.db_size_formatted}</span>
+          <span class="list-value">{asyncStats.data.db_size_formatted}</span>
         </div>
         <div class="list-row">
           <span class="list-label">Size in Bytes</span>
-          <span class="list-value secondary">{formatNumber(stats.db_size_bytes)}</span>
+          <span class="list-value secondary">{formatNumber(asyncStats.data.db_size_bytes)}</span>
         </div>
       </div>
     </section>
@@ -135,52 +123,52 @@
       <div class="list-group">
         <div class="list-row">
           <span class="list-label">Total Runs <HelpTip text="Number of agent sessions stored." placement="right" /></span>
-          <span class="list-value">{formatNumber(stats.total_runs)}</span>
+          <span class="list-value">{formatNumber(asyncStats.data.total_runs)}</span>
         </div>
         <div class="list-row">
           <span class="list-label">Total Prompts</span>
-          <span class="list-value">{formatNumber(stats.total_prompts)}</span>
+          <span class="list-value">{formatNumber(asyncStats.data.total_prompts)}</span>
         </div>
       </div>
     </section>
 
     <!-- Cost Section -->
-    {#if costMetrics}
+    {#if asyncCostMetrics.data}
       <section class="section">
         <h3 class="section-title">Cost</h3>
         <div class="list-group">
           <div class="list-row featured">
             <span class="list-label">Total Spend <HelpTip text="Total cost across all agent sessions." placement="right" /></span>
-            <span class="list-value featured-value">{formatCost(costMetrics.allTime)}</span>
+            <span class="list-value featured-value">{formatCost(asyncCostMetrics.data.allTime)}</span>
           </div>
         </div>
         <div class="list-group">
           <div class="list-row">
             <span class="list-label">Last 24 Hours</span>
-            <span class="list-value">{formatCost(costMetrics.last24Hours)}</span>
+            <span class="list-value">{formatCost(asyncCostMetrics.data.last24Hours)}</span>
           </div>
           <div class="list-row">
             <span class="list-label">Today</span>
-            <span class="list-value">{formatCost(costMetrics.today)}</span>
+            <span class="list-value">{formatCost(asyncCostMetrics.data.today)}</span>
           </div>
           <div class="list-row">
             <span class="list-label">This Week</span>
-            <span class="list-value">{formatCost(costMetrics.thisWeek)}</span>
+            <span class="list-value">{formatCost(asyncCostMetrics.data.thisWeek)}</span>
           </div>
           <div class="list-row">
             <span class="list-label">This Month</span>
-            <span class="list-value">{formatCost(costMetrics.thisMonth)}</span>
+            <span class="list-value">{formatCost(asyncCostMetrics.data.thisMonth)}</span>
           </div>
         </div>
       </section>
     {/if}
 
     <!-- Runs by Status -->
-    {#if stats.runs_by_status.length > 0}
+    {#if asyncStats.data.runs_by_status.length > 0}
       <section class="section">
         <h3 class="section-title">Runs by Status</h3>
         <div class="list-group">
-          {#each stats.runs_by_status as [status, count]}
+          {#each asyncStats.data.runs_by_status as [status, count]}
             <div class="list-row">
               <span class="status-indicator {status}">{formatStatus(status)}</span>
               <span class="list-value">{formatNumber(count)}</span>
@@ -191,11 +179,11 @@
     {/if}
 
     <!-- Runs by Source -->
-    {#if stats.runs_by_source.length > 0}
+    {#if asyncStats.data.runs_by_source.length > 0}
       <section class="section">
         <h3 class="section-title">Runs by Source</h3>
         <div class="list-group">
-          {#each stats.runs_by_source as [source, count]}
+          {#each asyncStats.data.runs_by_source as [source, count]}
             <div class="list-row">
               <span class="list-label">{source}</span>
               <span class="list-value">{formatNumber(count)}</span>

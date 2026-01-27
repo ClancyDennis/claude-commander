@@ -325,6 +325,12 @@
     max-height: 180px;
     line-height: var(--leading-normal);
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  textarea::-webkit-scrollbar {
+    display: none;
   }
 
   textarea:focus {

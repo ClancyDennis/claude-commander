@@ -9,12 +9,14 @@
   import HelpTip from "./new-agent/HelpTip.svelte";
   import NotificationBell from "./NotificationBell.svelte";
   import { SegmentedControl } from "./ui/segmented-control";
-  import { Plus, Settings, Database, Radio } from "lucide-svelte";
+  import { Plus, Settings, Database, Radio, FileText, Brain } from "lucide-svelte";
 
-  let { onNewAgent, onToggleDatabaseStats, onOpenSettings }: {
+  let { onNewAgent, onToggleDatabaseStats, onOpenSettings, onOpenInstructions, onOpenCommanderSettings }: {
     onNewAgent: () => void;
     onToggleDatabaseStats?: () => void;
     onOpenSettings?: () => void;
+    onOpenInstructions?: () => void;
+    onOpenCommanderSettings?: () => void;
   } = $props();
 
   const sidebarSegments = [
@@ -93,6 +95,7 @@
   <div class="system-control-section">
     <button
       class="system-control-btn"
+      data-tutorial="chat-button"
       class:active={$viewMode === 'chat'}
       class:recording={$isAnyVoiceActive}
       onclick={handleOpenChat}
@@ -133,9 +136,19 @@
     {/if}
   </div>
 
-  {#if onToggleDatabaseStats || onOpenSettings}
+  {#if onToggleDatabaseStats || onOpenSettings || onOpenInstructions || onOpenCommanderSettings}
     <footer class="sidebar-footer">
       <NotificationBell />
+      {#if onOpenCommanderSettings}
+        <button class="footer-btn" onclick={onOpenCommanderSettings} title="Commander Settings">
+          <Brain size={16} />
+        </button>
+      {/if}
+      {#if onOpenInstructions}
+        <button class="footer-btn" onclick={onOpenInstructions} title="Instructions">
+          <FileText size={16} />
+        </button>
+      {/if}
       {#if onOpenSettings}
         <button class="footer-btn" onclick={onOpenSettings} title="Settings">
           <Settings size={16} />

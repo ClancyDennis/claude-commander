@@ -21,7 +21,7 @@ src-tauri/Cargo.lock
 .env
 .env.local
 .env.*.local
-
+.venv
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -81,3 +81,7 @@ MANIFEST
 
 #Other
 *.claude
+# Gmail credentials
+credentials.json
+gmail_token.pickle
+drive_token.pickle

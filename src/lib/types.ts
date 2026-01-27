@@ -176,6 +176,11 @@ export interface ChatUsage {
   output_tokens: number;
 }
 
+export interface SystemPromptInfo {
+  prompt: string;
+  source: "base" | "personalized";
+}
+
 export interface MetaAgentToolCallEvent {
   tool_name: string;
   input: Record<string, unknown>;
@@ -607,6 +612,7 @@ export interface ModelConfig {
   name: string;
   value: string | null;
   is_default: boolean;
+  default_value: string | null;
 }
 
 export interface ApiKeyStatus {

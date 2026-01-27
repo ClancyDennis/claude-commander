@@ -5,21 +5,12 @@
   import "./app.css";
   import { initResizeTracking } from "./lib/stores/resize";
   import AgentList from "./lib/components/AgentList.svelte";
-  import AgentView from "./lib/components/AgentView.svelte";
-  import ChatView from "./lib/components/ChatView.svelte";
-  import HistoricalRunView from "./lib/components/HistoricalRunView.svelte";
   import NewAgentDialog from "./lib/components/NewAgentDialog.svelte";
-  import LayoutManager from "./lib/components/LayoutManager.svelte";
-  import SplitView from "./lib/components/SplitView.svelte";
-  import GridView from "./lib/components/GridView.svelte";
-  import DatabaseStats from "./lib/components/DatabaseStats.svelte";
-  import Settings from "./lib/components/Settings.svelte";
-  import PhaseProgress from "./lib/components/PhaseProgress.svelte";
+  import ViewRouter from "./lib/components/ViewRouter.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
   import RateLimitModal from "./lib/components/RateLimitModal.svelte";
   import WelcomeModal from "./lib/components/WelcomeModal.svelte";
   import { checkAndSetRateLimit } from "./lib/stores/rateLimit";
-  import AutoPipelineView from "./lib/components/AutoPipelineView.svelte";
   import {
     agents,
     agentOutputs,
@@ -30,13 +21,10 @@
     updateAgentActivity,
     updateAgentStats,
     layoutMode,
-    viewMode,
     metaAgentThinking,
     addMetaAgentToolCall,
     openAgent,
     openChat,
-    sidebarMode,
-    selectedHistoricalRun,
     addOrchestratorToolCall,
     completeOrchestratorToolCall,
     addOrchestratorStateChange,
@@ -47,13 +35,12 @@
     setCurrentPipelineId,
   } from "./lib/stores/agents";
   import {
-    selectedPipelineId,
     addPipeline,
     updatePipelineStatus,
     updatePipelinePhase,
     updatePhaseProgress,
   } from "./lib/stores/pipelines";
-  import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "./lib/stores/autoPipelines";
+  import { autoPipelines, selectAutoPipeline } from "./lib/stores/autoPipelines";
   import { updateActivity, updateActivityDetail } from "./lib/stores/activity";
   import {
     addSecurityAlert,
@@ -65,7 +52,6 @@
     addPendingElevatedCommand,
     updateElevatedCommandStatus,
     showElevatedCommand,
-    pendingElevatedCount,
   } from "./lib/stores/security";
   import { setMetaTodos } from "./lib/stores/metaTodos";
   import SecurityAlertDetail from "./lib/components/SecurityAlertDetail.svelte";
@@ -79,14 +65,16 @@
   import { InteractiveTutorial } from "$lib/components/tutorial";
   import { ContextualHelpPanel } from "$lib/components/help";
   import { tutorialStore } from "$lib/stores/tutorial.svelte";
-  import { HelpCircle } from "lucide-svelte";
   import type { Agent, AutoPipeline } from "./lib/types";
   import AttentionOverlay from "$lib/components/voice/AttentionOverlay.svelte";
   import { startAttentionSession, initAttentionListeners, attentionEnabled } from "$lib/stores/voice";
+  import { initCommanderPersonality } from "$lib/stores/commanderPersonality";
 
   let showNewAgentDialog = $state(false);
   let showDatabaseStats = $state(false);
   let showSettings = $state(false);
+  let showInstructionPanel = $state(false);
+  let showCommanderSettings = $state(false);
   let showWelcomeModal = $state(false);
   let helpOpen = $state(false);
 
@@ -494,6 +482,9 @@
     // Initialize attention mode listeners
     initAttentionListeners();
 
+    // Initialize commander personality (sync to backend)
+    initCommanderPersonality();
+
     return () => {
       cleanupResize();
       cleanupKeyboard();
@@ -507,42 +498,19 @@
     onNewAgent={() => (showNewAgentDialog = true)}
     onToggleDatabaseStats={() => (showDatabaseStats = !showDatabaseStats)}
     onOpenSettings={() => (showSettings = !showSettings)}
+    onOpenInstructions={() => (showInstructionPanel = !showInstructionPanel)}
+    onOpenCommanderSettings={() => (showCommanderSettings = !showCommanderSettings)}
   />
   <div class="main-content">
-    {#if showDatabaseStats}
-      <div class="database-stats-container">
-        <DatabaseStats />
-      </div>
-    {/if}
-    {#if showSettings}
-      <div class="settings-container">
-        <Settings onClose={() => (showSettings = false)} />
-      </div>
-    {:else if $selectedAutoPipelineId}
-      <!-- Show auto-pipeline view with orchestrator activity -->
-      <div class="pipeline-view-container">
-        <AutoPipelineView pipelineId={$selectedAutoPipelineId} />
-      </div>
-    {:else if $selectedPipelineId}
-      <!-- Show pipeline view when a pipeline is selected -->
-      <div class="pipeline-view-container">
-        <PhaseProgress pipelineId={$selectedPipelineId} />
-      </div>
-    {:else if $sidebarMode === 'history' && $selectedHistoricalRun}
-      <!-- Show historical run view when in history mode and a run is selected -->
-      <HistoricalRunView />
-    {:else if $viewMode === 'chat'}
-      <ChatView />
-    {:else}
-      <LayoutManager />
-      {#if $layoutMode === 'single'}
-        <AgentView />
-      {:else if $layoutMode === 'split'}
-        <SplitView direction="horizontal" />
-      {:else if $layoutMode === 'grid'}
-        <GridView />
-      {/if}
-    {/if}
+    <ViewRouter
+      {showDatabaseStats}
+      {showInstructionPanel}
+      {showSettings}
+      {showCommanderSettings}
+      onCloseInstructions={() => (showInstructionPanel = false)}
+      onCloseSettings={() => (showSettings = false)}
+      onCloseCommanderSettings={() => (showCommanderSettings = false)}
+    />
   </div>
 </div>
 
@@ -575,22 +543,5 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-  }
-
-  .database-stats-container {
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .pipeline-view-container {
-    flex: 1;
-    overflow: auto;
-    padding: var(--space-lg);
-  }
-
-  .settings-container {
-    flex: 1;
-    overflow: auto;
-    background: var(--bg-primary);
   }
 </style>

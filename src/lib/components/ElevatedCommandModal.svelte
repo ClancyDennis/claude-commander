@@ -16,10 +16,17 @@
     ScopeApproval,
     ApprovalButtons,
   } from "./elevated-command";
+  import { useAsyncData } from "../hooks/useAsyncData.svelte";
 
   let approveScope = $state(false);
-  let isProcessing = $state(false);
-  let error = $state<string | null>(null);
+
+  // Async action state for approve/deny operations
+  const approveAction = useAsyncData<void>(() => performApprove());
+  const denyAction = useAsyncData<void>(() => performDeny());
+
+  // Combined processing/error state from both actions
+  let isProcessing = $derived(approveAction.loading || denyAction.loading);
+  let error = $derived(approveAction.error || denyAction.error);
 
   // Get the command to display (selected or first pending)
   let currentCommand = $derived.by(() => {
@@ -55,45 +62,37 @@
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
-  async function handleApprove() {
+  async function performApprove(): Promise<void> {
     const cmd = currentCommand;
-    if (!cmd || isProcessing) return;
+    if (!cmd) throw new Error("No command selected");
 
-    isProcessing = true;
-    error = null;
+    await invoke("approve_elevated_command", {
+      requestId: cmd.id,
+      approveScope: approveScope && !!cmd.scriptHash,
+    });
+    updateElevatedCommandStatus(cmd.id, "approved");
+    closeElevatedCommandModal();
+  }
 
-    try {
-      await invoke("approve_elevated_command", {
-        requestId: cmd.id,
-        approveScope: approveScope && !!cmd.scriptHash,
-      });
-      updateElevatedCommandStatus(cmd.id, "approved");
-      closeElevatedCommandModal();
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      isProcessing = false;
-    }
+  async function performDeny(): Promise<void> {
+    const cmd = currentCommand;
+    if (!cmd) throw new Error("No command selected");
+
+    await invoke("deny_elevated_command", {
+      requestId: cmd.id,
+    });
+    updateElevatedCommandStatus(cmd.id, "denied");
+    closeElevatedCommandModal();
+  }
+
+  async function handleApprove() {
+    if (isProcessing) return;
+    await approveAction.fetch();
   }
 
   async function handleDeny() {
-    const cmd = currentCommand;
-    if (!cmd || isProcessing) return;
-
-    isProcessing = true;
-    error = null;
-
-    try {
-      await invoke("deny_elevated_command", {
-        requestId: cmd.id,
-      });
-      updateElevatedCommandStatus(cmd.id, "denied");
-      closeElevatedCommandModal();
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      isProcessing = false;
-    }
+    if (isProcessing) return;
+    await denyAction.fetch();
   }
 
   function handleOverlayClick(e: MouseEvent) {

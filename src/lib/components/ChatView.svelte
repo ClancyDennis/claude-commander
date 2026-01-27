@@ -5,6 +5,7 @@
   import { metaAgentTodos } from "../stores/metaTodos";
   import { voiceSidebarOpen } from "../stores/voice";
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
+  import { useAsyncData } from '$lib/hooks/useAsyncData.svelte';
 
   // Import sub-components
   import { PageLayout } from "./ui/layout";
@@ -18,27 +19,23 @@
   import VoiceSidebar from "./voice/VoiceSidebar.svelte";
 
   // State
-  let hasApiKey = $state(true); // Default to true to avoid flash
-  let hasOpenAiKey = $state(false);
-  let configLoaded = $state(false);
-  let configPath = $state("");
   let processingAgentId = $state<string | null>(null);
   let error = $state<string | null>(null);
   let showTodoPanel = $state(false);
 
-  onMount(async () => {
-    try {
-      const config = await invoke<ConfigStatus>("get_config_status");
-      hasApiKey = config.api_keys.some((key) => key.is_configured);
-      hasOpenAiKey = config.api_keys.some(
-        (key) => key.provider.toLowerCase() === "openai" && key.is_configured
-      );
-      configPath = config.config_path;
-      configLoaded = true;
-    } catch (err) {
-      console.error("Failed to fetch config:", err);
-      configLoaded = true;
-    }
+  // Config async data
+  const asyncConfig = useAsyncData(() => invoke<ConfigStatus>("get_config_status"));
+
+  // Derived config values
+  const configLoaded = $derived(!asyncConfig.loading || asyncConfig.data !== null || asyncConfig.error !== null);
+  const hasApiKey = $derived(asyncConfig.data?.api_keys.some((key) => key.is_configured) ?? true); // Default to true to avoid flash
+  const hasOpenAiKey = $derived(asyncConfig.data?.api_keys.some(
+    (key) => key.provider.toLowerCase() === "openai" && key.is_configured
+  ) ?? false);
+  const configPath = $derived(asyncConfig.data?.config_path ?? "");
+
+  onMount(() => {
+    asyncConfig.fetch();
   });
 
   function handleClear() {

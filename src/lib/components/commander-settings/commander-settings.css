@@ -1,0 +1,716 @@
+.commander-settings {
+    padding: var(--space-4);
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  .commander-settings .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-hex);
+  }
+
+  .commander-settings .settings-header h2 {
+    margin: 0;
+    font-size: var(--text-xl);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .settings-description {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin: 0 0 var(--space-4) 0;
+    line-height: var(--leading-relaxed);
+  }
+
+  .commander-settings .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .commander-settings .save-btn, .commander-settings .discard-btn {
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    /* Reset base button gap */
+    gap: 0;
+  }
+
+  .commander-settings .save-btn {
+    background: var(--accent-hex);
+    border: 1px solid var(--accent-hex);
+    color: white;
+  }
+
+  .commander-settings .save-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  .commander-settings .save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .commander-settings .discard-btn {
+    background: transparent;
+    border: 1px solid var(--border-hex);
+    color: var(--text-secondary);
+  }
+
+  .commander-settings .discard-btn:hover:not(:disabled) {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .reset-btn, .commander-settings .close-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hex);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    /* Reset base button gap */
+    gap: 0;
+  }
+
+  .commander-settings .reset-btn:hover:not(:disabled), .commander-settings .close-btn:hover {
+    background: var(--accent-glow);
+    border-color: var(--accent-hex);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .reset-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .commander-settings .reset-btn svg, .commander-settings .close-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .commander-settings .config-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-3);
+  }
+
+  .commander-settings .config-section h3 {
+    margin: 0 0 var(--space-3) 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+  }
+
+  .commander-settings .section-description {
+    margin: 0 0 var(--space-3) 0;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  /* New compact row layouts */
+  .commander-settings .setting-row {
+    margin-bottom: var(--space-3);
+  }
+
+  .commander-settings .setting-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .commander-settings .setting-row.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+
+  .commander-settings .setting-row.tag-grid {
+    gap: var(--space-4);
+  }
+
+  .commander-settings .setting-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: var(--space-1);
+  }
+
+  .commander-settings .setting-inline label {
+    font-weight: var(--font-medium);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  /* Inline field with label beside control */
+  .commander-settings .inline-field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .commander-settings .inline-field label {
+    font-weight: var(--font-medium);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    min-width: 36px;
+  }
+
+  .commander-settings .inline-field.stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .commander-settings .inline-field.stacked label {
+    min-width: unset;
+  }
+
+  /* Compact slider */
+  .commander-settings .compact-slider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .commander-settings .compact-slider .setting-inline {
+    margin-bottom: 0;
+    min-width: 90px;
+  }
+
+  .commander-settings .slider-compact {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .commander-settings .slider-label-sm {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 55px;
+  }
+
+  .commander-settings .slider-label-sm:first-of-type {
+    text-align: right;
+  }
+
+  .commander-settings .slider-value {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--accent-hex);
+    min-width: 18px;
+    text-align: center;
+  }
+
+  .commander-settings input[type="range"] {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-full);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .commander-settings input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent-hex);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+  }
+
+  .commander-settings input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+  }
+
+  /* Select styles */
+  .commander-settings select {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+  }
+
+  .commander-settings select:hover {
+    border-color: var(--accent-hex);
+  }
+
+  .commander-settings select:focus {
+    outline: none;
+    border-color: var(--accent-hex);
+  }
+
+  /* Text input styles */
+  .commander-settings input[type="text"] {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    transition: border-color var(--transition-fast);
+  }
+
+  .commander-settings input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent-hex);
+  }
+
+  .commander-settings input[type="text"]::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* Textarea styles */
+  .commander-settings textarea {
+    width: 100%;
+    padding: var(--space-2);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-family: inherit;
+    resize: vertical;
+    line-height: var(--leading-relaxed);
+    transition: border-color var(--transition-fast);
+  }
+
+  .commander-settings textarea:focus {
+    outline: none;
+    border-color: var(--accent-hex);
+  }
+
+  .commander-settings textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* Tag field styles */
+  .commander-settings .tag-field {
+    min-width: 0;
+  }
+
+  .commander-settings .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-1);
+    min-height: 22px;
+  }
+
+  .commander-settings .tag-list.compact {
+    min-height: 20px;
+  }
+
+  .commander-settings .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px var(--space-1);
+    background: var(--accent-glow);
+    border: 1px solid var(--accent-hex);
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    color: var(--text-primary);
+  }
+
+  .commander-settings .tag-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    font-size: var(--text-xs);
+    line-height: 1;
+    transition: color var(--transition-fast);
+    /* Reset base button styles */
+    display: inline;
+    gap: 0;
+    min-width: auto;
+    min-height: auto;
+  }
+
+  .commander-settings .tag-remove:hover {
+    color: var(--error);
+  }
+
+  .commander-settings .tag-remove:active {
+    transform: none;
+  }
+
+  .commander-settings .tag-input-row {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .commander-settings .add-btn {
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    line-height: 1;
+    /* Reset base button styles */
+    gap: 0;
+    min-width: auto;
+    min-height: auto;
+  }
+
+  .commander-settings .add-btn:hover {
+    background: var(--accent-glow);
+    border-color: var(--accent-hex);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .add-btn:active {
+    transform: none;
+  }
+
+  /* Checkbox grid styles */
+  .commander-settings .checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+  }
+
+  .commander-settings .checkbox-grid.compact {
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .commander-settings .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    cursor: pointer;
+  }
+
+  .commander-settings .checkbox-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-hex);
+    cursor: pointer;
+  }
+
+  .commander-settings .checkbox-label {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  /* Toggle switch styles */
+  .commander-settings .inline-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .commander-settings .toggle-text {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .commander-settings .toggle-title {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .toggle {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .commander-settings .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .commander-settings .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-full);
+    transition: all var(--transition-fast);
+  }
+
+  .commander-settings .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted);
+    border-radius: var(--radius-full);
+    transition: all var(--transition-fast);
+  }
+
+  .commander-settings .toggle input:checked + .toggle-slider {
+    background-color: var(--accent-hex);
+    border-color: var(--accent-hex);
+  }
+
+  .commander-settings .toggle input:checked + .toggle-slider:before {
+    transform: translateX(16px);
+    background-color: white;
+  }
+
+  /* Voice row alignment */
+  .commander-settings .voice-row {
+    align-items: center;
+  }
+
+  .commander-settings .prompt-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .commander-settings .view-btn {
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hex);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    /* Reset base button gap */
+    gap: 0;
+  }
+
+  .commander-settings .view-btn:hover {
+    border-color: var(--accent-hex);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .prompt-actions .reset-btn {
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hex);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    gap: 0;
+    width: auto;
+    height: auto;
+  }
+
+  .commander-settings .prompt-actions .reset-btn:hover:not(:disabled) {
+    border-color: var(--warning, #f59e0b);
+    color: var(--warning, #f59e0b);
+  }
+
+  .commander-settings .prompt-actions .reset-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .commander-settings .prompt-meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .commander-settings .prompt-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+  }
+
+  .commander-settings .prompt-modal {
+    width: min(900px, 92vw);
+    max-height: 80vh;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .commander-settings .prompt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-hex);
+  }
+
+  .commander-settings .prompt-title h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .prompt-source {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+  }
+
+  .commander-settings .prompt-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .commander-settings .prompt-btn {
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--accent-hex);
+    background: var(--accent-hex);
+    color: white;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    /* Reset base button gap */
+    gap: 0;
+  }
+
+  .commander-settings .prompt-btn.ghost {
+    background: transparent;
+    border-color: var(--border-hex);
+    color: var(--text-secondary);
+  }
+
+  .commander-settings .prompt-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  .commander-settings .prompt-btn.ghost:hover:not(:disabled) {
+    border-color: var(--accent-hex);
+    color: var(--text-primary);
+  }
+
+  .commander-settings .prompt-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .commander-settings .prompt-body {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    overflow: auto;
+    flex: 1;
+  }
+
+  .commander-settings .prompt-text {
+    margin: 0;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+  }
+
+  .commander-settings .prompt-markdown {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-hex);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+  }
+
+  .commander-settings .prompt-markdown :global(.markdown-content) {
+    font-size: 13px;
+  }
+
+  .commander-settings .prompt-markdown :global(.markdown-content h1) {
+    font-size: 1.4em;
+    margin-top: 1em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border-hex);
+  }
+
+  .commander-settings .prompt-markdown :global(.markdown-content h2) {
+    font-size: 1.2em;
+    margin-top: 1em;
+  }
+
+  .commander-settings .prompt-markdown :global(.markdown-content h3) {
+    font-size: 1.05em;
+  }
+
+  .commander-settings .prompt-markdown :global(.markdown-content pre) {
+    background-color: var(--bg-primary) !important;
+  }
+
+  .commander-settings .prompt-loading, .commander-settings .prompt-error, .commander-settings .prompt-empty {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .commander-settings .prompt-error {
+    color: var(--error);
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 500px) {
+    .commander-settings .setting-row.two-col {
+      grid-template-columns: 1fr;
+    }
+
+    .commander-settings .checkbox-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .commander-settings .compact-slider {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-2);
+    }
+
+    .commander-settings .compact-slider .setting-inline {
+      min-width: unset;
+    }
+  }

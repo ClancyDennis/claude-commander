@@ -4,7 +4,9 @@
 // unknown message types, plain text output, and process end handling.
 
 use crate::agent_runs_db::RunStatus;
-use crate::types::{AgentInputRequiredEvent, AgentStatsEvent, AgentStatus, AgentStatusEvent};
+use crate::types::{
+    AgentInputRequiredEvent, AgentStatistics, AgentStatsEvent, AgentStatus, AgentStatusEvent,
+};
 use crate::utils::time::now_millis;
 
 use super::event_handlers::StreamContext;
@@ -33,7 +35,7 @@ pub(crate) async fn handle_result_message(ctx: &StreamContext, json: &serde_json
         "agent:stats",
         serde_json::to_value(AgentStatsEvent {
             agent_id: ctx.agent_id.clone(),
-            stats: stats_snapshot,
+            stats: stats_snapshot.clone(),
         })
         .unwrap(),
     );
@@ -51,7 +53,7 @@ pub(crate) async fn handle_result_message(ctx: &StreamContext, json: &serde_json
         .app_handle
         .emit("agent:output", serde_json::to_value(output_event).unwrap());
 
-    // Persist to database
+    // Persist output to database
     persist_output(
         &ctx.runs_db,
         &ctx.agent_id,
@@ -60,6 +62,9 @@ pub(crate) async fn handle_result_message(ctx: &StreamContext, json: &serde_json
         &content,
     )
     .await;
+
+    // Update costs in database incrementally (don't wait until agent stops)
+    update_costs_in_database(ctx, &stats_snapshot).await;
 
     // Handle successful completion - update state
     if is_success {
@@ -128,6 +133,35 @@ async fn handle_success_completion(ctx: &StreamContext) {
         })
         .unwrap(),
     );
+}
+
+/// Update costs in database incrementally after each result message
+/// This ensures costs are persisted before agents are stopped
+async fn update_costs_in_database(ctx: &StreamContext, stats: &AgentStatistics) {
+    if let Some(runs_db) = ctx.runs_db.clone() {
+        let agent_id = ctx.agent_id.clone();
+        let stats = stats.clone();
+
+        tokio::spawn(async move {
+            if let Ok(Some(mut run)) = runs_db.get_run(&agent_id).await {
+                let now = now_millis();
+
+                // Update cost-related fields
+                run.last_activity = now;
+                run.total_prompts = stats.total_prompts;
+                run.total_tool_calls = stats.total_tool_calls;
+                run.total_output_bytes = stats.total_output_bytes;
+                run.total_tokens_used = stats.total_tokens_used;
+                run.total_cost_usd = stats.total_cost_usd;
+
+                if let Some(ref model_usage) = stats.model_usage {
+                    run.model_usage = serde_json::to_string(&model_usage).ok();
+                }
+
+                let _ = runs_db.update_run(&run).await;
+            }
+        });
+    }
 }
 
 /// Handle stream events

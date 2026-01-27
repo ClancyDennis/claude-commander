@@ -2,7 +2,7 @@
 //
 // Handles spawning, managing, and communicating with Claude CLI agent processes.
 
-mod claude_cli;
+pub mod claude_cli;
 mod database_ops;
 mod event_handlers;
 mod message_handlers;
@@ -237,17 +237,13 @@ impl AgentManager {
         .await;
 
         // Emit event to notify frontend about new agent
-        app_handle
-            .emit(
-                "agent:status",
-                serde_json::to_value(AgentStatusEvent {
-                    agent_id: agent_id.clone(),
-                    status: AgentStatus::Running,
-                    info: Some(agent_info.clone()),
-                })
-                .unwrap(),
-            )
-            .ok();
+        if let Ok(status_event) = serde_json::to_value(AgentStatusEvent {
+            agent_id: agent_id.clone(),
+            status: AgentStatus::Running,
+            info: Some(agent_info.clone()),
+        }) {
+            let _ = app_handle.emit("agent:status", status_event);
+        }
 
         // Create stream context for handlers
         let stream_ctx = StreamContext {
@@ -323,18 +319,14 @@ impl AgentManager {
 
         // Emit activity event to update UI
         if let Some(app_handle) = app_handle.as_ref() {
-            app_handle
-                .emit(
-                    "agent:activity",
-                    serde_json::to_value(AgentActivityEvent {
-                        agent_id: agent_id.to_string(),
-                        is_processing: true,
-                        pending_input: false,
-                        last_activity: now_millis(),
-                    })
-                    .unwrap(),
-                )
-                .ok();
+            if let Ok(activity_event) = serde_json::to_value(AgentActivityEvent {
+                agent_id: agent_id.to_string(),
+                is_processing: true,
+                pending_input: false,
+                last_activity: now_millis(),
+            }) {
+                let _ = app_handle.emit("agent:activity", activity_event);
+            }
         }
 
         // Increment prompt counter
