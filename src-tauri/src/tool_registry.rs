@@ -203,6 +203,86 @@ impl ToolRegistry {
             }),
         });
 
+        // User Interaction Tools
+        tools.push(Tool {
+            name: "Sleep".to_string(),
+            description: "Pause execution for a duration. If the user sends a message during sleep, the sleep ends early and their message is processed immediately. Use this for periodic monitoring, giving users time to review status updates, or waiting for external processes. When sleep completes (or is interrupted), you receive the current status of all agents.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "duration_minutes": {
+                        "type": "number",
+                        "description": "Minutes to sleep (e.g., 10 for 10 minutes, 0.5 for 30 seconds). Can be fractional."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "What you're waiting for - this is shown to the user (e.g., 'Waiting for agent to complete tests')"
+                    }
+                },
+                "required": ["duration_minutes"]
+            }),
+        });
+
+        tools.push(Tool {
+            name: "UpdateUser".to_string(),
+            description: "Send a non-blocking status message to the user. Use this to report progress, explain what you're doing, or provide intermediate results. The message appears in the chat but does NOT require a response - you continue working immediately.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The status message to show to the user"
+                    },
+                    "level": {
+                        "type": "string",
+                        "enum": ["info", "warning", "success", "progress"],
+                        "description": "The type of update. Use 'progress' for ongoing work, 'success' for completed milestones, 'warning' for issues, 'info' for general updates. Defaults to 'info'."
+                    }
+                },
+                "required": ["message"]
+            }),
+        });
+
+        tools.push(Tool {
+            name: "AskUserQuestion".to_string(),
+            description: "Ask the user a question and WAIT for their response. This is BLOCKING - you will pause until the user responds (or 5 minute timeout). Use this only when you genuinely need user input to proceed, such as clarification, confirmation, or choices between options.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to ask the user"
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional: Provide predefined choices for the user to select from (e.g., ['Yes', 'No', 'Skip'])"
+                    }
+                },
+                "required": ["question"]
+            }),
+        });
+
+        tools.push(Tool {
+            name: "CompleteTask".to_string(),
+            description: "Signal that you have completed the current task and present your final response to the user. You MUST call this tool when you're done working - it ends the current work loop. Include a summary of what was accomplished in the message.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Your final response/summary to present to the user. This is what they will see as your answer."
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["success", "partial", "failed"],
+                        "description": "Overall status: 'success' if fully completed, 'partial' if some parts done, 'failed' if unable to complete. Defaults to 'success'."
+                    }
+                },
+                "required": ["message"]
+            }),
+        });
+
         Self { tools }
     }
 

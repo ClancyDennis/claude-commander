@@ -29,8 +29,9 @@ use crate::types::{
 
 use conversation_manager::ConversationManager;
 use result_queue::ResultQueue;
-use system_prompt::META_AGENT_SYSTEM_PROMPT;
-use tool_loop_engine::ToolLoopEngine;
+use system_prompt::build_system_prompt;
+use tool_loop_engine::{ToolLoopConfig, ToolLoopEngine};
+use tools::{PendingQuestion, SleepState};
 
 /// The MetaAgent orchestrates worker agents through a conversational interface.
 ///
@@ -42,10 +43,16 @@ pub struct MetaAgent {
     ai_client: AIClient,
     result_queue: ResultQueue,
     tool_loop: ToolLoopEngine,
+    tool_loop_config: ToolLoopConfig,
+    // Base system prompt with max_iterations filled in
+    base_system_prompt: String,
     // Commander personality settings
     personality: Option<CommanderPersonality>,
     cached_prompt: Option<String>,
     cached_prompt_hash: Option<u64>,
+    // Interaction state for Sleep and AskUserQuestion tools
+    sleep_state: Arc<Mutex<SleepState>>,
+    pending_question: Arc<Mutex<Option<PendingQuestion>>>,
 }
 
 impl MetaAgent {
@@ -66,15 +73,23 @@ impl MetaAgent {
                 (None, None, None)
             };
 
+        let tool_loop_config = ToolLoopConfig::default();
+        // Build base system prompt with max_iterations from config
+        let base_system_prompt = build_system_prompt(tool_loop_config.max_iterations);
+
         Self {
             conversation: ConversationManager::new(),
             tool_registry: ToolRegistry::new(),
             ai_client,
             result_queue: ResultQueue::new(),
             tool_loop: ToolLoopEngine::new(),
+            tool_loop_config,
+            base_system_prompt,
             personality,
             cached_prompt,
             cached_prompt_hash,
+            sleep_state: Arc::new(Mutex::new(SleepState::default())),
+            pending_question: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -162,6 +177,18 @@ impl MetaAgent {
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: AppHandle,
     ) -> AppResult<ChatResponse> {
+        // Check if currently sleeping - interrupt it with user message
+        {
+            let mut sleep_state = self.sleep_state.lock().await;
+            if sleep_state.is_sleeping {
+                if let Some(cancel_tx) = sleep_state.cancel_tx.take() {
+                    let _ = cancel_tx.send(user_message.clone());
+                    // Sleep tool will return with the user message
+                    // and the tool loop will continue processing
+                }
+            }
+        }
+
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
@@ -182,6 +209,8 @@ impl MetaAgent {
                 self.tool_registry.get_all_tools().to_vec(),
                 agent_manager,
                 &app_handle,
+                self.sleep_state.clone(),
+                self.pending_question.clone(),
                 || self.get_queue_status(),
             )
             .await;
@@ -212,6 +241,16 @@ impl MetaAgent {
 
         let image = image.unwrap();
 
+        // Check if currently sleeping - interrupt it with user message
+        {
+            let mut sleep_state = self.sleep_state.lock().await;
+            if sleep_state.is_sleeping {
+                if let Some(cancel_tx) = sleep_state.cancel_tx.take() {
+                    let _ = cancel_tx.send(user_message.clone());
+                }
+            }
+        }
+
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
@@ -241,6 +280,8 @@ impl MetaAgent {
                 self.tool_registry.get_all_tools().to_vec(),
                 agent_manager,
                 &app_handle,
+                self.sleep_state.clone(),
+                self.pending_question.clone(),
                 || self.get_queue_status(),
             )
             .await;
@@ -288,6 +329,16 @@ impl MetaAgent {
         self.conversation.to_chat_messages()
     }
 
+    /// Get the pending question state for answering user questions
+    pub fn get_pending_question(&self) -> Arc<Mutex<Option<PendingQuestion>>> {
+        self.pending_question.clone()
+    }
+
+    /// Set the pending question state (for sharing with AppState)
+    pub fn set_pending_question(&mut self, pending: Arc<Mutex<Option<PendingQuestion>>>) {
+        self.pending_question = pending;
+    }
+
     // =========================================================================
     // Commander Personality
     // =========================================================================
@@ -309,7 +360,7 @@ impl MetaAgent {
 
             let generated = prompt_generator::generate_personalized_prompt(
                 &self.ai_client,
-                META_AGENT_SYSTEM_PROMPT,
+                &self.base_system_prompt,
                 &personality,
             )
             .await?;
@@ -341,7 +392,7 @@ impl MetaAgent {
     fn get_system_prompt(&self) -> &str {
         self.cached_prompt
             .as_deref()
-            .unwrap_or(META_AGENT_SYSTEM_PROMPT)
+            .unwrap_or(&self.base_system_prompt)
     }
 
     /// Get the current personality settings
@@ -367,7 +418,12 @@ impl MetaAgent {
     pub fn get_system_prompt_snapshot(&self) -> (String, bool) {
         match &self.cached_prompt {
             Some(prompt) => (prompt.clone(), true),
-            None => (META_AGENT_SYSTEM_PROMPT.to_string(), false),
+            None => (self.base_system_prompt.clone(), false),
         }
+    }
+
+    /// Get the max iterations from the tool loop config
+    pub fn get_max_iterations(&self) -> usize {
+        self.tool_loop_config.max_iterations
     }
 }

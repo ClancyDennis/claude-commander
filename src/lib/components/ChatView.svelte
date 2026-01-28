@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
   import { metaAgentTodos } from "../stores/metaTodos";
+  import { isSleeping, metaSleepStatus } from "../stores/metaAgentInteraction";
   import { voiceSidebarOpen } from "../stores/voice";
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
   import { useAsyncData } from '$lib/hooks/useAsyncData.svelte';
@@ -137,7 +138,13 @@
         {:else if $metaAgentChat.length === 0}
           <ChatEmptyState />
         {:else}
-          <ChatMessageList messages={$metaAgentChat} isThinking={$metaAgentThinking} />
+          <ChatMessageList
+            messages={$metaAgentChat}
+            isThinking={$metaAgentThinking}
+            isSleeping={$isSleeping}
+            sleepDuration={$metaSleepStatus?.duration_ms}
+            sleepReason={$metaSleepStatus?.reason}
+          />
         {/if}
       </div>
 
@@ -151,7 +158,7 @@
       {/if}
 
       <ChatInput
-        disabled={$metaAgentThinking}
+        disabled={$metaAgentThinking && !$isSleeping}
         {hasApiKey}
         onSend={handleSendMessage}
       />

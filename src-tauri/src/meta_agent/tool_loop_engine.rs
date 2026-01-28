@@ -14,7 +14,7 @@ use crate::types::{
     ChatMessage, ChatResponse, ChatUsage, MetaAgentToolCallEvent, QueueStatus, ToolCall,
 };
 
-use super::tools;
+use super::tools::{self, IterationContext, PendingQuestion, SleepState, ToolExecutionResult};
 
 /// Configuration for the tool loop engine
 pub struct ToolLoopConfig {
@@ -27,8 +27,8 @@ pub struct ToolLoopConfig {
 impl Default for ToolLoopConfig {
     fn default() -> Self {
         Self {
-            max_iterations: 10,
-            max_tool_calls: 20,
+            max_iterations: 40,
+            max_tool_calls: 200,
         }
     }
 }
@@ -43,6 +43,12 @@ pub struct ResponseProcessingResult {
     pub tool_results: Vec<serde_json::Value>,
     /// Number of tool calls in this response
     pub tool_call_count: usize,
+    /// Whether CompleteTask was called - signals loop should exit
+    pub should_complete: bool,
+    /// The completion message from CompleteTask (if called)
+    pub completion_message: Option<String>,
+    /// Whether Sleep completed - signals iteration counter should reset
+    pub should_reset_iterations: bool,
 }
 
 /// The tool loop engine handles the iteration over AI responses and tool execution
@@ -68,12 +74,18 @@ impl ToolLoopEngine {
         response: &AIResponse,
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: &AppHandle,
+        sleep_state: Arc<Mutex<SleepState>>,
+        pending_question: Arc<Mutex<Option<PendingQuestion>>>,
         queue_status_fn: impl Fn() -> QueueStatus,
+        iteration_ctx: IterationContext,
     ) -> ResponseProcessingResult {
         let mut text_content = String::new();
         let mut tool_calls = Vec::new();
         let mut tool_results = Vec::new();
         let mut tool_call_count = 0;
+        let mut should_complete = false;
+        let mut completion_message = None;
+        let mut should_reset_iterations = false;
 
         for content_block in &response.content {
             match content_block {
@@ -83,15 +95,33 @@ impl ToolLoopEngine {
                 ContentBlock::ToolUse { id, name, input } => {
                     tool_call_count += 1;
 
-                    // Execute tool
-                    let tool_result = tools::execute_tool(
+                    // Execute tool - returns ToolExecutionResult
+                    let tool_execution_result = tools::execute_tool(
                         name,
                         input.clone(),
                         agent_manager.clone(),
                         app_handle.clone(),
+                        sleep_state.clone(),
+                        pending_question.clone(),
                         &queue_status_fn,
+                        iteration_ctx,
                     )
                     .await;
+
+                    // Get the result value for logging/events
+                    let tool_result = tool_execution_result.to_value();
+
+                    // Check if this is a completion signal
+                    match &tool_execution_result {
+                        ToolExecutionResult::Complete(msg) => {
+                            should_complete = true;
+                            completion_message = Some(msg.clone());
+                        }
+                        ToolExecutionResult::SleepComplete(_) => {
+                            should_reset_iterations = true;
+                        }
+                        ToolExecutionResult::Continue(_) => {}
+                    }
 
                     // Create tool call record
                     let tool_call = ToolCall {
@@ -129,6 +159,9 @@ impl ToolLoopEngine {
             tool_calls,
             tool_results,
             tool_call_count,
+            should_complete,
+            completion_message,
+            should_reset_iterations,
         }
     }
 
@@ -179,7 +212,9 @@ impl ToolLoopEngine {
     /// Run the main tool loop
     ///
     /// This function handles the iteration over AI responses, executing tool calls
-    /// until a final response without tool calls is produced.
+    /// until CompleteTask is called or a response without tool calls is produced.
+    /// Sleep tool resets the iteration counter, allowing the meta-agent to work
+    /// indefinitely by periodically sleeping.
     #[allow(clippy::too_many_arguments)]
     pub async fn run_loop<F>(
         &self,
@@ -189,6 +224,8 @@ impl ToolLoopEngine {
         tools: Vec<Tool>,
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: &AppHandle,
+        sleep_state: Arc<Mutex<SleepState>>,
+        pending_question: Arc<Mutex<Option<PendingQuestion>>>,
         queue_status_fn: F,
     ) -> AppResult<ChatResponse>
     where
@@ -197,10 +234,14 @@ impl ToolLoopEngine {
         let mut iteration = 0;
         let mut tool_call_count = 0;
         let mut final_response: Option<ChatResponse> = None;
+        let max_iterations = self.config.max_iterations;
 
-        while iteration < self.config.max_iterations && tool_call_count < self.config.max_tool_calls
+        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls
         {
             iteration += 1;
+
+            // Create iteration context to pass to tools
+            let iteration_ctx = IterationContext::new(iteration, max_iterations);
 
             // Call AI API with system prompt and tools
             let response = ai_client
@@ -218,7 +259,10 @@ impl ToolLoopEngine {
                     &response,
                     agent_manager.clone(),
                     app_handle,
+                    sleep_state.clone(),
+                    pending_question.clone(),
                     &queue_status_fn,
+                    iteration_ctx,
                 )
                 .await;
 
@@ -236,13 +280,32 @@ impl ToolLoopEngine {
                 content: assistant_content,
             });
 
+            // Check if CompleteTask was called - exit the loop with completion message
+            if result.should_complete {
+                let completion_text = result.completion_message.unwrap_or_else(|| {
+                    result.text_content.clone()
+                });
+                final_response = Some(Self::build_final_response(
+                    completion_text,
+                    result.tool_calls,
+                    &response.usage,
+                ));
+                break;
+            }
+
+            // Reset iteration counter if Sleep was called
+            if result.should_reset_iterations {
+                eprintln!("[MetaAgent] Sleep completed - resetting iteration counter from {} to 0", iteration);
+                iteration = 0;
+            }
+
             // If there were tool calls, send tool results back
             if !result.tool_results.is_empty() {
                 conversation_history.push(Message {
                     role: "user".to_string(),
                     content: Self::build_tool_results_content(&result.tool_results),
                 });
-                continue; // Continue the loop to get final response
+                continue; // Continue the loop to get next response
             }
 
             // No tool calls - we have our final response
@@ -265,6 +328,7 @@ impl ToolLoopEngine {
     ///
     /// This is used on the first iteration when processing a message with an image.
     /// Subsequent iterations use the regular loop.
+    /// Sleep tool resets the iteration counter.
     #[allow(clippy::too_many_arguments)]
     pub async fn run_loop_with_initial_rich_messages<F>(
         &self,
@@ -275,6 +339,8 @@ impl ToolLoopEngine {
         tools: Vec<Tool>,
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: &AppHandle,
+        sleep_state: Arc<Mutex<SleepState>>,
+        pending_question: Arc<Mutex<Option<PendingQuestion>>>,
         queue_status_fn: F,
     ) -> AppResult<ChatResponse>
     where
@@ -283,10 +349,14 @@ impl ToolLoopEngine {
         let mut iteration = 0;
         let mut tool_call_count = 0;
         let mut final_response: Option<ChatResponse> = None;
+        let max_iterations = self.config.max_iterations;
 
-        while iteration < self.config.max_iterations && tool_call_count < self.config.max_tool_calls
+        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls
         {
             iteration += 1;
+
+            // Create iteration context to pass to tools
+            let iteration_ctx = IterationContext::new(iteration, max_iterations);
 
             // For first iteration, use rich messages with image
             // For subsequent iterations, use simple messages
@@ -312,7 +382,10 @@ impl ToolLoopEngine {
                     &response,
                     agent_manager.clone(),
                     app_handle,
+                    sleep_state.clone(),
+                    pending_question.clone(),
                     &queue_status_fn,
+                    iteration_ctx,
                 )
                 .await;
 
@@ -329,6 +402,25 @@ impl ToolLoopEngine {
                 role: "assistant".to_string(),
                 content: assistant_content,
             });
+
+            // Check if CompleteTask was called - exit the loop with completion message
+            if result.should_complete {
+                let completion_text = result.completion_message.unwrap_or_else(|| {
+                    result.text_content.clone()
+                });
+                final_response = Some(Self::build_final_response(
+                    completion_text,
+                    result.tool_calls,
+                    &response.usage,
+                ));
+                break;
+            }
+
+            // Reset iteration counter if Sleep was called
+            if result.should_reset_iterations {
+                eprintln!("[MetaAgent] Sleep completed - resetting iteration counter from {} to 0", iteration);
+                iteration = 0;
+            }
 
             // If there were tool calls, send tool results back
             if !result.tool_results.is_empty() {

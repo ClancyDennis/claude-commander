@@ -177,13 +177,20 @@
   });
 
   // Watch for pending prompt (e.g., from resume run)
+  // Track last applied prompt to avoid re-applying on every render
+  let lastAppliedPrompt: string | null = null;
+
   $effect(() => {
-    if (pendingPrompt) {
+    if (pendingPrompt && pendingPrompt !== lastAppliedPrompt) {
+      lastAppliedPrompt = pendingPrompt;
       input = pendingPrompt;
       // Focus the textarea
       if (textarea) {
         textarea.focus();
       }
+    } else if (!pendingPrompt) {
+      // Reset tracking when prompt is cleared
+      lastAppliedPrompt = null;
     }
   });
 

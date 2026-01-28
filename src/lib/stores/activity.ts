@@ -13,11 +13,21 @@ export interface AgentActivity {
 
 export const agentActivities = writable<Map<string, AgentActivity>>(new Map());
 
-// Derived store to calculate idle times
+// Memoization cache for agentActivityWithIdle
+let lastActivitiesRef: Map<string, AgentActivity> | null = null;
+let lastIdleResult: Map<string, AgentActivity> | null = null;
+
+// Derived store to calculate idle times (with memoization)
 export const agentActivityWithIdle = derived(
   [agentActivities],
   ([$activities]) => {
-    const now = Date.now(); // Use Date.now() instead of new Date() to avoid object creation
+    // Skip recalculation if same reference (common case during rapid updates)
+    if ($activities === lastActivitiesRef && lastIdleResult) {
+      return lastIdleResult;
+    }
+    lastActivitiesRef = $activities;
+
+    const now = Date.now();
     const result = new Map<string, AgentActivity>();
 
     $activities.forEach((activity, agentId) => {
@@ -28,6 +38,7 @@ export const agentActivityWithIdle = derived(
       });
     });
 
+    lastIdleResult = result;
     return result;
   }
 );

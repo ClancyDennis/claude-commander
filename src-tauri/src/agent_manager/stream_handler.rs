@@ -20,11 +20,11 @@ use super::output_builder::OutputEventBuilder;
 // Re-export StreamContext for use by mod.rs
 pub use super::event_handlers::StreamContext;
 
-/// Spawn the stdout stream handler task
-pub fn spawn_stdout_handler(stdout: ChildStdout, ctx: StreamContext) {
+/// Spawn the stdout stream handler task, returns JoinHandle for cleanup
+pub fn spawn_stdout_handler(stdout: ChildStdout, ctx: StreamContext) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         handle_stdout_stream(stdout, ctx).await;
-    });
+    })
 }
 
 /// Main stdout stream handling logic
@@ -95,14 +95,14 @@ async fn dispatch_message(
     }
 }
 
-/// Spawn the stderr stream handler task
+/// Spawn the stderr stream handler task, returns JoinHandle for cleanup
 pub fn spawn_stderr_handler(
     stderr: tokio::process::ChildStderr,
     agent_id: String,
     app_handle: Arc<dyn crate::events::AppEventEmitter>,
     runs_db: Option<Arc<AgentRunsDB>>,
     pipeline_id: Option<String>,
-) {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
@@ -116,7 +116,7 @@ pub fn spawn_stderr_handler(
 
             let _ = app_handle.emit("agent:output", serde_json::to_value(output_event).unwrap());
 
-            // Persist error to database
+            // Persist error to database (await instead of spawning detached task)
             if let Some(ref db) = runs_db {
                 let record = AgentOutputRecord {
                     id: None,
@@ -127,11 +127,8 @@ pub fn spawn_stderr_handler(
                     metadata: None,
                     timestamp: now_millis(),
                 };
-                let db_clone = db.clone();
-                tokio::spawn(async move {
-                    let _ = db_clone.insert_agent_output(&record).await;
-                });
+                let _ = db.insert_agent_output(&record).await;
             }
         }
-    });
+    })
 }

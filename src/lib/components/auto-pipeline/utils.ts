@@ -1,14 +1,47 @@
 import type { AutoPipeline, PipelineHistoryBundle } from '$lib/types';
 import type { UnifiedOutput } from './types';
 
+// Cache for processOutputs to avoid expensive recalculations
+let outputCache: {
+  pipelineId: string;
+  stepsLength: number;
+  historyToolCallsLength: number;
+  historyStateChangesLength: number;
+  historyDecisionsLength: number;
+  result: UnifiedOutput[];
+} = {
+  pipelineId: '',
+  stepsLength: 0,
+  historyToolCallsLength: 0,
+  historyStateChangesLength: 0,
+  historyDecisionsLength: 0,
+  result: []
+};
+
 /**
- * Process pipeline and history into unified outputs
+ * Process pipeline and history into unified outputs (with caching)
  */
 export function processOutputs(
   pipeline: AutoPipeline | null,
   pipelineHistory: PipelineHistoryBundle | null
 ): UnifiedOutput[] {
   if (!pipeline) return [];
+
+  // Check cache validity
+  const historyToolCallsLength = pipelineHistory?.tool_calls?.length ?? 0;
+  const historyStateChangesLength = pipelineHistory?.state_changes?.length ?? 0;
+  const historyDecisionsLength = pipelineHistory?.decisions?.length ?? 0;
+
+  if (
+    outputCache.pipelineId === pipeline.id &&
+    outputCache.stepsLength === pipeline.steps.length &&
+    outputCache.historyToolCallsLength === historyToolCallsLength &&
+    outputCache.historyStateChangesLength === historyStateChangesLength &&
+    outputCache.historyDecisionsLength === historyDecisionsLength
+  ) {
+    return outputCache.result;
+  }
+
   const outputs: UnifiedOutput[] = [];
 
   // Add agent outputs from steps
@@ -28,7 +61,16 @@ export function processOutputs(
   // Add orchestrator tool calls
   if (pipelineHistory?.tool_calls) {
     for (const toolCall of pipelineHistory.tool_calls) {
-      const toolInputStr = toolCall.tool_input ? JSON.stringify(JSON.parse(toolCall.tool_input), null, 2) : '';
+      // Parse JSON once and format (avoid parse+stringify round-trip when possible)
+      let toolInputStr = '';
+      if (toolCall.tool_input) {
+        try {
+          const parsed = JSON.parse(toolCall.tool_input);
+          toolInputStr = JSON.stringify(parsed, null, 2);
+        } catch {
+          toolInputStr = toolCall.tool_input;
+        }
+      }
       outputs.push({
         stage: 'Orchestrator',
         output_type: 'orchestrator_tool',
@@ -64,7 +106,19 @@ export function processOutputs(
   }
 
   // Sort by timestamp
-  return outputs.sort((a, b) => a.timestamp - b.timestamp);
+  const result = outputs.sort((a, b) => a.timestamp - b.timestamp);
+
+  // Update cache
+  outputCache = {
+    pipelineId: pipeline.id,
+    stepsLength: pipeline.steps.length,
+    historyToolCallsLength,
+    historyStateChangesLength,
+    historyDecisionsLength,
+    result
+  };
+
+  return result;
 }
 
 /**

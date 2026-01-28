@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 /// Attention mode session - announces task completion and allows follow-up
@@ -20,6 +21,12 @@ pub struct AttentionSession {
     last_activity: Arc<Mutex<Instant>>,
     /// Conversation messages for context
     messages: Arc<Mutex<Vec<Value>>>,
+    /// JoinHandle for outgoing message task (for cleanup)
+    write_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for incoming message task (for cleanup)
+    read_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for timeout checker task (for cleanup)
+    timeout_handle: Option<JoinHandle<()>>,
 }
 
 impl AttentionSession {
@@ -29,6 +36,9 @@ impl AttentionSession {
             is_active: Arc::new(Mutex::new(false)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             messages: Arc::new(Mutex::new(Vec::new())),
+            write_handle: None,
+            read_handle: None,
+            timeout_handle: None,
         }
     }
 
@@ -157,7 +167,7 @@ impl AttentionSession {
 
         // Spawn task to handle outgoing messages
         let mut ws_write = ws_write;
-        tokio::spawn(async move {
+        let write_handle = tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 if !*is_active_write.lock().await {
                     break;
@@ -185,6 +195,7 @@ impl AttentionSession {
                 }
             }
         });
+        self.write_handle = Some(write_handle);
 
         // Clone for read task
         let messages = self.messages.clone();
@@ -193,7 +204,7 @@ impl AttentionSession {
         let is_active_read = is_active.clone();
 
         // Spawn task to handle incoming messages
-        tokio::spawn(async move {
+        let read_handle = tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 if !*is_active_read.lock().await {
                     break;
@@ -227,12 +238,13 @@ impl AttentionSession {
                 }
             }
         });
+        self.read_handle = Some(read_handle);
 
         // Spawn inactivity timeout checker
         let is_active_timeout = is_active.clone();
         let last_activity_timeout = last_activity.clone();
         let timeout_duration = Duration::from_secs(settings.timeout_secs);
-        tokio::spawn(async move {
+        let timeout_handle = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -252,6 +264,7 @@ impl AttentionSession {
                 }
             }
         });
+        self.timeout_handle = Some(timeout_handle);
 
         Ok(())
     }
@@ -488,6 +501,18 @@ impl AttentionSession {
     pub async fn stop(&mut self) {
         *self.is_active.lock().await = false;
         self.ws_sender = None;
+
+        // Abort all handler tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.timeout_handle.take() {
+            handle.abort();
+        }
+
         self.messages.lock().await.clear();
         println!("[Attention] Session stopped");
     }
@@ -501,5 +526,20 @@ impl AttentionSession {
 impl Default for AttentionSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for AttentionSession {
+    fn drop(&mut self) {
+        // Abort any running tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.timeout_handle.take() {
+            handle.abort();
+        }
     }
 }

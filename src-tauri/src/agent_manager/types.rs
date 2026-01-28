@@ -1,8 +1,10 @@
 // Agent manager types
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::process::Child;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::types::{AgentInfo, AgentOutputEvent, AgentStatistics};
@@ -18,4 +20,12 @@ pub struct AgentProcess {
     pub stats: Arc<Mutex<AgentStatistics>>,
     pub output_buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
     pub generated_skill_names: Vec<String>,
+    /// Path to the hooks config file (for cleanup)
+    pub settings_path: Option<PathBuf>,
+    /// JoinHandle for stdin handler task (for cleanup)
+    pub stdin_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for stdout stream handler task (for cleanup)
+    pub stdout_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for stderr stream handler task (for cleanup)
+    pub stderr_handle: Option<JoinHandle<()>>,
 }

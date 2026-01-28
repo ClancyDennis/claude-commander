@@ -54,6 +54,14 @@
     showElevatedCommand,
   } from "./lib/stores/security";
   import { setMetaTodos } from "./lib/stores/metaTodos";
+  import {
+    pendingMetaQuestion,
+    setMetaQuestion,
+    clearMetaQuestion,
+    addMetaUserUpdate,
+    setMetaSleepStatus,
+  } from "./lib/stores/metaAgentInteraction";
+  import MetaAgentQuestion from "./lib/components/chat/MetaAgentQuestion.svelte";
   import SecurityAlertDetail from "./lib/components/SecurityAlertDetail.svelte";
   import NotificationsModal from "./lib/components/NotificationsModal.svelte";
   import ElevatedCommandModal from "./lib/components/ElevatedCommandModal.svelte";
@@ -68,7 +76,6 @@
   import type { Agent, AutoPipeline } from "./lib/types";
   import AttentionOverlay from "$lib/components/voice/AttentionOverlay.svelte";
   import { startAttentionSession, initAttentionListeners, attentionEnabled } from "$lib/stores/voice";
-  import { initCommanderPersonality } from "$lib/stores/commanderPersonality";
 
   let showNewAgentDialog = $state(false);
   let showDatabaseStats = $state(false);
@@ -262,6 +269,29 @@
       },
       onMetaAgentTodos: (event) => {
         setMetaTodos(event.todos);
+      },
+      onMetaAgentUserUpdate: (event) => {
+        addMetaUserUpdate(event);
+        // Show as toast notification for visibility
+        showToast({
+          type: event.level === "warning" ? "warning" :
+                event.level === "success" ? "success" : "info",
+          message: event.message,
+          duration: 5000,
+        });
+      },
+      onMetaAgentQuestion: (event) => {
+        setMetaQuestion(event);
+      },
+      onMetaAgentSleep: (event) => {
+        setMetaSleepStatus(event);
+        if (event.status === "sleeping") {
+          showToast({
+            type: "info",
+            message: event.reason || "System Commander is sleeping...",
+            duration: 3000,
+          });
+        }
       },
 
       // Pipeline callbacks
@@ -482,9 +512,6 @@
     // Initialize attention mode listeners
     initAttentionListeners();
 
-    // Initialize commander personality (sync to backend)
-    initCommanderPersonality();
-
     return () => {
       cleanupResize();
       cleanupKeyboard();
@@ -530,6 +557,16 @@
 <ContextualHelpPanel bind:open={helpOpen} />
 <AttentionOverlay />
 
+<!-- Meta-agent question dialog -->
+{#if $pendingMetaQuestion}
+  <div class="meta-question-overlay">
+    <MetaAgentQuestion
+      question={$pendingMetaQuestion}
+      onAnswered={() => clearMetaQuestion()}
+    />
+  </div>
+{/if}
+
 <svelte:window onkeydown={handleKeydown} />
 
 <style>
@@ -543,5 +580,15 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .meta-question-overlay {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    width: 90%;
+    max-width: 600px;
   }
 </style>

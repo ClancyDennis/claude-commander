@@ -55,6 +55,10 @@ export const toolEvents = writable<Map<string, ToolEvent[]>>(new Map());
 export const viewedAgents = writable<Set<string>>(new Set());
 export const agentStats = writable<Map<string, AgentStatistics>>(new Map());
 
+// Cache viewedAgents to avoid get() calls in hot paths
+let cachedViewedAgents: Set<string> = new Set();
+viewedAgents.subscribe(v => cachedViewedAgents = v);
+
 // ============================================================================
 // History Mode Stores
 // ============================================================================
@@ -197,13 +201,23 @@ export function removeAgent(agentId: string) {
     return new Map(map);
   });
   selectedAgentId.update((current) => (current === agentId ? null : current));
+
+  // Clean up pending maps to prevent memory leaks
+  pendingOutputs.delete(agentId);
+  pendingToolEvents.delete(agentId);
+  pendingUnreadCounts.delete(agentId);
+  pendingActivityUpdates.delete(agentId);
 }
 
 // ============================================================================
 // Agent Output Functions (with debouncing to prevent UI lag)
 // ============================================================================
 
-const OUTPUT_DEBOUNCE_MS = 50;
+const OUTPUT_DEBOUNCE_MS = 150;
+
+// Maximum outputs/events per agent to prevent unbounded memory growth
+const MAX_OUTPUTS_PER_AGENT = 2000;
+const MAX_TOOL_EVENTS_PER_AGENT = 1000;
 
 // Pending outputs and events to be batched
 const pendingOutputs: Map<string, AgentOutput[]> = new Map();
@@ -217,13 +231,18 @@ let toolEventFlushTimer: ReturnType<typeof setTimeout> | null = null;
 function flushOutputs() {
   if (pendingOutputs.size === 0 && pendingUnreadCounts.size === 0 && pendingActivityUpdates.size === 0) return;
 
-  // Batch update agentOutputs
+  // Batch update agentOutputs with bounded size
   if (pendingOutputs.size > 0) {
     agentOutputs.update((map) => {
       const newMap = new Map(map);
       for (const [agentId, outputs] of pendingOutputs) {
         const existing = newMap.get(agentId) ?? [];
-        newMap.set(agentId, [...existing, ...outputs]);
+        const combined = [...existing, ...outputs];
+        // Cap array size to prevent unbounded memory growth
+        if (combined.length > MAX_OUTPUTS_PER_AGENT) {
+          combined.splice(0, combined.length - MAX_OUTPUTS_PER_AGENT);
+        }
+        newMap.set(agentId, combined);
       }
       return newMap;
     });
@@ -266,7 +285,12 @@ function flushToolEvents() {
     const newMap = new Map(map);
     for (const [agentId, events] of pendingToolEvents) {
       const existing = newMap.get(agentId) ?? [];
-      newMap.set(agentId, [...existing, ...events]);
+      const combined = [...existing, ...events];
+      // Cap array size to prevent unbounded memory growth
+      if (combined.length > MAX_TOOL_EVENTS_PER_AGENT) {
+        combined.splice(0, combined.length - MAX_TOOL_EVENTS_PER_AGENT);
+      }
+      newMap.set(agentId, combined);
     }
     return newMap;
   });
@@ -279,16 +303,16 @@ export function appendOutput(agentId: string, output: AgentOutput) {
   existing.push(output);
   pendingOutputs.set(agentId, existing);
 
-  // Queue unread count update if agent not currently viewed
-  const currentViewed = get(viewedAgents);
-  if (!currentViewed.has(agentId)) {
+  // Queue unread count update if agent not currently viewed (use cached value)
+  if (!cachedViewedAgents.has(agentId)) {
     const currentPending = pendingUnreadCounts.get(agentId) ?? 0;
     pendingUnreadCounts.set(agentId, currentPending + 1);
   }
 
-  // Queue activity update
+  // Queue activity update (reuse timestamp from output if available)
+  const activityDate = output.timestamp instanceof Date ? output.timestamp : new Date();
   pendingActivityUpdates.set(agentId, {
-    lastActivity: new Date(),
+    lastActivity: activityDate,
     isProcessing: false,
   });
 

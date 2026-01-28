@@ -86,7 +86,6 @@ function flushToolCalls() {
 
   // Update reactive store from buffer
   orchestratorToolCalls.set(toolCallsBuffer.toArray());
-  console.log('[Orchestrator] toolCalls batch update:', toAdd.length, 'items, total:', toolCallsBuffer.length);
 }
 
 function flushStateChanges() {
@@ -100,7 +99,6 @@ function flushStateChanges() {
   }
 
   orchestratorStateChanges.set(stateChangesBuffer.toArray());
-  console.log('[Orchestrator] stateChanges batch update:', toAdd.length, 'items, total:', stateChangesBuffer.length);
 
   // Update current state to the latest
   if (toAdd.length > 0) {
@@ -119,7 +117,6 @@ function flushDecisions() {
   }
 
   orchestratorDecisions.set(decisionsBuffer.toArray());
-  console.log('[Orchestrator] decisions batch update:', toAdd.length, 'items, total:', decisionsBuffer.length);
 }
 
 // ============================================================================
@@ -151,14 +148,9 @@ async function persistToolCall(toolCall: OrchestratorToolCall) {
 }
 
 async function persistStateChange(stateChange: OrchestratorStateChange) {
-  console.log('[Orchestrator] persistStateChange called, currentPipelineId:', currentPipelineId);
-  if (!currentPipelineId) {
-    console.warn('[Orchestrator] Skipping state change persistence - no currentPipelineId set');
-    return;
-  }
+  if (!currentPipelineId) return;
 
   try {
-    console.log('[Orchestrator] Persisting state change:', stateChange);
     await invoke('persist_state_change', {
       stateChange: {
         id: null,
@@ -172,21 +164,15 @@ async function persistStateChange(stateChange: OrchestratorStateChange) {
         timestamp: stateChange.timestamp,
       }
     });
-    console.log('[Orchestrator] Successfully persisted state change');
   } catch (e) {
     console.error('[Orchestrator] Failed to persist state change:', e);
   }
 }
 
 async function persistDecision(decision: OrchestratorDecision) {
-  console.log('[Orchestrator] persistDecision called, currentPipelineId:', currentPipelineId);
-  if (!currentPipelineId) {
-    console.warn('[Orchestrator] Skipping decision persistence - no currentPipelineId set');
-    return;
-  }
+  if (!currentPipelineId) return;
 
   try {
-    console.log('[Orchestrator] Persisting decision:', decision);
     await invoke('persist_decision', {
       decision: {
         id: null,

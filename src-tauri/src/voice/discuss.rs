@@ -6,6 +6,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 /// Discuss mode session - bidirectional voice with tool-use
@@ -16,6 +17,10 @@ pub struct DiscussSession {
     is_active: Arc<Mutex<bool>>,
     /// Conversation messages for context
     messages: Arc<Mutex<Vec<Value>>>,
+    /// JoinHandle for outgoing message task (for cleanup)
+    write_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for incoming message task (for cleanup)
+    read_handle: Option<JoinHandle<()>>,
 }
 
 impl DiscussSession {
@@ -24,6 +29,8 @@ impl DiscussSession {
             ws_sender: None,
             is_active: Arc::new(Mutex::new(false)),
             messages: Arc::new(Mutex::new(Vec::new())),
+            write_handle: None,
+            read_handle: None,
         }
     }
 
@@ -148,7 +155,7 @@ impl DiscussSession {
 
         // Spawn task to handle outgoing messages
         let mut ws_write = ws_write;
-        tokio::spawn(async move {
+        let write_handle = tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 if !*is_active_write.lock().await {
                     break;
@@ -176,13 +183,14 @@ impl DiscussSession {
                 }
             }
         });
+        self.write_handle = Some(write_handle);
 
         // Clone for read task
         let messages = self.messages.clone();
         let ws_sender_for_read = tx.clone();
 
         // Spawn task to handle incoming messages
-        tokio::spawn(async move {
+        let read_handle = tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 if !*is_active.lock().await {
                     break;
@@ -217,6 +225,7 @@ impl DiscussSession {
                 }
             }
         });
+        self.read_handle = Some(read_handle);
 
         Ok(())
     }
@@ -420,6 +429,15 @@ impl DiscussSession {
     pub async fn stop(&mut self) {
         *self.is_active.lock().await = false;
         self.ws_sender = None;
+
+        // Abort WebSocket handler tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
+
         self.messages.lock().await.clear();
         println!("[Discuss] Session stopped");
     }
@@ -438,5 +456,17 @@ impl DiscussSession {
 impl Default for DiscussSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for DiscussSession {
+    fn drop(&mut self) {
+        // Abort any running tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
     }
 }

@@ -272,7 +272,7 @@ impl AIProvider for OpenAIProvider {
 
         if let Some(tools) = tools {
             body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("auto");
+            body["tool_choice"] = json!("required");
         }
 
         self.send_request(body).await
@@ -298,7 +298,7 @@ impl AIProvider for OpenAIProvider {
 
         if let Some(tools) = tools {
             body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("auto");
+            body["tool_choice"] = json!("required");
         }
 
         self.send_request(body).await
@@ -318,7 +318,7 @@ impl AIProvider for OpenAIProvider {
 
         if let Some(tools) = tools {
             body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("auto");
+            body["tool_choice"] = json!("required");
         }
 
         self.send_request(body).await

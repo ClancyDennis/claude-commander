@@ -192,6 +192,25 @@ export interface MetaAgentThinkingEvent {
   is_thinking: boolean;
 }
 
+export interface MetaAgentUserUpdateEvent {
+  message: string;
+  level: "info" | "warning" | "success" | "progress";
+  timestamp: number;
+}
+
+export interface MetaAgentQuestionEvent {
+  question_id: string;
+  question: string;
+  options?: string[];
+  timestamp: number;
+}
+
+export interface MetaAgentSleepEvent {
+  status: "sleeping" | "awake";
+  duration_ms?: number;
+  reason?: string;
+}
+
 // Cost Tracking Types
 
 export interface SessionCostRecord {

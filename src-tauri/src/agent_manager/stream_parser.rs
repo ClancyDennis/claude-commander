@@ -54,15 +54,19 @@ pub(crate) async fn persist_output(
     }
 }
 
-/// Store output in buffer, keeping last 100 outputs
+/// Maximum output buffer size per agent (prevents unbounded memory growth)
+const MAX_OUTPUT_BUFFER: usize = 500;
+
+/// Store output in buffer, keeping last MAX_OUTPUT_BUFFER outputs
 pub(crate) async fn store_in_buffer(
     output_event: AgentOutputEvent,
     buffer: Arc<Mutex<Vec<AgentOutputEvent>>>,
 ) {
     let mut buffer = buffer.lock().await;
     buffer.push(output_event);
-    let buffer_len = buffer.len();
-    if buffer_len > 100 {
-        buffer.drain(0..buffer_len - 100);
+    let len = buffer.len();
+    if len > MAX_OUTPUT_BUFFER {
+        // Remove oldest entries to stay under limit
+        buffer.drain(0..len - MAX_OUTPUT_BUFFER);
     }
 }

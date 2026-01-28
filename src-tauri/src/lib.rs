@@ -33,6 +33,7 @@ use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
 use logger::Logger;
 use meta_agent::MetaAgent;
+use meta_agent::tools::PendingQuestion;
 use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
 use types::PendingElevatedCommand;
 
@@ -48,6 +49,8 @@ pub struct AppState {
     pub pending_elevated: Arc<Mutex<HashMap<String, PendingElevatedCommand>>>,
     pub approved_scopes: Arc<Mutex<HashMap<String, i64>>>,
     pub app_handle: Arc<dyn events::AppEventEmitter>,
+    // Meta-agent interaction state (accessible without locking meta_agent)
+    pub pending_meta_question: Arc<Mutex<Option<PendingQuestion>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -267,6 +270,16 @@ pub fn run() {
                 }
             };
 
+            // Create shared pending question state (accessible without locking meta_agent)
+            let pending_meta_question: Arc<Mutex<Option<PendingQuestion>>> =
+                Arc::new(Mutex::new(None));
+
+            // Set the shared pending question on the meta agent
+            {
+                let mut ma = meta_agent.blocking_lock();
+                ma.set_pending_question(pending_meta_question.clone());
+            }
+
             app.manage(AppState {
                 agent_manager,
                 meta_agent,
@@ -277,6 +290,7 @@ pub fn run() {
                 pending_elevated,
                 approved_scopes,
                 app_handle,
+                pending_meta_question,
             });
 
             Ok(())
@@ -298,6 +312,7 @@ pub fn run() {
             commands::set_commander_personality,
             commands::get_commander_system_prompt,
             commands::reset_commander_personality,
+            commands::answer_meta_agent_question,
             // Cost commands
             commands::get_cost_summary,
             commands::get_cost_by_date_range,

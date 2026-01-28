@@ -6,6 +6,41 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+
+// ============================================================================
+// Throttle Utility for High-Frequency Events
+// ============================================================================
+
+/**
+ * Throttle function calls to at most once per `ms` milliseconds.
+ * Ensures the last call is always executed (trailing edge).
+ */
+function throttle<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
+  let lastCall = 0;
+  let pending: Parameters<T> | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return ((...args: Parameters<T>) => {
+    const now = Date.now();
+    if (now - lastCall >= ms) {
+      lastCall = now;
+      fn(...args);
+    } else {
+      pending = args;
+      if (!timeoutId) {
+        timeoutId = setTimeout(() => {
+          if (pending) {
+            lastCall = Date.now();
+            fn(...pending);
+            pending = null;
+          }
+          timeoutId = null;
+        }, ms - (now - lastCall));
+      }
+    }
+  }) as T;
+}
+
 import type {
   Agent,
   AgentOutput,
@@ -17,6 +52,9 @@ import type {
   MetaAgentThinkingEvent,
   MetaAgentToolCallEvent,
   MetaTodoUpdatedEvent,
+  MetaAgentUserUpdateEvent,
+  MetaAgentQuestionEvent,
+  MetaAgentSleepEvent,
   AutoPipeline,
   OrchestratorToolCall,
   OrchestratorStateChange,
@@ -68,6 +106,9 @@ export interface EventHandlerCallbacks {
   onMetaAgentThinking: (isThinking: boolean) => void;
   onMetaAgentToolCall: (toolCall: MetaAgentToolCallEvent) => void;
   onMetaAgentTodos?: (event: MetaTodoUpdatedEvent) => void;
+  onMetaAgentUserUpdate?: (event: MetaAgentUserUpdateEvent) => void;
+  onMetaAgentQuestion?: (event: MetaAgentQuestionEvent) => void;
+  onMetaAgentSleep?: (event: MetaAgentSleepEvent) => void;
   onNavigate: (agentId: string) => void;
 
   // Pipeline callbacks
@@ -125,14 +166,12 @@ async function setupAgentOutputListener(
     output_type: string;
     content: string;
   }>("agent:output", (event) => {
-    console.log("[Frontend] Received agent:output event:", event.payload);
     const output: AgentOutput = {
       agentId: event.payload.agent_id,
       type: event.payload.output_type as AgentOutput["type"],
       content: event.payload.content,
       timestamp: new Date(),
     };
-    console.log("[Frontend] Appending output to agent:", event.payload.agent_id);
     onAgentOutput(event.payload.agent_id, output);
   });
 }
@@ -153,7 +192,6 @@ async function setupToolEventListener(
     execution_time_ms?: number;
     timestamp: number;
   }>("agent:tool", (event) => {
-    console.log("[Frontend] Received agent:tool event:", event.payload.tool_name, event.payload.hook_event_name);
     const toolEvent: ToolEvent = {
       agentId: event.payload.agent_id,
       sessionId: event.payload.session_id,
@@ -217,7 +255,6 @@ async function setupActivityListener(
   onAgentActivity: EventHandlerCallbacks['onAgentActivity']
 ): Promise<UnlistenFn> {
   return listen<AgentActivityEvent>("agent:activity", (event) => {
-    console.log("[Frontend] Received agent:activity event:", event.payload.agent_id);
     const lastActivity = event.payload.last_activity
       ? new Date(event.payload.last_activity)
       : new Date();
@@ -233,8 +270,29 @@ async function setupActivityListener(
 async function setupStatsListener(
   onAgentStats: EventHandlerCallbacks['onAgentStats']
 ): Promise<UnlistenFn> {
+  // Throttle stats updates to max 1 per second per agent (stats don't need real-time updates)
+  const throttledHandlers = new Map<string, (stats: {
+    agentId: string;
+    totalPrompts: number;
+    totalToolCalls: number;
+    totalOutputBytes: number;
+    sessionStart: string;
+    lastActivity: string;
+    totalTokensUsed?: number;
+    totalCostUsd?: number;
+  }) => void>();
+
   return listen<AgentStatsEvent>("agent:stats", (event) => {
-    const stats = {
+    const agentId = event.payload.agent_id;
+
+    // Create throttled handler for this agent if not exists
+    if (!throttledHandlers.has(agentId)) {
+      throttledHandlers.set(agentId, throttle((stats) => {
+        onAgentStats(agentId, stats);
+      }, 1000));
+    }
+
+    throttledHandlers.get(agentId)!({
       agentId: event.payload.stats.agent_id,
       totalPrompts: event.payload.stats.total_prompts,
       totalToolCalls: event.payload.stats.total_tool_calls,
@@ -243,22 +301,32 @@ async function setupStatsListener(
       lastActivity: event.payload.stats.last_activity,
       totalTokensUsed: event.payload.stats.total_tokens_used,
       totalCostUsd: event.payload.stats.total_cost_usd,
-    };
-    onAgentStats(event.payload.agent_id, stats);
+    });
   });
 }
 
 async function setupActivityDetailListener(
   onAgentActivityDetail: EventHandlerCallbacks['onAgentActivityDetail']
 ): Promise<UnlistenFn> {
+  // Throttle activity detail updates to max 2 per second per agent
+  const throttledHandlers = new Map<string, (detail: { activity: string; toolName: string; timestamp: Date }) => void>();
+
   return listen<{
     agent_id: string;
     activity: string;
     tool_name: string;
     timestamp: number;
   }>("agent:activity:detail", (event) => {
-    console.log("[Frontend] Received agent:activity:detail event:", event.payload.agent_id, event.payload.activity);
-    onAgentActivityDetail?.(event.payload.agent_id, {
+    const agentId = event.payload.agent_id;
+
+    // Create throttled handler for this agent if not exists
+    if (!throttledHandlers.has(agentId)) {
+      throttledHandlers.set(agentId, throttle((detail: { activity: string; toolName: string; timestamp: Date }) => {
+        onAgentActivityDetail?.(agentId, detail);
+      }, 500));
+    }
+
+    throttledHandlers.get(agentId)!({
       activity: event.payload.activity,
       toolName: event.payload.tool_name,
       timestamp: new Date(event.payload.timestamp),
@@ -300,6 +368,36 @@ async function setupMetaAgentTodosListener(
   return listen<MetaTodoUpdatedEvent>("meta-agent:todos", (event) => {
     console.log("[Frontend] Meta-agent todos updated:", event.payload.todos.length, "items");
     onMetaAgentTodos?.(event.payload);
+  });
+}
+
+async function setupMetaAgentUserUpdateListener(
+  onMetaAgentUserUpdate: EventHandlerCallbacks['onMetaAgentUserUpdate']
+): Promise<UnlistenFn> {
+  return listen<MetaAgentUserUpdateEvent>("meta-agent:user-update", (event) => {
+    console.log("[Frontend] Meta-agent user update:", event.payload.level, "-", event.payload.message.substring(0, 50));
+    onMetaAgentUserUpdate?.(event.payload);
+  });
+}
+
+async function setupMetaAgentQuestionListener(
+  onMetaAgentQuestion: EventHandlerCallbacks['onMetaAgentQuestion']
+): Promise<UnlistenFn> {
+  return listen<MetaAgentQuestionEvent>("meta-agent:question", (event) => {
+    console.log("[Frontend] Meta-agent question:", event.payload.question_id, "-", event.payload.question.substring(0, 50));
+    onMetaAgentQuestion?.(event.payload);
+  });
+}
+
+async function setupMetaAgentSleepListener(
+  onMetaAgentSleep: EventHandlerCallbacks['onMetaAgentSleep']
+): Promise<UnlistenFn> {
+  return listen<MetaAgentSleepEvent>("meta-agent:status", (event) => {
+    // Only handle sleep-related status events
+    if (event.payload.status === "sleeping" || event.payload.status === "awake") {
+      console.log("[Frontend] Meta-agent sleep status:", event.payload.status, event.payload.reason || "");
+      onMetaAgentSleep?.(event.payload);
+    }
   });
 }
 
@@ -619,10 +717,13 @@ export async function setupEventListeners(
     setupStatsListener(callbacks.onAgentStats),
     setupActivityDetailListener(callbacks.onAgentActivityDetail),
 
-    // Meta-agent events (4)
+    // Meta-agent events (7)
     setupThinkingListener(callbacks.onMetaAgentThinking),
     setupMetaAgentToolCallListener(callbacks.onMetaAgentToolCall),
     setupMetaAgentTodosListener(callbacks.onMetaAgentTodos),
+    setupMetaAgentUserUpdateListener(callbacks.onMetaAgentUserUpdate),
+    setupMetaAgentQuestionListener(callbacks.onMetaAgentQuestion),
+    setupMetaAgentSleepListener(callbacks.onMetaAgentSleep),
     setupNavigateListener(callbacks.onNavigate),
 
     // Pipeline events (4)

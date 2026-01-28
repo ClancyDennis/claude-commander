@@ -176,3 +176,42 @@ pub async fn reset_commander_personality(state: tauri::State<'_, AppState>) -> R
     let mut meta_agent = state.meta_agent.lock().await;
     meta_agent.clear_personality()
 }
+
+#[tauri::command]
+pub async fn answer_meta_agent_question(
+    question_id: String,
+    answer: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    eprintln!(
+        "[answer_meta_agent_question] Answering question {}: {}",
+        question_id,
+        if answer.len() > 50 {
+            format!("{}...", &answer[..50])
+        } else {
+            answer.clone()
+        }
+    );
+
+    // Use the shared pending_meta_question directly from AppState
+    // This avoids deadlock since we don't need to lock meta_agent
+    let mut pending = state.pending_meta_question.lock().await;
+    if let Some(pq) = pending.take() {
+        if pq.question_id == question_id {
+            // Send the answer through the oneshot channel
+            pq.response_tx
+                .send(answer)
+                .map_err(|_| "Failed to send answer: channel closed".to_string())?;
+            Ok(())
+        } else {
+            // Put it back if question_id doesn't match
+            *pending = Some(pq);
+            Err(format!(
+                "Question ID mismatch: expected current pending question, got {}",
+                question_id
+            ))
+        }
+    } else {
+        Err("No pending question to answer".to_string())
+    }
+}

@@ -142,18 +142,7 @@ export const commanderPersonality = writable<CommanderPersonality>(loadFromStora
 
 // Note: We no longer auto-sync on every change.
 // The updatePersonality() function handles explicit saves with backend sync.
-
-// Initialize: sync current settings to backend on app startup
-export async function initCommanderPersonality(): Promise<void> {
-  const settings = get(commanderPersonality);
-
-  try {
-    await invoke("set_commander_personality", { personality: settings });
-    console.log("[CommanderPersonality] Initial sync complete");
-  } catch (e) {
-    console.error("[CommanderPersonality] Failed initial sync:", e);
-  }
-}
+// Backend loads cached prompt on startup - no need to sync from frontend.
 
 // Update personality and sync to backend (returns Promise for UI feedback)
 export async function updatePersonality(updates: Partial<CommanderPersonality>): Promise<void> {

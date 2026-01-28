@@ -4,6 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 /// OpenAI Realtime API session
@@ -14,6 +15,10 @@ pub struct VoiceSession {
     transcript: Arc<Mutex<String>>,
     /// Session active flag
     is_active: Arc<Mutex<bool>>,
+    /// JoinHandle for outgoing message task (for cleanup)
+    write_handle: Option<JoinHandle<()>>,
+    /// JoinHandle for incoming message task (for cleanup)
+    read_handle: Option<JoinHandle<()>>,
 }
 
 impl VoiceSession {
@@ -22,6 +27,8 @@ impl VoiceSession {
             ws_sender: None,
             transcript: Arc::new(Mutex::new(String::new())),
             is_active: Arc::new(Mutex::new(false)),
+            write_handle: None,
+            read_handle: None,
         }
     }
 
@@ -109,7 +116,7 @@ impl VoiceSession {
 
         // Spawn task to handle outgoing messages
         let is_active_write = is_active.clone();
-        tokio::spawn(async move {
+        let write_handle = tokio::spawn(async move {
             while let Some(audio_data) = rx.recv().await {
                 if !*is_active_write.lock().await {
                     break;
@@ -129,12 +136,13 @@ impl VoiceSession {
                 }
             }
         });
+        self.write_handle = Some(write_handle);
 
         // Spawn task to handle incoming messages
         let on_transcript_clone = on_transcript.clone();
         let on_response_clone = on_response.clone();
         let on_audio_clone = on_audio.clone();
-        tokio::spawn(async move {
+        let read_handle = tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 if !*is_active.lock().await {
                     break;
@@ -181,6 +189,7 @@ impl VoiceSession {
                 }
             }
         });
+        self.read_handle = Some(read_handle);
 
         Ok(())
     }
@@ -338,6 +347,15 @@ impl VoiceSession {
     pub async fn stop(&mut self) -> String {
         *self.is_active.lock().await = false;
         self.ws_sender = None;
+
+        // Abort WebSocket handler tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
+
         let transcript = self.transcript.lock().await.clone();
         *self.transcript.lock().await = String::new();
         transcript
@@ -352,5 +370,17 @@ impl VoiceSession {
 impl Default for VoiceSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for VoiceSession {
+    fn drop(&mut self) {
+        // Abort any running tasks to prevent resource leaks
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+        }
     }
 }

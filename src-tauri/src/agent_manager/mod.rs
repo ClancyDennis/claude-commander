@@ -162,8 +162,8 @@ impl AgentManager {
         // Create channel for sending prompts
         let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(32);
 
-        // Spawn task to handle stdin
-        tokio::spawn(async move {
+        // Spawn task to handle stdin (capture JoinHandle for cleanup)
+        let stdin_handle = tokio::spawn(async move {
             let mut stdin = stdin;
             while let Some(prompt) = stdin_rx.recv().await {
                 if stdin.write_all(prompt.as_bytes()).await.is_err() {
@@ -204,24 +204,6 @@ impl AgentManager {
         let stats = Arc::new(Mutex::new(create_initial_stats(agent_id.clone())));
         let output_buffer = Arc::new(Mutex::new(Vec::new()));
 
-        {
-            let mut agents = self.agents.lock().await;
-            agents.insert(
-                agent_id.clone(),
-                AgentProcess {
-                    info: agent_info.clone(),
-                    child: Some(child),
-                    stdin_tx: Some(stdin_tx),
-                    last_activity: last_activity.clone(),
-                    is_processing: is_processing.clone(),
-                    pending_input: pending_input.clone(),
-                    stats: stats.clone(),
-                    output_buffer: output_buffer.clone(),
-                    generated_skill_names,
-                },
-            );
-        }
-
         // Record run in database
         record_run_in_db(
             &self.runs_db,
@@ -251,24 +233,47 @@ impl AgentManager {
             agents: self.agents.clone(),
             session_map: self.session_to_agent.clone(),
             app_handle: app_handle.clone(),
-            last_activity,
-            is_processing,
-            pending_input,
-            stats,
-            output_buffer,
+            last_activity: last_activity.clone(),
+            is_processing: is_processing.clone(),
+            pending_input: pending_input.clone(),
+            stats: stats.clone(),
+            output_buffer: output_buffer.clone(),
             runs_db: self.runs_db.clone(),
             pipeline_id: pipeline_id.clone(),
         };
 
-        // Spawn stream handlers
-        spawn_stdout_handler(stdout, stream_ctx);
-        spawn_stderr_handler(
+        // Spawn stream handlers (capture JoinHandles for proper cleanup)
+        let stdout_handle = spawn_stdout_handler(stdout, stream_ctx);
+        let stderr_handle = spawn_stderr_handler(
             stderr,
             agent_id.clone(),
             app_handle,
             self.runs_db.clone(),
             pipeline_id,
         );
+
+        // Store agent with all handles for cleanup
+        {
+            let mut agents = self.agents.lock().await;
+            agents.insert(
+                agent_id.clone(),
+                AgentProcess {
+                    info: agent_info.clone(),
+                    child: Some(child),
+                    stdin_tx: Some(stdin_tx),
+                    last_activity,
+                    is_processing,
+                    pending_input,
+                    stats,
+                    output_buffer,
+                    generated_skill_names,
+                    settings_path: Some(settings_path),
+                    stdin_handle: Some(stdin_handle),
+                    stdout_handle: Some(stdout_handle),
+                    stderr_handle: Some(stderr_handle),
+                },
+            );
+        }
 
         // Call the on_agent_created callback if set
         if let Some(callback) = &self.on_agent_created {
@@ -402,12 +407,47 @@ impl AgentManager {
     }
 
     pub async fn stop_agent(&self, agent_id: &str) -> Result<(), String> {
-        // Get final stats before stopping
-        let final_stats = {
-            let agents = self.agents.lock().await;
-            agents.get(agent_id).map(|agent| agent.stats.clone())
+        // Get final stats and extract handles before stopping
+        let (final_stats, stdin_handle, stdout_handle, stderr_handle, settings_path, session_id) = {
+            let mut agents = self.agents.lock().await;
+            let agent = agents
+                .get_mut(agent_id)
+                .ok_or_else(|| "Agent not found".to_string())?;
+
+            // Step 1: Drop stdin_tx first to signal stdin handler to exit
+            agent.stdin_tx = None;
+
+            (
+                Some(agent.stats.clone()),
+                agent.stdin_handle.take(),
+                agent.stdout_handle.take(),
+                agent.stderr_handle.take(),
+                agent.settings_path.take(),
+                agent.info.session_id.clone(),
+            )
         };
 
+        // Step 2: Abort all handler tasks
+        if let Some(handle) = stdin_handle {
+            handle.abort();
+        }
+        if let Some(handle) = stdout_handle {
+            handle.abort();
+        }
+        if let Some(handle) = stderr_handle {
+            handle.abort();
+        }
+
+        // Step 2.5: Clean up session_to_agent map
+        if let Some(sid) = session_id {
+            let mut session_map = self.session_to_agent.lock().await;
+            session_map.remove(&sid);
+        }
+
+        // Step 3: Give stream handlers a moment to notice abort before killing child
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        // Step 4: Now kill the child process and update state
         let mut agents = self.agents.lock().await;
         let agent = agents
             .get_mut(agent_id)
@@ -429,7 +469,13 @@ impl AgentManager {
         }
 
         agent.info.status = AgentStatus::Stopped;
-        agent.stdin_tx = None;
+
+        // Step 5: Clean up hooks config file
+        if let Some(path) = settings_path {
+            if let Err(e) = std::fs::remove_file(&path) {
+                eprintln!("Warning: Failed to cleanup hooks config {:?}: {}", path, e);
+            }
+        }
 
         // Update run in database
         if let Some(ref runs_db) = self.runs_db {

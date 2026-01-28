@@ -1,0 +1,269 @@
+// User interaction tools for MetaAgent
+//
+// These tools allow the meta-agent to communicate with users and manage its workflow:
+// - Sleep: Pause with interruptible wait
+// - UpdateUser: Send status updates
+// - AskUserQuestion: Block and wait for user input
+// - CompleteTask: Signal task completion (handled in mod.rs)
+
+use serde_json::{json, Value};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
+use tokio::sync::{oneshot, Mutex};
+
+use crate::agent_manager::AgentManager;
+use crate::meta_agent::helpers::error;
+
+// ============================================================================
+// Shared State Types
+// ============================================================================
+
+/// State for a pending user question
+pub struct PendingQuestion {
+    pub question_id: String,
+    pub response_tx: oneshot::Sender<String>,
+}
+
+/// Shared state for interruptible sleep
+pub struct SleepState {
+    pub is_sleeping: bool,
+    pub cancel_tx: Option<oneshot::Sender<String>>,
+}
+
+impl Default for SleepState {
+    fn default() -> Self {
+        Self {
+            is_sleeping: false,
+            cancel_tx: None,
+        }
+    }
+}
+
+// ============================================================================
+// Sleep Tool
+// ============================================================================
+
+/// Sleep for a duration, interruptible by user messages.
+/// Returns current agent status when waking up.
+pub async fn sleep_tool(
+    input: Value,
+    app_handle: &AppHandle,
+    sleep_state: Arc<Mutex<SleepState>>,
+    agent_manager: Arc<Mutex<AgentManager>>,
+) -> Value {
+    let duration_mins = input["duration_minutes"].as_f64().unwrap_or(1.0);
+    let duration_ms = (duration_mins * 60_000.0) as u64;
+    let reason = input["reason"].as_str().unwrap_or("Waiting...");
+
+    // Create cancellation channel
+    let (cancel_tx, cancel_rx) = oneshot::channel::<String>();
+
+    // Set sleep state so user input can interrupt
+    {
+        let mut state = sleep_state.lock().await;
+        state.is_sleeping = true;
+        state.cancel_tx = Some(cancel_tx);
+    }
+
+    // Notify frontend that we're sleeping
+    let _ = app_handle.emit(
+        "meta-agent:status",
+        json!({
+            "status": "sleeping",
+            "duration_ms": duration_ms,
+            "reason": reason
+        }),
+    );
+
+    // Race: sleep timer vs user interrupt
+    let result = tokio::select! {
+        _ = tokio::time::sleep(std::time::Duration::from_millis(duration_ms)) => {
+            // Natural wake - get current agent status
+            let agents_status = get_agents_summary(&agent_manager).await;
+            json!({
+                "success": true,
+                "completed": true,
+                "slept_ms": duration_ms,
+                "current_status": agents_status,
+                "message": "Sleep completed. Here is the current status of all agents."
+            })
+        }
+        result = cancel_rx => {
+            match result {
+                Ok(user_message) => {
+                    // User interrupted - include their message
+                    let agents_status = get_agents_summary(&agent_manager).await;
+                    json!({
+                        "success": true,
+                        "interrupted": true,
+                        "user_message": user_message,
+                        "current_status": agents_status,
+                        "message": "Sleep interrupted by user. Process their message."
+                    })
+                }
+                Err(_) => {
+                    // Channel closed unexpectedly
+                    let agents_status = get_agents_summary(&agent_manager).await;
+                    json!({
+                        "success": true,
+                        "interrupted": true,
+                        "current_status": agents_status,
+                        "message": "Sleep cancelled."
+                    })
+                }
+            }
+        }
+    };
+
+    // Clear sleep state
+    {
+        let mut state = sleep_state.lock().await;
+        state.is_sleeping = false;
+        state.cancel_tx = None;
+    }
+
+    // Notify frontend that we're awake
+    let _ = app_handle.emit("meta-agent:status", json!({ "status": "awake" }));
+
+    result
+}
+
+/// Helper to get a summary of all agents' status
+async fn get_agents_summary(agent_manager: &Arc<Mutex<AgentManager>>) -> Value {
+    let manager = agent_manager.lock().await;
+    let agents = manager.list_agents().await;
+
+    let agent_summaries: Vec<Value> = agents
+        .iter()
+        .map(|a| {
+            json!({
+                "id": &a.id[..8.min(a.id.len())],  // Shortened ID
+                "status": format!("{:?}", a.status).to_lowercase(),
+                "working_dir": a.working_dir,
+                "is_processing": a.is_processing,
+                "pending_input": a.pending_input
+            })
+        })
+        .collect();
+
+    json!({
+        "agents": agent_summaries,
+        "total_count": agents.len(),
+        "running_count": agents.iter().filter(|a| a.is_processing).count()
+    })
+}
+
+// ============================================================================
+// UpdateUser Tool
+// ============================================================================
+
+/// Send a non-blocking status update to the user
+pub async fn update_user(input: Value, app_handle: &AppHandle) -> Value {
+    let message = match input["message"].as_str() {
+        Some(m) if !m.is_empty() => m,
+        _ => return error("message is required"),
+    };
+
+    let level = input["level"].as_str().unwrap_or("info");
+    let timestamp = chrono::Utc::now().timestamp_millis();
+
+    // Emit event to frontend
+    let _ = app_handle.emit(
+        "meta-agent:user-update",
+        json!({
+            "message": message,
+            "level": level,
+            "timestamp": timestamp
+        }),
+    );
+
+    json!({
+        "success": true,
+        "message": "Update sent to user"
+    })
+}
+
+// ============================================================================
+// AskUserQuestion Tool
+// ============================================================================
+
+/// Ask the user a question and wait for their response (blocking)
+pub async fn ask_user_question(
+    input: Value,
+    app_handle: &AppHandle,
+    pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+) -> Value {
+    let question = match input["question"].as_str() {
+        Some(q) if !q.is_empty() => q,
+        _ => return error("question is required"),
+    };
+
+    let options: Option<Vec<String>> = input["options"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+
+    let question_id = uuid::Uuid::new_v4().to_string();
+    let (tx, rx) = oneshot::channel::<String>();
+
+    // Store pending question so the answer command can find it
+    {
+        let mut pending = pending_question.lock().await;
+        *pending = Some(PendingQuestion {
+            question_id: question_id.clone(),
+            response_tx: tx,
+        });
+    }
+
+    // Emit question event to frontend
+    let _ = app_handle.emit(
+        "meta-agent:question",
+        json!({
+            "question_id": question_id,
+            "question": question,
+            "options": options,
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        }),
+    );
+
+    // Wait for response with 5 minute timeout
+    let timeout_duration = std::time::Duration::from_secs(300);
+    match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(answer)) => {
+            // Clear pending question
+            {
+                let mut pending = pending_question.lock().await;
+                *pending = None;
+            }
+            json!({
+                "success": true,
+                "answer": answer,
+                "question_id": question_id
+            })
+        }
+        Ok(Err(_)) => {
+            // Channel closed (question cancelled)
+            {
+                let mut pending = pending_question.lock().await;
+                *pending = None;
+            }
+            json!({
+                "success": false,
+                "error": "Question was cancelled",
+                "question_id": question_id
+            })
+        }
+        Err(_) => {
+            // Timeout
+            {
+                let mut pending = pending_question.lock().await;
+                *pending = None;
+            }
+            json!({
+                "success": false,
+                "error": "User did not respond within 5 minutes",
+                "question_id": question_id,
+                "timed_out": true
+            })
+        }
+    }
+}

@@ -321,9 +321,11 @@ impl<T, E: std::fmt::Display> LogOnError<T> for Result<T, E> {
             Ok(v) => Some(v),
             Err(e) => {
                 // Debug level - only log in debug builds
+                // Debug level - only log in debug builds
                 #[cfg(debug_assertions)]
                 eprintln!("[DEBUG] {}: {}", context, e);
-                let _ = e; // Suppress unused warning in release
+                // Suppress unused warnings in release builds
+                let _ = (context, e);
                 None
             }
         }
