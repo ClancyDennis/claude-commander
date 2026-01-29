@@ -1,6 +1,6 @@
 [package]
 name = "claude-commander"
-version = "0.1.0"
+version = "0.2.1"
 description = "Claude Commander - Mission control for Claude Code agents"
 authors = ["you"]
 edition = "2021"
