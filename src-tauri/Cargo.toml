@@ -32,7 +32,7 @@ dotenvy = "0.15"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "5"
 async-trait = "0.1"
-async-openai = { version = "0.27", features = ["realtime"] }
+async-openai = { version = "0.32", features = ["realtime"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 http = "1"
