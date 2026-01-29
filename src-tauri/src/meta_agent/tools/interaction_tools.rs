@@ -25,18 +25,10 @@ pub struct PendingQuestion {
 }
 
 /// Shared state for interruptible sleep
+#[derive(Default)]
 pub struct SleepState {
     pub is_sleeping: bool,
     pub cancel_tx: Option<oneshot::Sender<String>>,
-}
-
-impl Default for SleepState {
-    fn default() -> Self {
-        Self {
-            is_sleeping: false,
-            cancel_tx: None,
-        }
-    }
 }
 
 // ============================================================================
@@ -198,9 +190,11 @@ pub async fn ask_user_question(
         _ => return error("question is required"),
     };
 
-    let options: Option<Vec<String>> = input["options"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+    let options: Option<Vec<String>> = input["options"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    });
 
     let question_id = uuid::Uuid::new_v4().to_string();
     let (tx, rx) = oneshot::channel::<String>();

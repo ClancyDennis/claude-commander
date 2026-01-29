@@ -13,7 +13,10 @@ import type {
   ChatMessage,
   MetaAgentToolCallEvent,
   AgentStatistics,
-  AgentRun
+  AgentRun,
+  UnifiedHistoryItem,
+  MetaConversation,
+  ContextInfoEvent
 } from "../types";
 import { selectedAutoPipelineId } from "./autoPipelines";
 import { selectedPipelineId } from "./pipelines";
@@ -78,6 +81,10 @@ export const metaAgentChat = writable<ChatMessage[]>([]);
 export const viewMode = writable<'agent' | 'chat'>('agent');
 export const metaAgentThinking = writable<boolean>(false);
 export const metaAgentToolCalls = writable<MetaAgentToolCallEvent[]>([]);
+export const metaAgentContextInfo = writable<ContextInfoEvent | null>(null);
+
+// Track dismissed agent results (ephemeral - clears on page refresh)
+export const dismissedAgentResults = writable<Set<string>>(new Set());
 
 // ============================================================================
 // Derived Stores
@@ -119,11 +126,14 @@ export const selectedAgentStats = derived(
 let lastAgentsWithOutputs: Array<{id: string; workingDir: string; outputCount: number}> = [];
 
 export const agentsWithOutputs = derived(
-  [agents, agentOutputs],
-  ([$agents, $agentOutputs]) => {
+  [agents, agentOutputs, dismissedAgentResults],
+  ([$agents, $agentOutputs, $dismissedAgentResults]) => {
     const agentsArray: Array<{id: string; workingDir: string; outputCount: number}> = [];
 
     $agentOutputs.forEach((outputs, agentId) => {
+      // Skip dismissed agents
+      if ($dismissedAgentResults.has(agentId)) return;
+
       if (outputs.length > 0) {
         const agent = $agents.get(agentId);
         if (agent) {
@@ -504,6 +514,25 @@ export function clearChatHistory() {
 
 export function addMetaAgentToolCall(toolCall: MetaAgentToolCallEvent) {
   metaAgentToolCalls.update((calls) => [...calls, toolCall]);
+}
+
+/**
+ * Dismiss an agent's results from the "results available" notification.
+ * The agent data remains accessible, but the notification is hidden.
+ */
+export function dismissAgentResult(agentId: string) {
+  dismissedAgentResults.update((set) => {
+    const newSet = new Set(set);
+    newSet.add(agentId);
+    return newSet;
+  });
+}
+
+/**
+ * Clear all dismissed agent results (e.g., when starting fresh)
+ */
+export function clearDismissedResults() {
+  dismissedAgentResults.set(new Set());
 }
 
 // ============================================================================

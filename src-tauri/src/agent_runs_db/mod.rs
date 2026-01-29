@@ -8,11 +8,13 @@
 // - queries.rs: Complex queries and statistics
 // - cost.rs: Cost aggregation and reporting
 // - orchestrator_events.rs: Orchestrator event persistence
+// - meta_conversations.rs: Meta agent conversation persistence
 // - models.rs: Data structures
 // - schema.rs: Database schema and migrations
 
 mod cost;
 mod crud;
+mod meta_conversations;
 mod models;
 mod orchestrator_events;
 mod queries;
@@ -24,14 +26,16 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub use models::{
-    AgentOutputRecord, AgentRun, CostSummary, DailyCost, DatabaseStats, DateRangeCostSummary,
-    EventQueryFilters, ModelCostBreakdown, OrchestratorDecisionRecord,
-    OrchestratorStateChangeRecord, OrchestratorToolCallRecord, PipelineHistoryBundle,
-    RunQueryFilters, RunStats, RunStatus, SessionCostRecord,
+    AgentOutputRecord, AgentRun, ConversationQueryFilters, CostSummary, DailyCost, DatabaseStats,
+    DateRangeCostSummary, EventQueryFilters, MetaConversationRecord, MetaMessageRecord,
+    ModelCostBreakdown, OrchestratorDecisionRecord, OrchestratorStateChangeRecord,
+    OrchestratorToolCallRecord, PipelineHistoryBundle, RunQueryFilters, RunStats, RunStatus,
+    SessionCostRecord,
 };
 
 use cost::CostOperations;
 use crud::CrudOperations;
+use meta_conversations::MetaConversationOps;
 use orchestrator_events::OrchestratorEventOps;
 use queries::QueryOperations;
 
@@ -270,6 +274,115 @@ impl AgentRunsDB {
     pub async fn clear_pipeline_events(&self, pipeline_id: &str) -> SqliteResult<()> {
         OrchestratorEventOps::new(&self.db)
             .clear_pipeline_events(pipeline_id)
+            .await
+    }
+
+    // ========================================================================
+    // Meta Agent Conversation Persistence - delegated to MetaConversationOps
+    // ========================================================================
+
+    /// Create a new meta agent conversation
+    pub async fn create_meta_conversation(
+        &self,
+        record: &MetaConversationRecord,
+    ) -> SqliteResult<i64> {
+        MetaConversationOps::new(&self.db)
+            .create_conversation(record)
+            .await
+    }
+
+    /// Update a meta agent conversation
+    pub async fn update_meta_conversation(
+        &self,
+        record: &MetaConversationRecord,
+    ) -> SqliteResult<()> {
+        MetaConversationOps::new(&self.db)
+            .update_conversation(record)
+            .await
+    }
+
+    /// Get a meta agent conversation by ID
+    pub async fn get_meta_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> SqliteResult<Option<MetaConversationRecord>> {
+        MetaConversationOps::new(&self.db)
+            .get_conversation(conversation_id)
+            .await
+    }
+
+    /// List meta agent conversations with filters
+    pub async fn list_meta_conversations(
+        &self,
+        filters: ConversationQueryFilters,
+    ) -> SqliteResult<Vec<MetaConversationRecord>> {
+        MetaConversationOps::new(&self.db)
+            .list_conversations(filters)
+            .await
+    }
+
+    /// Delete a meta agent conversation and all its messages
+    pub async fn delete_meta_conversation(&self, conversation_id: &str) -> SqliteResult<()> {
+        MetaConversationOps::new(&self.db)
+            .delete_conversation(conversation_id)
+            .await
+    }
+
+    /// Rename a meta agent conversation
+    pub async fn rename_meta_conversation(
+        &self,
+        conversation_id: &str,
+        new_title: &str,
+    ) -> SqliteResult<()> {
+        MetaConversationOps::new(&self.db)
+            .rename_conversation(conversation_id, new_title)
+            .await
+    }
+
+    /// Archive/unarchive a meta agent conversation
+    pub async fn set_meta_conversation_archived(
+        &self,
+        conversation_id: &str,
+        archived: bool,
+    ) -> SqliteResult<()> {
+        MetaConversationOps::new(&self.db)
+            .set_archived(conversation_id, archived)
+            .await
+    }
+
+    /// Insert a message into a meta agent conversation
+    pub async fn insert_meta_message(&self, record: &MetaMessageRecord) -> SqliteResult<i64> {
+        MetaConversationOps::new(&self.db)
+            .insert_message(record)
+            .await
+    }
+
+    /// Get all messages for a meta agent conversation
+    pub async fn get_meta_messages(
+        &self,
+        conversation_id: &str,
+    ) -> SqliteResult<Vec<MetaMessageRecord>> {
+        MetaConversationOps::new(&self.db)
+            .get_messages(conversation_id)
+            .await
+    }
+
+    /// Update conversation metadata after adding a message
+    pub async fn update_meta_conversation_after_message(
+        &self,
+        conversation_id: &str,
+        preview_text: Option<&str>,
+        title: Option<&str>,
+    ) -> SqliteResult<()> {
+        MetaConversationOps::new(&self.db)
+            .update_conversation_after_message(conversation_id, preview_text, title)
+            .await
+    }
+
+    /// Cleanup old meta agent conversations
+    pub async fn cleanup_old_meta_conversations(&self, days_to_keep: i64) -> SqliteResult<usize> {
+        MetaConversationOps::new(&self.db)
+            .cleanup_old_conversations(days_to_keep)
             .await
     }
 }

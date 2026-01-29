@@ -90,8 +90,11 @@ impl AttentionSession {
             .body(())
             .map_err(|e| format!("Failed to build request: {}", e))?;
 
-        let (ws_stream, _) = connect_async(request)
+        // Add connection timeout to prevent hanging indefinitely
+        let connect_timeout = Duration::from_secs(10);
+        let (ws_stream, _) = tokio::time::timeout(connect_timeout, connect_async(request))
             .await
+            .map_err(|_| "WebSocket connection timed out (10s)".to_string())?
             .map_err(|e| format!("WebSocket connection failed: {}", e))?;
 
         println!("[Attention] Connected to OpenAI Realtime API");

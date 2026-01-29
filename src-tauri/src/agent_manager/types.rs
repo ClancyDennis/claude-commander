@@ -28,4 +28,6 @@ pub struct AgentProcess {
     pub stdout_handle: Option<JoinHandle<()>>,
     /// JoinHandle for stderr stream handler task (for cleanup)
     pub stderr_handle: Option<JoinHandle<()>>,
+    /// Timestamp when agent was stopped (for cleanup timer)
+    pub stopped_at: Option<Instant>,
 }

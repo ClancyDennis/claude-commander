@@ -12,9 +12,10 @@
     processingAgentId: string | null;
     disabled: boolean;
     onProcessResults: (agentId: string, resultsOnly: boolean) => void;
+    onDismiss: (agentId: string) => void;
   }
 
-  let { agents, processingAgentId, disabled, onProcessResults }: Props = $props();
+  let { agents, processingAgentId, disabled, onProcessResults, onDismiss }: Props = $props();
 </script>
 
 <div class="agent-results-section">
@@ -50,6 +51,13 @@
             title="Send full output including tool calls"
           >
             📊 Full output
+          </button>
+          <button
+            onclick={() => onDismiss(agent.id)}
+            class="dismiss-btn"
+            title="Dismiss this notification"
+          >
+            ✕
           </button>
         </div>
       </div>
@@ -163,6 +171,28 @@
   .process-results-btn.results-only:hover:not(:disabled) {
     background: rgba(59, 130, 246, 0.2);
     border-color: rgba(59, 130, 246, 0.5);
+  }
+
+  .dismiss-btn {
+    padding: var(--space-1);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+  }
+
+  .dismiss-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: rgb(239, 68, 68);
   }
 
   @keyframes pulse {

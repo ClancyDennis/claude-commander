@@ -271,6 +271,7 @@ impl AgentManager {
                     stdin_handle: Some(stdin_handle),
                     stdout_handle: Some(stdout_handle),
                     stderr_handle: Some(stderr_handle),
+                    stopped_at: None,
                 },
             );
         }
@@ -469,6 +470,7 @@ impl AgentManager {
         }
 
         agent.info.status = AgentStatus::Stopped;
+        agent.stopped_at = Some(Instant::now());
 
         // Step 5: Clean up hooks config file
         if let Some(path) = settings_path {
@@ -550,5 +552,41 @@ impl AgentManager {
             buffer[buffer.len() - last_n..].to_vec()
         };
         Ok(outputs)
+    }
+
+    /// Remove an agent from memory (data is already persisted to DB)
+    pub async fn remove_agent(&self, agent_id: &str) -> Result<(), String> {
+        let mut agents = self.agents.lock().await;
+        agents
+            .remove(agent_id)
+            .map(|_| ())
+            .ok_or_else(|| format!("Agent {} not found", agent_id))
+    }
+
+    /// Cleanup stopped agents older than the specified duration
+    /// Returns the IDs of agents that were removed
+    pub async fn cleanup_stopped_agents(&self, max_age: std::time::Duration) -> Vec<String> {
+        let mut agents = self.agents.lock().await;
+        let now = Instant::now();
+
+        // Find agents to remove
+        let to_remove: Vec<String> = agents
+            .iter()
+            .filter_map(|(id, agent)| {
+                if let Some(stopped_at) = agent.stopped_at {
+                    if now.duration_since(stopped_at) > max_age {
+                        return Some(id.clone());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        for id in &to_remove {
+            eprintln!("[AgentManager] Cleanup: removing stopped agent {}", id);
+            agents.remove(id);
+        }
+
+        to_remove
     }
 }

@@ -32,8 +32,8 @@ use agent_manager::AgentManager;
 use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
 use logger::Logger;
+use meta_agent::tools::{PendingQuestion, SleepState};
 use meta_agent::MetaAgent;
-use meta_agent::tools::PendingQuestion;
 use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
 use types::PendingElevatedCommand;
 
@@ -51,6 +51,7 @@ pub struct AppState {
     pub app_handle: Arc<dyn events::AppEventEmitter>,
     // Meta-agent interaction state (accessible without locking meta_agent)
     pub pending_meta_question: Arc<Mutex<Option<PendingQuestion>>>,
+    pub meta_sleep_state: Arc<Mutex<SleepState>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -258,6 +259,35 @@ pub fn run() {
                 }
             });
 
+            // Start periodic cleanup task for stopped agents (every 60 seconds)
+            let agent_manager_for_cleanup = agent_manager.clone();
+            let security_monitor_for_cleanup = security_monitor.clone();
+            tauri::async_runtime::spawn(async move {
+                let cleanup_interval = std::time::Duration::from_secs(60);
+                let max_stopped_age = std::time::Duration::from_secs(5 * 60); // 5 minutes
+
+                loop {
+                    tokio::time::sleep(cleanup_interval).await;
+
+                    let manager = agent_manager_for_cleanup.lock().await;
+                    let removed_ids = manager.cleanup_stopped_agents(max_stopped_age).await;
+
+                    if !removed_ids.is_empty() {
+                        eprintln!(
+                            "[Cleanup] Removed {} stopped agents from memory",
+                            removed_ids.len()
+                        );
+
+                        // Cleanup security monitor expectations for removed agents
+                        if let Some(ref monitor) = security_monitor_for_cleanup {
+                            for agent_id in &removed_ids {
+                                monitor.remove_agent_expectations(agent_id).await;
+                            }
+                        }
+                    }
+                }
+            });
+
             // Initialize auto-pipeline manager (optional - requires API key)
             let auto_pipeline_manager = match AutoPipelineManager::new() {
                 Ok(manager) => {
@@ -274,10 +304,16 @@ pub fn run() {
             let pending_meta_question: Arc<Mutex<Option<PendingQuestion>>> =
                 Arc::new(Mutex::new(None));
 
-            // Set the shared pending question on the meta agent
+            // Create shared sleep state (accessible without locking meta_agent for interrupt)
+            let meta_sleep_state: Arc<Mutex<SleepState>> =
+                Arc::new(Mutex::new(SleepState::default()));
+
+            // Set the shared states on the meta agent
             {
                 let mut ma = meta_agent.blocking_lock();
                 ma.set_pending_question(pending_meta_question.clone());
+                ma.set_sleep_state(meta_sleep_state.clone());
+                ma.set_conversation_db(agent_runs_db.clone());
             }
 
             app.manage(AppState {
@@ -291,6 +327,7 @@ pub fn run() {
                 approved_scopes,
                 app_handle,
                 pending_meta_question,
+                meta_sleep_state,
             });
 
             Ok(())
@@ -313,6 +350,13 @@ pub fn run() {
             commands::get_commander_system_prompt,
             commands::reset_commander_personality,
             commands::answer_meta_agent_question,
+            // Conversation persistence commands
+            commands::list_conversations,
+            commands::load_conversation,
+            commands::new_conversation,
+            commands::delete_conversation,
+            commands::rename_conversation,
+            commands::get_current_conversation_id,
             // Cost commands
             commands::get_cost_summary,
             commands::get_cost_by_date_range,

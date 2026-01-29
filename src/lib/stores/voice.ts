@@ -650,8 +650,23 @@ export async function startAttentionSession(
     response: "",
   }));
 
+  // Fallback timeout to prevent stuck "Connecting..." state
+  // Backend has 10s timeout, so we use 15s as a safety margin
+  const CONNECTION_TIMEOUT_MS = 15000;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("Connection timeout - voice service unavailable"));
+    }, CONNECTION_TIMEOUT_MS);
+  });
+
   try {
-    await invoke("start_attention_session", { agentId, agentTitle, summary });
+    await Promise.race([
+      invoke("start_attention_session", { agentId, agentTitle, summary }),
+      timeoutPromise
+    ]);
+    if (timeoutId) clearTimeout(timeoutId);
     attentionState.update((s) => ({
       ...s,
       isActive: true,
@@ -659,6 +674,7 @@ export async function startAttentionSession(
     }));
     setVoiceMode("attention");
   } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
     console.error("[Attention] Failed to start session:", error);
     attentionState.update((s) => ({
       ...s,

@@ -21,7 +21,10 @@ use super::output_builder::OutputEventBuilder;
 pub use super::event_handlers::StreamContext;
 
 /// Spawn the stdout stream handler task, returns JoinHandle for cleanup
-pub fn spawn_stdout_handler(stdout: ChildStdout, ctx: StreamContext) -> tokio::task::JoinHandle<()> {
+pub fn spawn_stdout_handler(
+    stdout: ChildStdout,
+    ctx: StreamContext,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         handle_stdout_stream(stdout, ctx).await;
     })

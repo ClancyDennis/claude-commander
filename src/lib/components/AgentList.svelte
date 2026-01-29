@@ -2,7 +2,8 @@
   import { agents, selectedAgentId, viewMode, openChat, openAgent, toggleAgentInSelection, sidebarMode, historicalRuns, toggleSidebarMode, setHistoricalRuns, selectHistoricalRun } from "$lib/stores/agents";
   import { autoPipelines, selectedAutoPipelineId, selectAutoPipeline } from "$lib/stores/autoPipelines";
   import { isAnyVoiceActive, voiceSidebarOpen } from "$lib/stores/voice";
-  import type { AgentRun } from "$lib/types";
+  import { unifiedHistory, loadConversations, viewConversation, closeConversationView } from "$lib/stores/metaConversations";
+  import type { AgentRun, UnifiedHistoryItem } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import RunningAgentsList from './agent-list/RunningAgentsList.svelte';
   import HistoricalRunsList from './agent-list/HistoricalRunsList.svelte';
@@ -10,6 +11,7 @@
   import NotificationBell from "./NotificationBell.svelte";
   import { SegmentedControl } from "./ui/segmented-control";
   import { Plus, Settings, Database, Radio, FileText, Brain } from "lucide-svelte";
+  import { get } from "svelte/store";
 
   let { onNewAgent, onToggleDatabaseStats, onOpenSettings, onOpenInstructions, onOpenCommanderSettings }: {
     onNewAgent: () => void;
@@ -24,19 +26,23 @@
     { id: 'history', label: 'History' }
   ];
 
-  // Load historical runs when sidebar mode changes to history
+  // Load both historical runs and conversations when sidebar mode changes to history
   $effect(() => {
     if ($sidebarMode === 'history') {
-      loadHistoricalRuns();
+      loadHistoryData();
     }
   });
 
-  async function loadHistoricalRuns() {
+  async function loadHistoryData() {
     try {
-      const runs = await invoke<AgentRun[]>("get_all_runs");
+      // Load both in parallel
+      const [runs] = await Promise.all([
+        invoke<AgentRun[]>("get_all_runs"),
+        loadConversations(),
+      ]);
       setHistoricalRuns(runs);
     } catch (error) {
-      console.error("Failed to load historical runs:", error);
+      console.error("Failed to load history data:", error);
     }
   }
 
@@ -46,8 +52,19 @@
     }
   }
 
-  function handleSelectHistoricalRun(run: AgentRun) {
-    selectHistoricalRun(run);
+  function handleSelectHistoryItem(item: UnifiedHistoryItem) {
+    if (item.type === 'conversation') {
+      // Open in view mode (read-only), not loading into active chat
+      viewConversation(item.id);
+      openChat();
+    } else {
+      // Find the actual AgentRun object and select it
+      const runs = get(historicalRuns);
+      const run = runs.find(r => r.agent_id === item.id);
+      if (run) {
+        selectHistoricalRun(run);
+      }
+    }
   }
 
   function handleSelectAgent(id: string) {
@@ -59,6 +76,8 @@
   }
 
   function handleOpenChat() {
+    // Close any history view first
+    closeConversationView(false);
     openChat();
     // If voice is active, also open the voice sidebar
     if ($isAnyVoiceActive) {
@@ -130,8 +149,8 @@
       />
     {:else}
       <HistoricalRunsList
-        runs={$historicalRuns}
-        onSelectRun={handleSelectHistoricalRun}
+        items={$unifiedHistory}
+        onSelectItem={handleSelectHistoryItem}
       />
     {/if}
   </div>

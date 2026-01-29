@@ -289,6 +289,24 @@ pub struct MetaAgentThinkingEvent {
     pub is_thinking: bool,
 }
 
+/// Context usage information for the meta agent conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextInfoEvent {
+    /// Current context usage as percentage (0-100)
+    pub usage_percent: f64,
+    /// Current token count
+    pub current_tokens: usize,
+    /// Available token budget
+    pub available_tokens: usize,
+    /// Remaining tokens before limit
+    pub remaining_tokens: usize,
+    /// Context state: "normal", "warning", "critical", or "overflow"
+    pub state: String,
+    /// Optional warning message
+    pub warning_message: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallStatistics {
     pub agent_id: String,

@@ -4,8 +4,12 @@
 // worker agents through a conversational interface.
 
 mod action_logger;
+mod context_config;
+mod context_summarizer;
+mod context_tracker;
 mod conversation_manager;
 pub mod helpers;
+mod output_compressor;
 mod prompt_generator;
 mod result_queue;
 mod system_prompt;
@@ -19,14 +23,16 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
+use crate::agent_runs_db::{AgentRunsDB, MetaConversationRecord, MetaMessageRecord};
 use crate::ai_client::{AIClient, Message};
 use crate::error::{ApiError, AppError, AppResult};
 use crate::tool_registry::ToolRegistry;
 use crate::types::{
-    AgentResultStatus, ChatMessage, ChatResponse, ImageAttachment, MetaAgentThinkingEvent,
-    QueueStatus, QueuedAgentResult,
+    AgentResultStatus, ChatMessage, ChatResponse, ContextInfoEvent, ImageAttachment,
+    MetaAgentThinkingEvent, QueueStatus, QueuedAgentResult,
 };
 
+use context_config::ContextConfig;
 use conversation_manager::ConversationManager;
 use result_queue::ResultQueue;
 use system_prompt::build_system_prompt;
@@ -53,6 +59,9 @@ pub struct MetaAgent {
     // Interaction state for Sleep and AskUserQuestion tools
     sleep_state: Arc<Mutex<SleepState>>,
     pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+    // Conversation persistence
+    conversation_db: Option<Arc<AgentRunsDB>>,
+    current_conversation_id: Option<String>,
 }
 
 impl MetaAgent {
@@ -77,8 +86,16 @@ impl MetaAgent {
         // Build base system prompt with max_iterations from config
         let base_system_prompt = build_system_prompt(tool_loop_config.max_iterations);
 
+        // Initialize context config based on AI provider
+        let context_config = ContextConfig::for_provider(ai_client.get_provider_name());
+        let mut conversation = ConversationManager::with_config(context_config);
+
+        // Set system prompt for token tracking
+        let system_prompt = cached_prompt.as_deref().unwrap_or(&base_system_prompt);
+        conversation.set_system_prompt(system_prompt);
+
         Self {
-            conversation: ConversationManager::new(),
+            conversation,
             tool_registry: ToolRegistry::new(),
             ai_client,
             result_queue: ResultQueue::new(),
@@ -90,6 +107,8 @@ impl MetaAgent {
             cached_prompt_hash,
             sleep_state: Arc::new(Mutex::new(SleepState::default())),
             pending_question: Arc::new(Mutex::new(None)),
+            conversation_db: None,
+            current_conversation_id: None,
         }
     }
 
@@ -170,6 +189,20 @@ impl MetaAgent {
             .map_err(|e| AppError::Internal(format!("Failed to emit thinking event: {}", e)))
     }
 
+    /// Emit context usage information to the frontend
+    fn emit_context_info(&self, app_handle: &AppHandle) {
+        let info = self.conversation.get_context_info();
+        let event = ContextInfoEvent {
+            usage_percent: info.usage_percent,
+            current_tokens: info.current_tokens,
+            available_tokens: info.available_tokens,
+            remaining_tokens: info.remaining_tokens,
+            state: info.state.description().to_string(),
+            warning_message: info.warning_message(),
+        };
+        let _ = app_handle.emit("meta-agent:context-info", event);
+    }
+
     /// Process a user message (text only)
     pub async fn process_user_message(
         &mut self,
@@ -189,18 +222,36 @@ impl MetaAgent {
             }
         }
 
+        // Ensure we have a conversation for persistence
+        if let Err(e) = self.ensure_conversation().await {
+            eprintln!("[MetaAgent] Warning: Failed to ensure conversation: {}", e);
+        }
+
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
         // Add user message to history
-        self.conversation.add_user_message(user_message);
+        self.conversation.add_user_message(user_message.clone());
+
+        // Persist user message
+        self.persist_message("user", &user_message, None).await;
+
+        // Check for context compaction at idle moment (after user input processed)
+        if self.conversation.compact_if_needed().await {
+            eprintln!("[MetaAgent] Context compacted before processing");
+        }
 
         // Get a mutable reference to the conversation history for the tool loop
-        let mut history = self.conversation.clone_history();
+        // Use get_history_with_summary to include context summary if present
+        let mut history = self.conversation.get_history_with_summary();
 
         // Run the tool loop with personalized prompt if available
         let system_prompt = self.get_system_prompt();
-        let result = self
+
+        // Create a closure to get context info for tools
+        // We need to capture a reference, but closures can't capture &mut self
+        // So we'll pass None for now and use the direct result after the loop
+        let loop_result = self
             .tool_loop
             .run_loop(
                 &self.ai_client,
@@ -212,16 +263,49 @@ impl MetaAgent {
                 self.sleep_state.clone(),
                 self.pending_question.clone(),
                 || self.get_queue_status(),
+                || None, // Context info will be added after we can get it
             )
             .await;
 
         // Update the conversation history with the tool loop's additions
-        self.sync_history_from_loop(history);
+        let history_before = self.conversation.get_history().len();
+
+        // Sync history, accounting for summary messages that were prepended
+        let summary_offset = if self.conversation.has_context_summary() {
+            2
+        } else {
+            0
+        };
+        let new_history: Vec<Message> = history.into_iter().skip(summary_offset).collect();
+        self.sync_history_from_loop(new_history);
+
+        // Record token usage from the loop
+        if let Ok(ref result) = loop_result {
+            self.conversation.record_usage(
+                result.total_usage.input_tokens,
+                result.total_usage.output_tokens,
+            );
+            // Emit context info to frontend
+            self.emit_context_info(&app_handle);
+        }
+
+        // Persist any new assistant messages
+        let history_after = self.conversation.get_history();
+        for msg in history_after.iter().skip(history_before) {
+            self.persist_message(&msg.role, &msg.content, None).await;
+        }
+
+        // Check for context compaction at idle moment (after tool loop completes)
+        if self.conversation.compact_if_needed().await {
+            eprintln!("[MetaAgent] Context compacted after tool loop");
+            // Emit updated context info after compaction
+            self.emit_context_info(&app_handle);
+        }
 
         // Emit thinking stopped
         let _ = self.emit_thinking(&app_handle, false);
 
-        result
+        loop_result.map(|r| r.response)
     }
 
     /// Process a user message with an optional image attachment
@@ -251,6 +335,11 @@ impl MetaAgent {
             }
         }
 
+        // Ensure we have a conversation for persistence
+        if let Err(e) = self.ensure_conversation().await {
+            eprintln!("[MetaAgent] Warning: Failed to ensure conversation: {}", e);
+        }
+
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
@@ -264,13 +353,28 @@ impl MetaAgent {
 
         // Add to simple conversation history for future reference
         self.conversation
-            .add_user_message_with_image(user_message, &image);
+            .add_user_message_with_image(user_message.clone(), &image);
+
+        // Persist user message with image indicator (we don't persist actual image data)
+        let content_with_image = if user_message.is_empty() {
+            "[Image attached]".to_string()
+        } else {
+            format!("[Image attached] {}", user_message)
+        };
+        self.persist_message("user", &content_with_image, None)
+            .await;
+
+        // Check for context compaction at idle moment (after user input processed)
+        if self.conversation.compact_if_needed().await {
+            eprintln!("[MetaAgent] Context compacted before processing");
+        }
 
         // Get a mutable reference to the conversation history for the tool loop
-        let mut history = self.conversation.clone_history();
+        // Use get_history_with_summary to include context summary if present
+        let mut history = self.conversation.get_history_with_summary();
 
         // Run the tool loop with initial rich messages
-        let result = self
+        let loop_result = self
             .tool_loop
             .run_loop_with_initial_rich_messages(
                 &self.ai_client,
@@ -283,16 +387,49 @@ impl MetaAgent {
                 self.sleep_state.clone(),
                 self.pending_question.clone(),
                 || self.get_queue_status(),
+                || None, // Context info will be added after we can get it
             )
             .await;
 
         // Update the conversation history with the tool loop's additions
-        self.sync_history_from_loop(history);
+        let history_before = self.conversation.get_history().len();
+
+        // Sync history, accounting for summary messages that were prepended
+        let summary_offset = if self.conversation.has_context_summary() {
+            2
+        } else {
+            0
+        };
+        let new_history: Vec<Message> = history.into_iter().skip(summary_offset).collect();
+        self.sync_history_from_loop(new_history);
+
+        // Record token usage from the loop
+        if let Ok(ref result) = loop_result {
+            self.conversation.record_usage(
+                result.total_usage.input_tokens,
+                result.total_usage.output_tokens,
+            );
+            // Emit context info to frontend
+            self.emit_context_info(&app_handle);
+        }
+
+        // Persist any new assistant messages
+        let history_after = self.conversation.get_history();
+        for msg in history_after.iter().skip(history_before) {
+            self.persist_message(&msg.role, &msg.content, None).await;
+        }
+
+        // Check for context compaction at idle moment (after tool loop completes)
+        if self.conversation.compact_if_needed().await {
+            eprintln!("[MetaAgent] Context compacted after tool loop");
+            // Emit updated context info after compaction
+            self.emit_context_info(&app_handle);
+        }
 
         // Emit thinking stopped
         let _ = self.emit_thinking(&app_handle, false);
 
-        result
+        loop_result.map(|r| r.response)
     }
 
     /// Sync the conversation history after the tool loop has modified it
@@ -319,6 +456,7 @@ impl MetaAgent {
 
     pub fn clear_conversation_history(&mut self) {
         self.conversation.clear();
+        self.current_conversation_id = None;
     }
 
     pub fn get_ai_client(&self) -> &AIClient {
@@ -337,6 +475,157 @@ impl MetaAgent {
     /// Set the pending question state (for sharing with AppState)
     pub fn set_pending_question(&mut self, pending: Arc<Mutex<Option<PendingQuestion>>>) {
         self.pending_question = pending;
+    }
+
+    /// Set the sleep state (for sharing with AppState to allow interrupt before locking)
+    pub fn set_sleep_state(&mut self, state: Arc<Mutex<SleepState>>) {
+        self.sleep_state = state;
+    }
+
+    /// Set the conversation database for persistence
+    pub fn set_conversation_db(&mut self, db: Arc<AgentRunsDB>) {
+        self.conversation_db = Some(db);
+    }
+
+    /// Get the current conversation ID
+    pub fn get_current_conversation_id(&self) -> Option<&str> {
+        self.current_conversation_id.as_deref()
+    }
+
+    // =========================================================================
+    // Conversation Persistence
+    // =========================================================================
+
+    /// Start a new conversation, creating a DB record
+    pub async fn start_new_conversation(&mut self) -> Result<String, String> {
+        // Generate new UUID
+        let conversation_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp_millis();
+
+        // Clear in-memory history
+        self.conversation.clear();
+
+        // Create DB record if we have a database
+        if let Some(db) = &self.conversation_db {
+            let record = MetaConversationRecord {
+                id: None,
+                conversation_id: conversation_id.clone(),
+                title: None,
+                created_at: now,
+                updated_at: now,
+                message_count: 0,
+                is_archived: false,
+                preview_text: None,
+            };
+
+            db.create_meta_conversation(&record)
+                .await
+                .map_err(|e| format!("Failed to create conversation: {}", e))?;
+        }
+
+        self.current_conversation_id = Some(conversation_id.clone());
+        eprintln!("[MetaAgent] Started new conversation: {}", conversation_id);
+
+        Ok(conversation_id)
+    }
+
+    /// Load an existing conversation from the database
+    pub async fn load_conversation(
+        &mut self,
+        conversation_id: &str,
+    ) -> Result<Vec<ChatMessage>, String> {
+        let db = self
+            .conversation_db
+            .as_ref()
+            .ok_or_else(|| "No database configured".to_string())?;
+
+        // Check conversation exists
+        let conv = db
+            .get_meta_conversation(conversation_id)
+            .await
+            .map_err(|e| format!("Failed to get conversation: {}", e))?
+            .ok_or_else(|| format!("Conversation {} not found", conversation_id))?;
+
+        // Get messages
+        let messages = db
+            .get_meta_messages(conversation_id)
+            .await
+            .map_err(|e| format!("Failed to get messages: {}", e))?;
+
+        // Load into ConversationManager
+        self.conversation.load_from_records(&messages);
+        self.current_conversation_id = Some(conversation_id.to_string());
+
+        eprintln!(
+            "[MetaAgent] Loaded conversation {} with {} messages",
+            conversation_id, conv.message_count
+        );
+
+        // Return as ChatMessages for frontend
+        Ok(self.conversation.to_chat_messages())
+    }
+
+    /// Persist a message to the database
+    async fn persist_message(&self, role: &str, content: &str, image_data: Option<String>) {
+        let Some(db) = &self.conversation_db else {
+            return;
+        };
+        let Some(conv_id) = &self.current_conversation_id else {
+            return;
+        };
+
+        let message_index = self.conversation.get_history().len() as u32;
+        let now = chrono::Utc::now().timestamp_millis();
+
+        let record = MetaMessageRecord {
+            id: None,
+            conversation_id: conv_id.clone(),
+            message_index,
+            role: role.to_string(),
+            content: content.to_string(),
+            image_data,
+            tool_calls: None,
+            timestamp: now,
+        };
+
+        if let Err(e) = db.insert_meta_message(&record).await {
+            eprintln!("[MetaAgent] Failed to persist message: {}", e);
+            return;
+        }
+
+        // Update conversation metadata
+        let preview = if content.len() > 100 {
+            Some(&content[..100])
+        } else {
+            Some(content)
+        };
+
+        // Auto-generate title from first user message
+        let title = if message_index == 0 && role == "user" {
+            let title_text = if content.len() > 50 {
+                format!("{}...", &content[..50])
+            } else {
+                content.to_string()
+            };
+            Some(title_text)
+        } else {
+            None
+        };
+
+        if let Err(e) = db
+            .update_meta_conversation_after_message(conv_id, preview, title.as_deref())
+            .await
+        {
+            eprintln!("[MetaAgent] Failed to update conversation metadata: {}", e);
+        }
+    }
+
+    /// Ensure we have a conversation (create one if needed)
+    async fn ensure_conversation(&mut self) -> Result<(), String> {
+        if self.current_conversation_id.is_none() {
+            self.start_new_conversation().await?;
+        }
+        Ok(())
     }
 
     // =========================================================================
@@ -372,6 +661,9 @@ impl MetaAgent {
 
             self.cached_prompt = Some(generated.clone());
             self.cached_prompt_hash = Some(new_hash);
+
+            // Update system prompt in conversation manager for token tracking
+            self.conversation.set_system_prompt(&generated);
 
             // Persist to disk
             let cache = prompt_generator::PromptCache {

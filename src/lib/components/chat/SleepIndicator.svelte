@@ -1,17 +1,28 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onDestroy } from "svelte";
 
-  export let duration: number | undefined = undefined;
-  export let reason: string | undefined = undefined;
+  interface Props {
+    duration?: number;
+    reason?: string;
+  }
 
-  let remainingMs = duration || 0;
+  let { duration, reason }: Props = $props();
+
+  let remainingMs = $state(0);
   let interval: ReturnType<typeof setInterval> | undefined;
 
-  $: minutes = Math.floor(remainingMs / 60000);
-  $: seconds = Math.floor((remainingMs % 60000) / 1000);
-  $: timeDisplay = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  // React to duration changes and start countdown
+  $effect(() => {
+    // Clear any existing interval
+    if (interval) {
+      clearInterval(interval);
+      interval = undefined;
+    }
 
-  onMount(() => {
+    // Set initial remaining time from the prop
+    remainingMs = duration || 0;
+
+    // Start countdown if we have a positive duration
     if (duration && duration > 0) {
       interval = setInterval(() => {
         remainingMs = Math.max(0, remainingMs - 1000);
@@ -22,6 +33,10 @@
   onDestroy(() => {
     if (interval) clearInterval(interval);
   });
+
+  const minutes = $derived(Math.floor(remainingMs / 60000));
+  const seconds = $derived(Math.floor((remainingMs % 60000) / 1000));
+  const timeDisplay = $derived(`${minutes}:${seconds.toString().padStart(2, '0')}`);
 </script>
 
 <div class="sleep-indicator">

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs } from "../stores/agents";
+  import { metaAgentChat, metaAgentThinking, addChatMessage, agentsWithOutputs, dismissAgentResult } from "../stores/agents";
   import { metaAgentTodos } from "../stores/metaTodos";
   import { isSleeping, metaSleepStatus } from "../stores/metaAgentInteraction";
   import { voiceSidebarOpen } from "../stores/voice";
+  import { syncCurrentConversationId, viewingConversation, closeConversationView } from "../stores/metaConversations";
   import type { ChatResponse, ConfigStatus, ImageAttachment } from "../types";
   import { useAsyncData } from '$lib/hooks/useAsyncData.svelte';
 
@@ -17,6 +18,7 @@
   import ChatMessageList from "./chat/ChatMessageList.svelte";
   import AgentResultsSection from "./chat/AgentResultsSection.svelte";
   import MetaTaskProgress from "./chat/MetaTaskProgress.svelte";
+  import ConversationHistoryView from "./chat/ConversationHistoryView.svelte";
   import VoiceSidebar from "./voice/VoiceSidebar.svelte";
 
   // State
@@ -37,6 +39,8 @@
 
   onMount(() => {
     asyncConfig.fetch();
+    // Sync current conversation ID from backend
+    syncCurrentConversationId();
   });
 
   function handleClear() {
@@ -110,6 +114,9 @@
 
       // Add the response to chat
       addChatMessage(response.message);
+
+      // Dismiss the notification after successfully processing
+      dismissAgentResult(agentId);
     } catch (e) {
       console.error("Error processing agent results:", e);
       error = e instanceof Error ? e.message : String(e);
@@ -117,59 +124,75 @@
       processingAgentId = null;
     }
   }
+
+  function handleDismissResult(agentId: string) {
+    dismissAgentResult(agentId);
+  }
 </script>
 
 <PageLayout>
-  <ChatHeader
-    isThinking={$metaAgentThinking}
-    onClear={handleClear}
-    {hasOpenAiKey}
-    onVoiceClick={handleVoiceClick}
-    {showTodoPanel}
-    onToggleTodoPanel={() => showTodoPanel = !showTodoPanel}
-    hasTodos={$metaAgentTodos.length > 0}
-  />
+  {#if $viewingConversation}
+    <!-- Read-only conversation history view -->
+    <ConversationHistoryView
+      messages={$viewingConversation.messages}
+      title={$viewingConversation.title}
+      onClose={() => closeConversationView(false)}
+      onResume={() => closeConversationView(true)}
+    />
+  {:else}
+    <!-- Active chat view -->
+    <ChatHeader
+      isThinking={$metaAgentThinking}
+      onClear={handleClear}
+      {hasOpenAiKey}
+      onVoiceClick={handleVoiceClick}
+      {showTodoPanel}
+      onToggleTodoPanel={() => showTodoPanel = !showTodoPanel}
+      hasTodos={$metaAgentTodos.length > 0}
+    />
 
-  <div class="content-wrapper">
-    <div class="messages-panel">
-      <div class="messages-wrapper">
-        {#if configLoaded && !hasApiKey}
-          <ChatLockedState {configPath} onOpenConfigDir={openConfigDir} />
-        {:else if $metaAgentChat.length === 0}
-          <ChatEmptyState />
-        {:else}
-          <ChatMessageList
-            messages={$metaAgentChat}
-            isThinking={$metaAgentThinking}
-            isSleeping={$isSleeping}
-            sleepDuration={$metaSleepStatus?.duration_ms}
-            sleepReason={$metaSleepStatus?.reason}
+    <div class="content-wrapper">
+      <div class="messages-panel">
+        <div class="messages-wrapper">
+          {#if configLoaded && !hasApiKey}
+            <ChatLockedState {configPath} onOpenConfigDir={openConfigDir} />
+          {:else if $metaAgentChat.length === 0}
+            <ChatEmptyState />
+          {:else}
+            <ChatMessageList
+              messages={$metaAgentChat}
+              isThinking={$metaAgentThinking}
+              isSleeping={$isSleeping}
+              sleepDuration={$metaSleepStatus?.duration_ms}
+              sleepReason={$metaSleepStatus?.reason}
+            />
+          {/if}
+        </div>
+
+        {#if $agentsWithOutputs.length > 0}
+          <AgentResultsSection
+            agents={$agentsWithOutputs}
+            {processingAgentId}
+            disabled={$metaAgentThinking}
+            onProcessResults={handleProcessResults}
+            onDismiss={handleDismissResult}
           />
         {/if}
-      </div>
 
-      {#if $agentsWithOutputs.length > 0}
-        <AgentResultsSection
-          agents={$agentsWithOutputs}
-          {processingAgentId}
-          disabled={$metaAgentThinking}
-          onProcessResults={handleProcessResults}
+        <ChatInput
+          disabled={$metaAgentThinking && !$isSleeping}
+          {hasApiKey}
+          onSend={handleSendMessage}
         />
-      {/if}
-
-      <ChatInput
-        disabled={$metaAgentThinking && !$isSleeping}
-        {hasApiKey}
-        onSend={handleSendMessage}
-      />
-    </div>
-
-    {#if showTodoPanel}
-      <div class="side-panel">
-        <MetaTaskProgress />
       </div>
-    {/if}
-  </div>
+
+      {#if showTodoPanel}
+        <div class="side-panel">
+          <MetaTaskProgress />
+        </div>
+      {/if}
+    </div>
+  {/if}
 </PageLayout>
 
 <VoiceSidebar onSendToChat={handleSendToChat} />

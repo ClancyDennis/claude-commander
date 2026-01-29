@@ -211,6 +211,17 @@ export interface MetaAgentSleepEvent {
   reason?: string;
 }
 
+export type ContextState = "normal" | "warning" | "critical" | "overflow";
+
+export interface ContextInfoEvent {
+  usagePercent: number;
+  currentTokens: number;
+  availableTokens: number;
+  remainingTokens: number;
+  state: ContextState;
+  warningMessage: string | null;
+}
+
 // Cost Tracking Types
 
 export interface SessionCostRecord {
@@ -725,4 +736,40 @@ export interface MetaTodoItem {
 export interface MetaTodoUpdatedEvent {
   todos: MetaTodoItem[];
   timestamp: number;
+}
+
+// ============================================================================
+// Meta-Agent Conversation Persistence Types
+// ============================================================================
+
+export interface MetaConversation {
+  id?: number;
+  conversation_id: string;
+  title?: string;
+  created_at: number;  // Unix timestamp in milliseconds
+  updated_at: number;  // Unix timestamp in milliseconds
+  message_count: number;
+  is_archived: boolean;
+  preview_text?: string;
+}
+
+// ============================================================================
+// Unified History Types (for consolidated history view)
+// ============================================================================
+
+export type HistoryItemType = 'agent_run' | 'conversation';
+
+export interface UnifiedHistoryItem {
+  type: HistoryItemType;
+  id: string;                    // agent_id or conversation_id
+  title: string;                 // formatted path or conversation title
+  preview?: string;              // initial_prompt or preview_text
+  timestamp: number;             // started_at or updated_at (for sorting)
+  // Agent run specific
+  status?: RunStatus;
+  workingDir?: string;
+  startedAt?: number;
+  endedAt?: number;
+  // Conversation specific
+  messageCount?: number;
 }

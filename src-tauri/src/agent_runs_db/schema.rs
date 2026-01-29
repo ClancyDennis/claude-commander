@@ -199,6 +199,56 @@ pub fn run_migrations(conn: &Connection) -> SqliteResult<()> {
     Ok(())
 }
 
+/// Create meta conversation tables for persisting meta agent chat history
+pub fn create_meta_conversation_tables(conn: &Connection) -> SqliteResult<()> {
+    // Create meta_conversations table for conversation metadata
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS meta_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL UNIQUE,
+            title TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            message_count INTEGER DEFAULT 0,
+            is_archived INTEGER DEFAULT 0,
+            preview_text TEXT
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meta_conv_id ON meta_conversations(conversation_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meta_conv_updated ON meta_conversations(updated_at DESC)",
+        [],
+    )?;
+
+    // Create meta_messages table for individual messages
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS meta_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            message_index INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            image_data TEXT,
+            tool_calls TEXT,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES meta_conversations(conversation_id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meta_msg_conv ON meta_messages(conversation_id, message_index)",
+        [],
+    )?;
+
+    Ok(())
+}
+
 /// Initialize all database tables and indexes
 pub fn initialize_schema(conn: &Connection) -> SqliteResult<()> {
     create_agent_runs_table(conn)?;
@@ -206,5 +256,6 @@ pub fn initialize_schema(conn: &Connection) -> SqliteResult<()> {
     create_prompts_table(conn)?;
     run_migrations(conn)?;
     create_orchestrator_tables(conn)?;
+    create_meta_conversation_tables(conn)?;
     Ok(())
 }

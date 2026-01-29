@@ -68,6 +68,9 @@ export {
 
   // Communication icons
   MessageCircle,
+
+  // Edit icons
+  Pencil,
 } from "lucide-svelte";
 
 // Icon size presets for consistency

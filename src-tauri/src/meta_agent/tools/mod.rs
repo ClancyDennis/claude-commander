@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 use crate::agent_manager::AgentManager;
 
 use super::action_logger::emit_action;
+use super::context_tracker::ContextInfo;
 
 // ============================================================================
 // Iteration Context
@@ -23,17 +24,32 @@ use super::action_logger::emit_action;
 
 /// Context about the current iteration state - passed to tools so they can
 /// include this info in results, helping the meta-agent know its limits.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct IterationContext {
     /// Current iteration number (1-based)
     pub current: usize,
     /// Maximum allowed iterations before forced stop
     pub max: usize,
+    /// Context usage information (optional)
+    pub context_info: Option<ContextInfo>,
 }
 
 impl IterationContext {
     pub fn new(current: usize, max: usize) -> Self {
-        Self { current, max }
+        Self {
+            current,
+            max,
+            context_info: None,
+        }
+    }
+
+    /// Create with context info
+    pub fn with_context_info(current: usize, max: usize, context_info: ContextInfo) -> Self {
+        Self {
+            current,
+            max,
+            context_info: Some(context_info),
+        }
     }
 
     /// Remaining iterations before limit
@@ -86,6 +102,7 @@ impl ToolExecutionResult {
 /// Returns a ToolExecutionResult indicating whether to continue or complete.
 /// The iteration_ctx provides info about remaining iterations so tools can include
 /// this in their results, helping the meta-agent manage its work within limits.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_tool(
     tool_name: &str,
     input: Value,
@@ -101,12 +118,9 @@ pub async fn execute_tool(
         // Agent Management Tools
         // =====================================================================
         "CreateWorkerAgent" => {
-            let val = agent_tools::create_worker_agent(
-                input.clone(),
-                agent_manager,
-                app_handle.clone(),
-            )
-            .await;
+            let val =
+                agent_tools::create_worker_agent(input.clone(), agent_manager, app_handle.clone())
+                    .await;
             ToolExecutionResult::Continue(val)
         }
         "SendPromptToWorker" => {
@@ -173,10 +187,7 @@ pub async fn execute_tool(
             .await;
             // Add iteration reset info to sleep result
             if let Some(obj) = val.as_object_mut() {
-                obj.insert(
-                    "iteration_reset".to_string(),
-                    json!(true),
-                );
+                obj.insert("iteration_reset".to_string(), json!(true));
                 obj.insert(
                     "note".to_string(),
                     json!("Your iteration counter has been reset. You now have full iterations available again."),
@@ -190,12 +201,9 @@ pub async fn execute_tool(
             ToolExecutionResult::Continue(val)
         }
         "AskUserQuestion" => {
-            let val = interaction_tools::ask_user_question(
-                input.clone(),
-                &app_handle,
-                pending_question,
-            )
-            .await;
+            let val =
+                interaction_tools::ask_user_question(input.clone(), &app_handle, pending_question)
+                    .await;
             ToolExecutionResult::Continue(val)
         }
         "CompleteTask" => {
@@ -236,7 +244,7 @@ pub async fn execute_tool(
     add_iteration_info(result, iteration_ctx)
 }
 
-/// Add iteration context info to a tool result so the meta-agent knows its limits
+/// Add iteration and context info to a tool result so the meta-agent knows its limits
 fn add_iteration_info(result: ToolExecutionResult, ctx: IterationContext) -> ToolExecutionResult {
     match result {
         ToolExecutionResult::Complete(msg) => {
@@ -248,6 +256,8 @@ fn add_iteration_info(result: ToolExecutionResult, ctx: IterationContext) -> Too
             if let Some(obj) = val.as_object_mut() {
                 obj.insert("iterations_remaining".to_string(), json!(ctx.max));
                 obj.insert("max_iterations".to_string(), json!(ctx.max));
+                // Add context info if available
+                add_context_info_to_obj(obj, &ctx.context_info);
             }
             ToolExecutionResult::SleepComplete(val)
         }
@@ -266,8 +276,28 @@ fn add_iteration_info(result: ToolExecutionResult, ctx: IterationContext) -> Too
                         )),
                     );
                 }
+                // Add context info if available
+                add_context_info_to_obj(obj, &ctx.context_info);
             }
             ToolExecutionResult::Continue(val)
+        }
+    }
+}
+
+/// Add context usage info to a JSON object
+fn add_context_info_to_obj(
+    obj: &mut serde_json::Map<String, Value>,
+    context_info: &Option<ContextInfo>,
+) {
+    if let Some(info) = context_info {
+        obj.insert(
+            "context_usage_percent".to_string(),
+            json!(format!("{:.1}%", info.usage_percent)),
+        );
+
+        // Add warning if context is filling up
+        if let Some(warning) = info.warning_message() {
+            obj.insert("context_warning".to_string(), json!(warning));
         }
     }
 }

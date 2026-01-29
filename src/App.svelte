@@ -9,7 +9,7 @@
   import ViewRouter from "./lib/components/ViewRouter.svelte";
   import ToastNotifications, { showToast } from "./lib/components/ToastNotifications.svelte";
   import RateLimitModal from "./lib/components/RateLimitModal.svelte";
-  import WelcomeModal from "./lib/components/WelcomeModal.svelte";
+  import { WelcomeModal } from "./lib/components/welcome";
   import { checkAndSetRateLimit } from "./lib/stores/rateLimit";
   import {
     agents,
@@ -22,6 +22,7 @@
     updateAgentStats,
     layoutMode,
     metaAgentThinking,
+    metaAgentContextInfo,
     addMetaAgentToolCall,
     openAgent,
     openChat,
@@ -292,6 +293,9 @@
             duration: 3000,
           });
         }
+      },
+      onMetaAgentContextInfo: (event) => {
+        metaAgentContextInfo.set(event);
       },
 
       // Pipeline callbacks

@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use crate::agent_runs_db::{ConversationQueryFilters, MetaConversationRecord};
 use crate::meta_agent::CommanderPersonality;
 use crate::types::{ChatMessage, ChatResponse, ImageAttachment};
 use crate::AppState;
@@ -19,6 +20,19 @@ pub async fn send_chat_message(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<ChatResponse, String> {
+    // CRITICAL: Interrupt sleep BEFORE acquiring meta_agent lock
+    // This allows user messages to wake up a sleeping meta-agent
+    {
+        let mut sleep_state = state.meta_sleep_state.lock().await;
+        if sleep_state.is_sleeping {
+            if let Some(cancel_tx) = sleep_state.cancel_tx.take() {
+                eprintln!("[send_chat_message] Interrupting sleep with user message");
+                let _ = cancel_tx.send(message.clone());
+                // Don't return - the meta-agent will process the interrupted message
+            }
+        }
+    }
+
     let mut meta_agent = state.meta_agent.lock().await;
     meta_agent
         .process_user_message_with_image(message, image, state.agent_manager.clone(), app_handle)
@@ -214,4 +228,89 @@ pub async fn answer_meta_agent_question(
     } else {
         Err("No pending question to answer".to_string())
     }
+}
+
+// =========================================================================
+// Conversation Persistence Commands
+// =========================================================================
+
+#[tauri::command]
+pub async fn list_conversations(
+    include_archived: Option<bool>,
+    search_text: Option<String>,
+    limit: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<MetaConversationRecord>, String> {
+    let filters = ConversationQueryFilters {
+        include_archived: include_archived.unwrap_or(false),
+        search_text,
+        limit,
+        offset: None,
+    };
+
+    state
+        .agent_runs_db
+        .list_meta_conversations(filters)
+        .await
+        .map_err(|e| format!("Failed to list conversations: {}", e))
+}
+
+#[tauri::command]
+pub async fn load_conversation(
+    conversation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ChatMessage>, String> {
+    let mut meta_agent = state.meta_agent.lock().await;
+    meta_agent.load_conversation(&conversation_id).await
+}
+
+#[tauri::command]
+pub async fn new_conversation(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let mut meta_agent = state.meta_agent.lock().await;
+    meta_agent.start_new_conversation().await
+}
+
+#[tauri::command]
+pub async fn delete_conversation(
+    conversation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // If this is the current conversation, clear it
+    {
+        let meta_agent = state.meta_agent.lock().await;
+        if meta_agent.get_current_conversation_id() == Some(&conversation_id) {
+            drop(meta_agent);
+            let mut meta_agent = state.meta_agent.lock().await;
+            meta_agent.clear_conversation_history();
+        }
+    }
+
+    state
+        .agent_runs_db
+        .delete_meta_conversation(&conversation_id)
+        .await
+        .map_err(|e| format!("Failed to delete conversation: {}", e))
+}
+
+#[tauri::command]
+pub async fn rename_conversation(
+    conversation_id: String,
+    new_title: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .agent_runs_db
+        .rename_meta_conversation(&conversation_id, &new_title)
+        .await
+        .map_err(|e| format!("Failed to rename conversation: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_current_conversation_id(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let meta_agent = state.meta_agent.lock().await;
+    Ok(meta_agent
+        .get_current_conversation_id()
+        .map(|s| s.to_string()))
 }

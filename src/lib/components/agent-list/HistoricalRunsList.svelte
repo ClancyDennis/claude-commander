@@ -1,26 +1,35 @@
 <script lang="ts">
-  import type { AgentRun } from '$lib/types';
-  import { formatPath, formatDate, formatDuration } from '$lib/utils/formatting';
+  import type { UnifiedHistoryItem } from '$lib/types';
+  import { formatDate, formatDuration } from '$lib/utils/formatting';
   import { getStatusColor, getStatusLabel } from '$lib/utils/status';
+  import { formatConversationDate } from '$lib/stores/metaConversations';
+  import { MessageSquare } from '$lib/components/ui/icons';
 
   let {
-    runs,
-    onSelectRun
+    items,
+    onSelectItem
   }: {
-    runs: AgentRun[];
-    onSelectRun: (run: AgentRun) => void;
+    items: UnifiedHistoryItem[];
+    onSelectItem: (item: UnifiedHistoryItem) => void;
   } = $props();
 
   function truncateText(text: string, maxLength: number): string {
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   }
+
+  // Count items by type
+  const runCount = $derived(items.filter(i => i.type === 'agent_run').length);
+  const convCount = $derived(items.filter(i => i.type === 'conversation').length);
 </script>
 
 <div class="separator">
-  <span>Historical Runs ({runs.length})</span>
+  <span>History ({items.length})</span>
+  {#if runCount > 0 && convCount > 0}
+    <span class="type-counts">{runCount} runs · {convCount} chats</span>
+  {/if}
 </div>
 
-{#if runs.length === 0}
+{#if items.length === 0}
   <div class="empty">
     <div class="empty-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -30,42 +39,71 @@
       </svg>
     </div>
     <p class="empty-title">No history yet</p>
-    <p class="empty-hint">Agent runs will appear here</p>
+    <p class="empty-hint">Agent runs and conversations will appear here</p>
   </div>
 {:else}
   <ul>
-    {#each runs as run (run.agent_id)}
+    {#each items as item (item.id)}
       <li>
-        <button
-          class="agent-btn"
-          onclick={() => onSelectRun(run)}
-        >
-          <div class="status-indicator" style="background-color: {getStatusColor(run.status)}">
-            {#if run.status === "running"}
-              <span class="pulse"></span>
-            {/if}
-          </div>
-          <div class="info">
-            <div class="name-row">
-              <span class="name">{formatPath(run.working_dir)}</span>
-              <span class="status-badge" style="background-color: {getStatusColor(run.status)}">
-                {getStatusLabel(run.status)}
-              </span>
+        {#if item.type === 'conversation'}
+          <!-- Conversation entry -->
+          <button
+            class="item-btn conversation-btn"
+            onclick={() => onSelectItem(item)}
+          >
+            <div class="chat-icon">
+              <MessageSquare size={14} />
             </div>
-            <div class="meta-row">
-              <span class="path">{formatDate(run.started_at)}</span>
-              <span class="activity-time">{formatDuration(run.started_at, run.ended_at)}</span>
-            </div>
-            {#if run.initial_prompt}
-              <div class="run-prompt">
-                {truncateText(run.initial_prompt, 60)}
+            <div class="info">
+              <div class="name-row">
+                <span class="name">{item.title}</span>
+                <span class="chat-badge">CHAT</span>
               </div>
-            {/if}
-          </div>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9,6 15,12 9,18"/>
-          </svg>
-        </button>
+              <div class="meta-row">
+                <span class="meta-text">
+                  {item.messageCount} messages · {formatConversationDate(item.timestamp)}
+                </span>
+              </div>
+              {#if item.preview}
+                <div class="item-preview">
+                  {truncateText(item.preview, 60)}
+                </div>
+              {/if}
+            </div>
+          </button>
+        {:else}
+          <!-- Agent run entry -->
+          <button
+            class="item-btn agent-btn"
+            onclick={() => onSelectItem(item)}
+          >
+            <div class="status-indicator" style="background-color: {getStatusColor(item.status)}">
+              {#if item.status === "running"}
+                <span class="pulse"></span>
+              {/if}
+            </div>
+            <div class="info">
+              <div class="name-row">
+                <span class="name">{item.title}</span>
+                <span class="status-badge" style="background-color: {getStatusColor(item.status)}">
+                  {getStatusLabel(item.status)}
+                </span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-text">{formatDate(item.startedAt ?? item.timestamp)}</span>
+                <span class="activity-time">{formatDuration(item.startedAt ?? item.timestamp, item.endedAt)}</span>
+              </div>
+              {#if item.preview}
+                <div class="item-preview">
+                  {truncateText(item.preview, 60)}
+                </div>
+              {/if}
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9,6 15,12 9,18"/>
+            </svg>
+          </button>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -82,7 +120,7 @@
     margin-bottom: var(--space-2);
   }
 
-  .agent-btn {
+  .item-btn {
     width: 100%;
     padding: var(--space-3) var(--space-4);
     display: flex;
@@ -98,11 +136,48 @@
     color: inherit;
   }
 
-  .agent-btn:hover {
+  .item-btn:hover {
     background-color: var(--bg-elevated);
     border-color: var(--border-hex);
   }
 
+  /* Conversation-specific styling */
+  .conversation-btn {
+    border-left: 3px solid var(--accent-hex);
+  }
+
+  .conversation-btn:hover {
+    border-left-color: var(--accent-hex);
+  }
+
+  .chat-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    background: var(--accent-hex);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: white;
+  }
+
+  .chat-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px var(--space-2);
+    background-color: var(--accent-hex);
+    color: white;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Agent run styling */
   .status-indicator {
     width: 10px;
     height: 10px;
@@ -120,6 +195,21 @@
     animation: pulse 2s ease-in-out infinite;
   }
 
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px var(--space-2);
+    color: white;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Shared info styling */
   .info {
     flex: 1;
     min-width: 0;
@@ -138,20 +228,11 @@
     font-weight: var(--font-medium);
     font-size: var(--text-base);
     color: var(--text-primary);
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px var(--space-2);
-    color: white;
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    border-radius: var(--radius-sm);
-    flex-shrink: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
   }
 
   .meta-row {
@@ -161,7 +242,7 @@
     gap: var(--space-2);
   }
 
-  .path {
+  .meta-text {
     font-size: var(--text-sm);
     color: var(--text-muted);
     white-space: nowrap;
@@ -176,7 +257,7 @@
     flex-shrink: 0;
   }
 
-  .run-prompt {
+  .item-preview {
     font-size: var(--text-xs);
     color: var(--text-muted);
     margin-top: 2px;
@@ -200,6 +281,14 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .type-counts {
+    font-weight: var(--font-normal);
+    text-transform: none;
   }
 
   .empty {

@@ -55,6 +55,7 @@ import type {
   MetaAgentUserUpdateEvent,
   MetaAgentQuestionEvent,
   MetaAgentSleepEvent,
+  ContextInfoEvent,
   AutoPipeline,
   OrchestratorToolCall,
   OrchestratorStateChange,
@@ -109,6 +110,7 @@ export interface EventHandlerCallbacks {
   onMetaAgentUserUpdate?: (event: MetaAgentUserUpdateEvent) => void;
   onMetaAgentQuestion?: (event: MetaAgentQuestionEvent) => void;
   onMetaAgentSleep?: (event: MetaAgentSleepEvent) => void;
+  onMetaAgentContextInfo?: (event: ContextInfoEvent) => void;
   onNavigate: (agentId: string) => void;
 
   // Pipeline callbacks
@@ -398,6 +400,14 @@ async function setupMetaAgentSleepListener(
       console.log("[Frontend] Meta-agent sleep status:", event.payload.status, event.payload.reason || "");
       onMetaAgentSleep?.(event.payload);
     }
+  });
+}
+
+async function setupMetaAgentContextInfoListener(
+  onMetaAgentContextInfo: EventHandlerCallbacks['onMetaAgentContextInfo']
+): Promise<UnlistenFn> {
+  return listen<ContextInfoEvent>("meta-agent:context-info", (event) => {
+    onMetaAgentContextInfo?.(event.payload);
   });
 }
 
@@ -717,13 +727,14 @@ export async function setupEventListeners(
     setupStatsListener(callbacks.onAgentStats),
     setupActivityDetailListener(callbacks.onAgentActivityDetail),
 
-    // Meta-agent events (7)
+    // Meta-agent events (8)
     setupThinkingListener(callbacks.onMetaAgentThinking),
     setupMetaAgentToolCallListener(callbacks.onMetaAgentToolCall),
     setupMetaAgentTodosListener(callbacks.onMetaAgentTodos),
     setupMetaAgentUserUpdateListener(callbacks.onMetaAgentUserUpdate),
     setupMetaAgentQuestionListener(callbacks.onMetaAgentQuestion),
     setupMetaAgentSleepListener(callbacks.onMetaAgentSleep),
+    setupMetaAgentContextInfoListener(callbacks.onMetaAgentContextInfo),
     setupNavigateListener(callbacks.onNavigate),
 
     // Pipeline events (4)

@@ -256,3 +256,42 @@ pub struct PipelineHistoryBundle {
     pub state_changes: Vec<OrchestratorStateChangeRecord>,
     pub decisions: Vec<OrchestratorDecisionRecord>,
 }
+
+// ============================================================================
+// Meta Agent Conversation Records (for conversation persistence)
+// ============================================================================
+
+/// Record of a meta agent conversation - persisted to SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaConversationRecord {
+    pub id: Option<i64>,
+    pub conversation_id: String,
+    pub title: Option<String>,
+    pub created_at: i64, // Unix timestamp in milliseconds
+    pub updated_at: i64, // Unix timestamp in milliseconds
+    pub message_count: u32,
+    pub is_archived: bool,
+    pub preview_text: Option<String>, // First ~100 chars for list view
+}
+
+/// Record of a single message in a meta agent conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaMessageRecord {
+    pub id: Option<i64>,
+    pub conversation_id: String,
+    pub message_index: u32,
+    pub role: String, // "user" or "assistant"
+    pub content: String,
+    pub image_data: Option<String>, // JSON if has image
+    pub tool_calls: Option<String>, // JSON array
+    pub timestamp: i64,             // Unix timestamp in milliseconds
+}
+
+/// Query filters for listing conversations
+#[derive(Debug, Clone, Default)]
+pub struct ConversationQueryFilters {
+    pub include_archived: bool,
+    pub search_text: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}

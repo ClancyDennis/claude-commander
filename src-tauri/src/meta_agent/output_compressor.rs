@@ -1,0 +1,283 @@
+// Output compression for tool results
+//
+// This module handles truncation and compression of large tool outputs
+// to prevent context overflow while preserving key information.
+
+use serde_json::Value;
+
+/// Compresses tool outputs that exceed the configured threshold
+pub struct OutputCompressor {
+    /// Maximum characters for tool output before truncation
+    max_chars: usize,
+}
+
+impl OutputCompressor {
+    /// Create a new output compressor with the given character limit
+    pub fn new(max_chars: usize) -> Self {
+        Self { max_chars }
+    }
+
+    /// Compress a tool output if it exceeds the threshold
+    pub fn compress(&self, output: &Value) -> Value {
+        let serialized = serde_json::to_string(output).unwrap_or_default();
+
+        if serialized.len() <= self.max_chars {
+            return output.clone();
+        }
+
+        // For objects, try to preserve key fields and truncate others
+        if let Some(obj) = output.as_object() {
+            return self.compress_object(obj);
+        }
+
+        // For arrays, limit the number of elements
+        if let Some(arr) = output.as_array() {
+            return self.compress_array(arr);
+        }
+
+        // For strings, truncate with ellipsis
+        if let Some(s) = output.as_str() {
+            return self.compress_string(s);
+        }
+
+        // Fallback: serialize and truncate
+        self.truncate_serialized(&serialized)
+    }
+
+    /// Compress an object by preserving key fields and truncating large values
+    fn compress_object(&self, obj: &serde_json::Map<String, Value>) -> Value {
+        let mut result = serde_json::Map::new();
+
+        // Key fields to always preserve (if present)
+        let priority_keys = [
+            "success",
+            "error",
+            "agent_id",
+            "status",
+            "message",
+            "type",
+            "id",
+            "name",
+            "result",
+            "iteration_info",
+        ];
+
+        // First pass: add priority keys
+        for key in &priority_keys {
+            if let Some(value) = obj.get(*key) {
+                let compressed = self.compress_value(value, self.max_chars / 4);
+                result.insert(key.to_string(), compressed);
+            }
+        }
+
+        // Calculate remaining budget
+        let used = serde_json::to_string(&result).unwrap_or_default().len();
+        let remaining = self.max_chars.saturating_sub(used);
+
+        // Second pass: add other keys if space permits
+        let other_keys: Vec<_> = obj
+            .keys()
+            .filter(|k| !priority_keys.contains(&k.as_str()))
+            .collect();
+
+        if !other_keys.is_empty() && remaining > 100 {
+            let budget_per_key = remaining / other_keys.len();
+
+            for key in other_keys {
+                if let Some(value) = obj.get(key) {
+                    let compressed = self.compress_value(value, budget_per_key);
+                    result.insert(key.clone(), compressed);
+                }
+            }
+        }
+
+        // If still too large, add truncation notice
+        let final_serialized = serde_json::to_string(&result).unwrap_or_default();
+        if final_serialized.len() > self.max_chars {
+            result.insert("_truncated".to_string(), Value::Bool(true));
+            result.insert(
+                "_original_size".to_string(),
+                Value::Number(serde_json::to_string(obj).unwrap_or_default().len().into()),
+            );
+        }
+
+        Value::Object(result)
+    }
+
+    /// Compress an array by limiting elements
+    fn compress_array(&self, arr: &[Value]) -> Value {
+        let serialized = serde_json::to_string(arr).unwrap_or_default();
+
+        if serialized.len() <= self.max_chars {
+            return Value::Array(arr.to_vec());
+        }
+
+        // Calculate how many elements we can keep
+        let avg_element_size = serialized.len() / arr.len().max(1);
+        let max_elements = (self.max_chars / avg_element_size.max(1)).max(2);
+
+        if arr.len() <= max_elements {
+            // Compress individual elements
+            let compressed: Vec<Value> = arr
+                .iter()
+                .map(|v| self.compress_value(v, self.max_chars / arr.len()))
+                .collect();
+            return Value::Array(compressed);
+        }
+
+        // Keep first and last elements, show count in middle
+        let half = max_elements / 2;
+        let mut result: Vec<Value> = arr.iter().take(half).cloned().collect();
+
+        result.push(Value::String(format!(
+            "... {} more items omitted ...",
+            arr.len() - max_elements
+        )));
+
+        result.extend(arr.iter().skip(arr.len() - half).cloned());
+
+        Value::Array(result)
+    }
+
+    /// Compress a string by truncating with ellipsis
+    fn compress_string(&self, s: &str) -> Value {
+        if s.len() <= self.max_chars {
+            return Value::String(s.to_string());
+        }
+
+        // Keep beginning and end
+        let half = (self.max_chars - 50) / 2; // Leave room for ellipsis message
+        let truncated = format!(
+            "{}... [truncated {} chars] ...{}",
+            &s[..half],
+            s.len() - self.max_chars,
+            &s[s.len() - half..]
+        );
+
+        Value::String(truncated)
+    }
+
+    /// Compress a value with a given budget
+    fn compress_value(&self, value: &Value, budget: usize) -> Value {
+        let serialized = serde_json::to_string(value).unwrap_or_default();
+
+        if serialized.len() <= budget {
+            return value.clone();
+        }
+
+        match value {
+            Value::String(s) => {
+                if s.len() <= budget {
+                    value.clone()
+                } else {
+                    let truncated = format!(
+                        "{}... [+{} chars]",
+                        &s[..budget.saturating_sub(20)],
+                        s.len() - budget
+                    );
+                    Value::String(truncated)
+                }
+            }
+            Value::Array(arr) => {
+                if arr.len() <= 3 {
+                    value.clone()
+                } else {
+                    Value::String(format!("[Array of {} items]", arr.len()))
+                }
+            }
+            Value::Object(obj) => {
+                if serialized.len() <= budget * 2 {
+                    value.clone()
+                } else {
+                    Value::String(format!("{{Object with {} keys}}", obj.len()))
+                }
+            }
+            _ => value.clone(),
+        }
+    }
+
+    /// Truncate serialized JSON as a fallback
+    fn truncate_serialized(&self, serialized: &str) -> Value {
+        if serialized.len() <= self.max_chars {
+            // Try to parse back
+            serde_json::from_str(serialized).unwrap_or(Value::String(serialized.to_string()))
+        } else {
+            let truncated = format!(
+                "{}... [truncated, original size: {} chars]",
+                &serialized[..self.max_chars.saturating_sub(50)],
+                serialized.len()
+            );
+            Value::String(truncated)
+        }
+    }
+}
+
+impl Default for OutputCompressor {
+    fn default() -> Self {
+        Self::new(10_000)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_small_output_unchanged() {
+        let compressor = OutputCompressor::new(1000);
+        let input = json!({"success": true, "message": "Done"});
+        let output = compressor.compress(&input);
+        assert_eq!(input, output);
+    }
+
+    #[test]
+    fn test_large_string_truncated() {
+        let compressor = OutputCompressor::new(100);
+        let long_string = "a".repeat(500);
+        let input = Value::String(long_string);
+        let output = compressor.compress(&input);
+
+        if let Value::String(s) = output {
+            assert!(s.len() < 200);
+            assert!(s.contains("truncated"));
+        } else {
+            panic!("Expected string output");
+        }
+    }
+
+    #[test]
+    fn test_large_array_compressed() {
+        let compressor = OutputCompressor::new(200);
+        let input: Value = (0..100).map(|i| json!({"id": i})).collect();
+        let output = compressor.compress(&input);
+
+        if let Value::Array(arr) = output {
+            assert!(arr.len() < 100);
+        } else {
+            panic!("Expected array output");
+        }
+    }
+
+    #[test]
+    fn test_priority_keys_preserved() {
+        let compressor = OutputCompressor::new(500);
+        let input = json!({
+            "success": true,
+            "error": null,
+            "agent_id": "test-123",
+            "huge_data": "x".repeat(10000),
+            "status": "running"
+        });
+
+        let output = compressor.compress(&input);
+
+        if let Value::Object(obj) = output {
+            assert!(obj.contains_key("success"));
+            assert!(obj.contains_key("agent_id"));
+            assert!(obj.contains_key("status"));
+        } else {
+            panic!("Expected object output");
+        }
+    }
+}

@@ -8,12 +8,14 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::ai_client::{AIClient, AIResponse, ContentBlock, Message, RichMessage, Tool};
+use crate::ai_client::{AIClient, AIResponse, ContentBlock, Message, RichMessage, Tool, Usage};
 use crate::error::{ApiError, AppError, AppResult};
 use crate::types::{
     ChatMessage, ChatResponse, ChatUsage, MetaAgentToolCallEvent, QueueStatus, ToolCall,
 };
 
+use super::context_tracker::ContextInfo;
+use super::output_compressor::OutputCompressor;
 use super::tools::{self, IterationContext, PendingQuestion, SleepState, ToolExecutionResult};
 
 /// Configuration for the tool loop engine
@@ -22,6 +24,8 @@ pub struct ToolLoopConfig {
     pub max_iterations: usize,
     /// Maximum number of tool calls per message
     pub max_tool_calls: usize,
+    /// Maximum characters for tool output before compression
+    pub max_tool_output_chars: usize,
 }
 
 impl Default for ToolLoopConfig {
@@ -29,6 +33,7 @@ impl Default for ToolLoopConfig {
         Self {
             max_iterations: 40,
             max_tool_calls: 200,
+            max_tool_output_chars: 10_000,
         }
     }
 }
@@ -51,24 +56,41 @@ pub struct ResponseProcessingResult {
     pub should_reset_iterations: bool,
 }
 
+/// Extended ChatResponse that includes cumulative usage
+pub struct ToolLoopResult {
+    /// The chat response
+    pub response: ChatResponse,
+    /// Cumulative token usage across all iterations
+    pub total_usage: Usage,
+}
+
 /// The tool loop engine handles the iteration over AI responses and tool execution
 pub struct ToolLoopEngine {
     config: ToolLoopConfig,
+    output_compressor: OutputCompressor,
 }
 
 impl ToolLoopEngine {
     pub fn new() -> Self {
+        let config = ToolLoopConfig::default();
+        let output_compressor = OutputCompressor::new(config.max_tool_output_chars);
         Self {
-            config: ToolLoopConfig::default(),
+            config,
+            output_compressor,
         }
     }
 
     #[allow(dead_code)]
     pub fn with_config(config: ToolLoopConfig) -> Self {
-        Self { config }
+        let output_compressor = OutputCompressor::new(config.max_tool_output_chars);
+        Self {
+            config,
+            output_compressor,
+        }
     }
 
     /// Process a single AI response, executing any tool calls
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_response(
         &self,
         response: &AIResponse,
@@ -104,12 +126,15 @@ impl ToolLoopEngine {
                         sleep_state.clone(),
                         pending_question.clone(),
                         &queue_status_fn,
-                        iteration_ctx,
+                        iteration_ctx.clone(),
                     )
                     .await;
 
                     // Get the result value for logging/events
                     let tool_result = tool_execution_result.to_value();
+
+                    // Compress the tool result before storing in history
+                    let compressed_result = self.output_compressor.compress(&tool_result);
 
                     // Check if this is a completion signal
                     match &tool_execution_result {
@@ -123,32 +148,32 @@ impl ToolLoopEngine {
                         ToolExecutionResult::Continue(_) => {}
                     }
 
-                    // Create tool call record
+                    // Create tool call record (with compressed result for history)
                     let tool_call = ToolCall {
                         id: id.clone(),
                         tool_name: name.clone(),
                         input: input.clone(),
-                        output: Some(tool_result.clone()),
+                        output: Some(compressed_result.clone()),
                     };
                     tool_calls.push(tool_call);
 
-                    // Emit tool call event
+                    // Emit tool call event (with full result for UI)
                     let timestamp = chrono::Utc::now().timestamp_millis();
                     let _ = app_handle.emit(
                         "meta-agent:tool-call",
                         MetaAgentToolCallEvent {
                             tool_name: name.clone(),
                             input: input.clone(),
-                            output: tool_result.clone(),
+                            output: tool_result, // Full result for UI display
                             timestamp,
                         },
                     );
 
-                    // Add tool result to send back to Claude
+                    // Add compressed tool result to send back to Claude
                     tool_results.push(serde_json::json!({
                         "type": "tool_result",
                         "tool_use_id": id,
-                        "content": serde_json::to_string(&tool_result).unwrap_or_else(|_| "{}".to_string()),
+                        "content": serde_json::to_string(&compressed_result).unwrap_or_else(|_| "{}".to_string()),
                     }));
                 }
             }
@@ -216,7 +241,7 @@ impl ToolLoopEngine {
     /// Sleep tool resets the iteration counter, allowing the meta-agent to work
     /// indefinitely by periodically sleeping.
     #[allow(clippy::too_many_arguments)]
-    pub async fn run_loop<F>(
+    pub async fn run_loop<F, G>(
         &self,
         ai_client: &AIClient,
         system_prompt: &str,
@@ -227,21 +252,30 @@ impl ToolLoopEngine {
         sleep_state: Arc<Mutex<SleepState>>,
         pending_question: Arc<Mutex<Option<PendingQuestion>>>,
         queue_status_fn: F,
-    ) -> AppResult<ChatResponse>
+        context_info_fn: G,
+    ) -> AppResult<ToolLoopResult>
     where
         F: Fn() -> QueueStatus,
+        G: Fn() -> Option<ContextInfo>,
     {
         let mut iteration = 0;
         let mut tool_call_count = 0;
         let mut final_response: Option<ChatResponse> = None;
         let max_iterations = self.config.max_iterations;
+        let mut total_usage = Usage {
+            input_tokens: 0,
+            output_tokens: 0,
+        };
 
-        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls
-        {
+        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls {
             iteration += 1;
 
-            // Create iteration context to pass to tools
-            let iteration_ctx = IterationContext::new(iteration, max_iterations);
+            // Create iteration context to pass to tools (with context info if available)
+            let iteration_ctx = if let Some(ctx_info) = context_info_fn() {
+                IterationContext::with_context_info(iteration, max_iterations, ctx_info)
+            } else {
+                IterationContext::new(iteration, max_iterations)
+            };
 
             // Call AI API with system prompt and tools
             let response = ai_client
@@ -252,6 +286,10 @@ impl ToolLoopEngine {
                 )
                 .await
                 .map_err(|e| AppError::Api(ApiError::Network(format!("AI API error: {}", e))))?;
+
+            // Accumulate usage
+            total_usage.input_tokens += response.usage.input_tokens;
+            total_usage.output_tokens += response.usage.output_tokens;
 
             // Process the response
             let result = self
@@ -282,9 +320,9 @@ impl ToolLoopEngine {
 
             // Check if CompleteTask was called - exit the loop with completion message
             if result.should_complete {
-                let completion_text = result.completion_message.unwrap_or_else(|| {
-                    result.text_content.clone()
-                });
+                let completion_text = result
+                    .completion_message
+                    .unwrap_or_else(|| result.text_content.clone());
                 final_response = Some(Self::build_final_response(
                     completion_text,
                     result.tool_calls,
@@ -295,7 +333,10 @@ impl ToolLoopEngine {
 
             // Reset iteration counter if Sleep was called
             if result.should_reset_iterations {
-                eprintln!("[MetaAgent] Sleep completed - resetting iteration counter from {} to 0", iteration);
+                eprintln!(
+                    "[MetaAgent] Sleep completed - resetting iteration counter from {} to 0",
+                    iteration
+                );
                 iteration = 0;
             }
 
@@ -317,11 +358,16 @@ impl ToolLoopEngine {
             break;
         }
 
-        final_response.ok_or_else(|| {
-            AppError::Internal(
-                "Meta-agent failed to produce a response within iteration limits".to_string(),
-            )
-        })
+        final_response
+            .map(|response| ToolLoopResult {
+                response,
+                total_usage,
+            })
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "Meta-agent failed to produce a response within iteration limits".to_string(),
+                )
+            })
     }
 
     /// Run the tool loop with rich messages (for image support)
@@ -330,7 +376,7 @@ impl ToolLoopEngine {
     /// Subsequent iterations use the regular loop.
     /// Sleep tool resets the iteration counter.
     #[allow(clippy::too_many_arguments)]
-    pub async fn run_loop_with_initial_rich_messages<F>(
+    pub async fn run_loop_with_initial_rich_messages<F, G>(
         &self,
         ai_client: &AIClient,
         system_prompt: &str,
@@ -342,21 +388,30 @@ impl ToolLoopEngine {
         sleep_state: Arc<Mutex<SleepState>>,
         pending_question: Arc<Mutex<Option<PendingQuestion>>>,
         queue_status_fn: F,
-    ) -> AppResult<ChatResponse>
+        context_info_fn: G,
+    ) -> AppResult<ToolLoopResult>
     where
         F: Fn() -> QueueStatus,
+        G: Fn() -> Option<ContextInfo>,
     {
         let mut iteration = 0;
         let mut tool_call_count = 0;
         let mut final_response: Option<ChatResponse> = None;
         let max_iterations = self.config.max_iterations;
+        let mut total_usage = Usage {
+            input_tokens: 0,
+            output_tokens: 0,
+        };
 
-        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls
-        {
+        while iteration < max_iterations && tool_call_count < self.config.max_tool_calls {
             iteration += 1;
 
-            // Create iteration context to pass to tools
-            let iteration_ctx = IterationContext::new(iteration, max_iterations);
+            // Create iteration context to pass to tools (with context info if available)
+            let iteration_ctx = if let Some(ctx_info) = context_info_fn() {
+                IterationContext::with_context_info(iteration, max_iterations, ctx_info)
+            } else {
+                IterationContext::new(iteration, max_iterations)
+            };
 
             // For first iteration, use rich messages with image
             // For subsequent iterations, use simple messages
@@ -375,6 +430,10 @@ impl ToolLoopEngine {
                     .await
                     .map_err(|e| AppError::Api(ApiError::Network(format!("AI API error: {}", e))))?
             };
+
+            // Accumulate usage
+            total_usage.input_tokens += response.usage.input_tokens;
+            total_usage.output_tokens += response.usage.output_tokens;
 
             // Process the response
             let result = self
@@ -405,9 +464,9 @@ impl ToolLoopEngine {
 
             // Check if CompleteTask was called - exit the loop with completion message
             if result.should_complete {
-                let completion_text = result.completion_message.unwrap_or_else(|| {
-                    result.text_content.clone()
-                });
+                let completion_text = result
+                    .completion_message
+                    .unwrap_or_else(|| result.text_content.clone());
                 final_response = Some(Self::build_final_response(
                     completion_text,
                     result.tool_calls,
@@ -418,7 +477,10 @@ impl ToolLoopEngine {
 
             // Reset iteration counter if Sleep was called
             if result.should_reset_iterations {
-                eprintln!("[MetaAgent] Sleep completed - resetting iteration counter from {} to 0", iteration);
+                eprintln!(
+                    "[MetaAgent] Sleep completed - resetting iteration counter from {} to 0",
+                    iteration
+                );
                 iteration = 0;
             }
 
@@ -440,11 +502,16 @@ impl ToolLoopEngine {
             break;
         }
 
-        final_response.ok_or_else(|| {
-            AppError::Internal(
-                "Meta-agent failed to produce a response within iteration limits".to_string(),
-            )
-        })
+        final_response
+            .map(|response| ToolLoopResult {
+                response,
+                total_usage,
+            })
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "Meta-agent failed to produce a response within iteration limits".to_string(),
+                )
+            })
     }
 }
 
@@ -461,8 +528,9 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = ToolLoopConfig::default();
-        assert_eq!(config.max_iterations, 10);
-        assert_eq!(config.max_tool_calls, 20);
+        assert_eq!(config.max_iterations, 40);
+        assert_eq!(config.max_tool_calls, 200);
+        assert_eq!(config.max_tool_output_chars, 10_000);
     }
 
     #[test]
@@ -471,5 +539,12 @@ mod tests {
         let content = ToolLoopEngine::build_tool_results_content(&results);
         assert!(content.contains("tool_result"));
         assert!(content.contains("123"));
+    }
+
+    #[test]
+    fn test_output_compressor_initialized() {
+        let engine = ToolLoopEngine::new();
+        // Just verify it was created without panicking
+        assert_eq!(engine.config.max_tool_output_chars, 10_000);
     }
 }
