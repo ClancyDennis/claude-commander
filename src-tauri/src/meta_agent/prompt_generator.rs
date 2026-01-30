@@ -23,7 +23,7 @@ pub struct PromptCache {
 }
 
 /// Commander personality settings matching the frontend TypeScript interface
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct CommanderPersonality {
     /// Strictness level (1-10): 1=lenient, 10=demanding
@@ -59,6 +59,27 @@ pub struct CommanderPersonality {
 
     /// Custom instructions (free text)
     pub custom_instructions: String,
+}
+
+impl Default for CommanderPersonality {
+    fn default() -> Self {
+        Self {
+            strictness: 5,
+            communication_style: "balanced".to_string(),
+            tone: "professional".to_string(),
+            preferred_languages: Vec::new(),
+            preferred_frameworks: Vec::new(),
+            patterns_to_favor: String::new(),
+            patterns_to_avoid: String::new(),
+            focus_areas: Vec::new(),
+            autonomy_level: 5,
+            attention_enabled: false,
+            listen_timeout: 0,
+            openai_voice: String::new(),
+            voice_persona: String::new(),
+            custom_instructions: String::new(),
+        }
+    }
 }
 
 impl CommanderPersonality {

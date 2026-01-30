@@ -6,7 +6,6 @@
     disabled?: boolean;
     showSendButton?: boolean;
     enableImageAttachment?: boolean;
-    maxHeight?: number;
     class?: string;
     pendingPrompt?: string | null;
   };
@@ -33,7 +32,6 @@
     disabled = false,
     showSendButton = true,
     enableImageAttachment = false,
-    maxHeight = 200,
     class: className,
     pendingPrompt = null,
     onSend,
@@ -51,28 +49,10 @@
   let isDragging = $state(false);
   let error = $state<string | null>(null);
 
-  // Cleanup object URLs and pending RAF on destroy
+  // Cleanup object URLs on destroy
   onDestroy(() => {
     revokePreviewUrl(attachedImage);
-    if (heightRafId !== null) {
-      cancelAnimationFrame(heightRafId);
-    }
   });
-
-  let heightRafId: number | null = null;
-
-  function adjustInputHeight() {
-    // Debounce height adjustments using requestAnimationFrame to prevent layout thrashing
-    if (heightRafId !== null) return;
-
-    heightRafId = requestAnimationFrame(() => {
-      heightRafId = null;
-      if (textarea) {
-        textarea.style.height = "auto";
-        textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + "px";
-      }
-    });
-  }
 
   async function addImageFile(file: File) {
     if (!enableImageAttachment) return;
@@ -142,7 +122,6 @@
 
     // Reset input state
     input = "";
-    if (textarea) textarea.style.height = "auto";
     error = null;
 
     // Clear attached image reference (URL will be used by parent)
@@ -158,10 +137,6 @@
       handleSend();
     }
   }
-
-  $effect(() => {
-    if (input !== undefined) adjustInputHeight();
-  });
 
   // Watch for pending chat input from voice transcription
   $effect(() => {
@@ -193,8 +168,6 @@
       lastAppliedPrompt = null;
     }
   });
-
-  const canSend = $derived(!disabled && (!!input.trim() || !!attachedImage));
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -245,7 +218,7 @@
     {#if showSendButton}
       <button
         onclick={handleSend}
-        disabled={!canSend}
+        {disabled}
         class="send-btn"
       >
         <Send size={20} />

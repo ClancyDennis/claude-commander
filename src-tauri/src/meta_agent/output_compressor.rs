@@ -5,6 +5,32 @@
 
 use serde_json::Value;
 
+/// Find the largest byte index <= `index` that is a valid UTF-8 char boundary.
+/// This prevents panics when slicing strings with multi-byte characters.
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    // Walk backwards from index to find a char boundary
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Find the smallest byte index >= `index` that is a valid UTF-8 char boundary.
+fn ceil_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
 /// Compresses tool outputs that exceed the configured threshold
 pub struct OutputCompressor {
     /// Maximum characters for tool output before truncation
@@ -147,11 +173,14 @@ impl OutputCompressor {
 
         // Keep beginning and end
         let half = (self.max_chars - 50) / 2; // Leave room for ellipsis message
+        // Use safe char boundaries to avoid panics with multi-byte UTF-8 chars
+        let start_end = floor_char_boundary(s, half);
+        let end_start = ceil_char_boundary(s, s.len().saturating_sub(half));
         let truncated = format!(
             "{}... [truncated {} chars] ...{}",
-            &s[..half],
+            &s[..start_end],
             s.len() - self.max_chars,
-            &s[s.len() - half..]
+            &s[end_start..]
         );
 
         Value::String(truncated)
@@ -170,9 +199,11 @@ impl OutputCompressor {
                 if s.len() <= budget {
                     value.clone()
                 } else {
+                    // Use safe char boundary to avoid panics with multi-byte UTF-8 chars
+                    let safe_end = floor_char_boundary(s, budget.saturating_sub(20));
                     let truncated = format!(
                         "{}... [+{} chars]",
-                        &s[..budget.saturating_sub(20)],
+                        &s[..safe_end],
                         s.len() - budget
                     );
                     Value::String(truncated)
@@ -202,9 +233,11 @@ impl OutputCompressor {
             // Try to parse back
             serde_json::from_str(serialized).unwrap_or(Value::String(serialized.to_string()))
         } else {
+            // Use safe char boundary to avoid panics with multi-byte UTF-8 chars
+            let safe_end = floor_char_boundary(serialized, self.max_chars.saturating_sub(50));
             let truncated = format!(
                 "{}... [truncated, original size: {} chars]",
-                &serialized[..self.max_chars.saturating_sub(50)],
+                &serialized[..safe_end],
                 serialized.len()
             );
             Value::String(truncated)
@@ -279,5 +312,30 @@ mod tests {
         } else {
             panic!("Expected object output");
         }
+    }
+
+    #[test]
+    fn test_multibyte_utf8_characters_no_panic() {
+        // Test with strings containing multi-byte UTF-8 characters
+        // '→' is 3 bytes, '日' is 3 bytes, '🔧' is 4 bytes
+        let compressor = OutputCompressor::new(50);
+
+        // String with arrows at various positions
+        let arrows = "→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→";
+        let input = Value::String(arrows.to_string());
+        let output = compressor.compress(&input);
+        assert!(matches!(output, Value::String(_)));
+
+        // String with mixed ASCII and multi-byte chars
+        let mixed = "Hello 🔧 World → Test 日本語 More text here that needs truncation";
+        let input = Value::String(mixed.to_string());
+        let output = compressor.compress(&input);
+        assert!(matches!(output, Value::String(_)));
+
+        // Test compress_value with budget that falls mid-character
+        let test_str = "abc→def→ghi→jkl";
+        let compressor_small = OutputCompressor::new(10);
+        let output = compressor_small.compress_value(&Value::String(test_str.to_string()), 7);
+        assert!(matches!(output, Value::String(_)));
     }
 }
