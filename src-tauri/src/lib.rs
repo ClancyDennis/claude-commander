@@ -60,20 +60,16 @@ pub fn run() {
     first_run::run_if_needed();
 
     // Load .env file from multiple locations (in priority order):
-    // 1. Current working directory (for development)
-    // 2. App config directory (for installed app)
-    let env_loaded = dotenvy::dotenv().is_ok();
-
-    if !env_loaded {
-        // Try app config directory
-        if let Some(config_dir) = dirs::config_dir() {
-            let app_env = config_dir.join("claude-commander").join(".env");
-            if app_env.exists() {
-                let _ = dotenvy::from_path(&app_env);
-                println!("✓ Loaded .env from {:?}", app_env);
-            }
+    // 1. App config directory (user's persistent settings)
+    // 2. Current working directory (for development overrides)
+    if let Some(config_dir) = dirs::config_dir() {
+        let app_env = config_dir.join("claude-commander").join(".env");
+        if app_env.exists() && dotenvy::from_path(&app_env).is_ok() {
+            println!("✓ Loaded .env from {:?}", app_env);
         }
     }
+    // Allow cwd .env to override config dir (useful for development)
+    let _ = dotenvy::dotenv();
 
     let hook_port: u16 = 19832;
 

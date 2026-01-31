@@ -21,6 +21,8 @@ pub mod env_keys {
     pub const LIGHT_TASK_MODEL: &str = "LIGHT_TASK_MODEL";
     pub const OPENAI_MODEL: &str = "OPENAI_MODEL";
     pub const CLAUDE_CODE_API_KEY_MODE: &str = "CLAUDE_CODE_API_KEY_MODE";
+    pub const META_AGENT_PROVIDER: &str = "META_AGENT_PROVIDER";
+    pub const CLAUDE_CODE_MODEL: &str = "CLAUDE_CODE_MODEL";
 }
 
 /// Allowlist of editable configuration keys
@@ -33,22 +35,52 @@ pub const ALLOWED_CONFIG_KEYS: &[&str] = &[
     env_keys::LIGHT_TASK_MODEL,
     env_keys::OPENAI_MODEL,
     env_keys::CLAUDE_CODE_API_KEY_MODE,
+    env_keys::META_AGENT_PROVIDER,
+    env_keys::CLAUDE_CODE_MODEL,
 ];
 
 /// Keys that require app restart to take full effect
 pub const RESTART_REQUIRED_KEYS: &[&str] = &[env_keys::ANTHROPIC_API_KEY, env_keys::OPENAI_API_KEY];
 
-/// Available Claude models (current generation)
-pub const AVAILABLE_CLAUDE_MODELS: &[&str] = &[
+/// Claude model aliases (auto-update to latest snapshots)
+pub const CLAUDE_MODEL_ALIASES: &[&str] =
+    &["claude-sonnet-4-5", "claude-opus-4-5", "claude-haiku-4-5"];
+
+/// Claude pinned model versions
+pub const CLAUDE_PINNED_MODELS: &[&str] = &[
     "claude-sonnet-4-5-20250929",
     "claude-opus-4-5-20251101",
     "claude-haiku-4-5-20251101",
     "claude-sonnet-4-20250514",
 ];
 
+/// All available Claude models (aliases + pinned versions)
+pub const AVAILABLE_CLAUDE_MODELS: &[&str] = &[
+    // Aliases (auto-update to latest)
+    "claude-sonnet-4-5",
+    "claude-opus-4-5",
+    "claude-haiku-4-5",
+    // Pinned versions
+    "claude-sonnet-4-5-20250929",
+    "claude-opus-4-5-20251101",
+    "claude-haiku-4-5-20251101",
+    "claude-sonnet-4-20250514",
+];
+
+/// Claude Code CLI model options (short aliases + full names)
+pub const CLAUDE_CODE_MODEL_OPTIONS: &[&str] = &[
+    "auto",   // Use Claude Code's default (latest)
+    "sonnet", // Short alias for latest sonnet
+    "opus",   // Short alias for latest opus
+    "haiku",  // Short alias for latest haiku
+];
+
 /// Fallback OpenAI models when API is unavailable
 pub const FALLBACK_OPENAI_MODELS: &[&str] =
     &["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano"];
+
+/// Meta agent provider options
+pub const META_AGENT_PROVIDERS: &[&str] = &["auto", "anthropic", "openai"];
 
 /// Cached snapshot of environment variables
 #[derive(Debug)]

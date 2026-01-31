@@ -173,7 +173,7 @@ impl OutputCompressor {
 
         // Keep beginning and end
         let half = (self.max_chars - 50) / 2; // Leave room for ellipsis message
-        // Use safe char boundaries to avoid panics with multi-byte UTF-8 chars
+                                              // Use safe char boundaries to avoid panics with multi-byte UTF-8 chars
         let start_end = floor_char_boundary(s, half);
         let end_start = ceil_char_boundary(s, s.len().saturating_sub(half));
         let truncated = format!(
@@ -201,11 +201,7 @@ impl OutputCompressor {
                 } else {
                     // Use safe char boundary to avoid panics with multi-byte UTF-8 chars
                     let safe_end = floor_char_boundary(s, budget.saturating_sub(20));
-                    let truncated = format!(
-                        "{}... [+{} chars]",
-                        &s[..safe_end],
-                        s.len() - budget
-                    );
+                    let truncated = format!("{}... [+{} chars]", &s[..safe_end], s.len() - budget);
                     Value::String(truncated)
                 }
             }

@@ -3,50 +3,15 @@
 // This module uses the LIGHT_TASK_MODEL (haiku) to generate quality summaries
 // of conversation history during context compaction.
 
-use crate::ai_client::{AIClient, Message, Provider};
-use crate::commands::config_loader::env_keys;
-
-/// Default light model for summarization
-const DEFAULT_LIGHT_MODEL: &str = "claude-haiku-4-5-20251101";
+use crate::ai_client::{AIClient, Message};
 
 /// Summarizer for compacting conversation history
-pub struct ContextSummarizer {
-    light_model: String,
-}
+pub struct ContextSummarizer;
 
 impl ContextSummarizer {
     /// Create a new context summarizer
     pub fn new() -> Self {
-        let light_model = std::env::var(env_keys::LIGHT_TASK_MODEL)
-            .unwrap_or_else(|_| DEFAULT_LIGHT_MODEL.to_string());
-
-        Self { light_model }
-    }
-
-    /// Create an AI client configured with the light model
-    fn create_light_client(&self) -> Result<AIClient, String> {
-        // Try Anthropic first
-        if let Ok(api_key) = std::env::var(env_keys::ANTHROPIC_API_KEY) {
-            if !api_key.is_empty() {
-                return Ok(AIClient::new(Provider::Claude {
-                    api_key,
-                    model: self.light_model.clone(),
-                }));
-            }
-        }
-
-        // Fall back to OpenAI
-        if let Ok(api_key) = std::env::var(env_keys::OPENAI_API_KEY) {
-            if !api_key.is_empty() {
-                // For OpenAI, use gpt-4o-mini as the "light" model
-                return Ok(AIClient::new(Provider::OpenAI {
-                    api_key,
-                    model: "gpt-4o-mini".to_string(),
-                }));
-            }
-        }
-
-        Err("No API key available for summarization".to_string())
+        Self
     }
 
     /// Generate a summary of messages being compacted
@@ -55,7 +20,8 @@ impl ContextSummarizer {
             return Ok(String::new());
         }
 
-        let client = self.create_light_client()?;
+        let client = AIClient::light_from_env()
+            .map_err(|e| format!("Failed to create light client: {}", e))?;
 
         // Build the content to summarize
         let content_to_summarize = messages
@@ -125,7 +91,8 @@ SUMMARY:"#,
             return Ok(String::new());
         }
 
-        let client = self.create_light_client()?;
+        let client = AIClient::light_from_env()
+            .map_err(|e| format!("Failed to create light client: {}", e))?;
 
         // Build condensed content
         let content_to_summarize = messages

@@ -8,7 +8,8 @@
 use crate::ai_client::models;
 use crate::commands::api_validator::{self, ApiKeyValidationResult};
 use crate::commands::config_loader::{
-    self, env_keys, mask_api_key, AVAILABLE_CLAUDE_MODELS, FALLBACK_OPENAI_MODELS,
+    self, env_keys, mask_api_key, AVAILABLE_CLAUDE_MODELS, CLAUDE_CODE_MODEL_OPTIONS,
+    CLAUDE_MODEL_ALIASES, FALLBACK_OPENAI_MODELS, META_AGENT_PROVIDERS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +48,9 @@ pub struct ConfigStatus {
     pub api_keys: Vec<ApiKeyStatus>,
     pub models: Vec<ModelConfig>,
     pub available_claude_models: Vec<String>,
+    pub claude_model_aliases: Vec<String>,
+    pub claude_code_model_options: Vec<String>,
+    pub meta_agent_providers: Vec<String>,
     pub available_openai_models: Vec<String>,
     pub config_path: String,
     pub is_first_run: bool,
@@ -164,11 +168,25 @@ pub async fn get_config_status() -> Result<ConfigStatus, String> {
     // Build model configurations
     let models = build_model_configs();
 
-    // Available Claude models
+    // Available Claude models (aliases + pinned versions)
     let available_claude_models: Vec<String> = AVAILABLE_CLAUDE_MODELS
         .iter()
         .map(|s| s.to_string())
         .collect();
+
+    // Claude model aliases only (for display/grouping)
+    let claude_model_aliases: Vec<String> =
+        CLAUDE_MODEL_ALIASES.iter().map(|s| s.to_string()).collect();
+
+    // Claude Code CLI model options
+    let claude_code_model_options: Vec<String> = CLAUDE_CODE_MODEL_OPTIONS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    // Meta agent provider options
+    let meta_agent_providers: Vec<String> =
+        META_AGENT_PROVIDERS.iter().map(|s| s.to_string()).collect();
 
     // Fetch OpenAI models if API key is configured
     let available_openai_models = fetch_openai_models().await;
@@ -186,6 +204,9 @@ pub async fn get_config_status() -> Result<ConfigStatus, String> {
         api_keys,
         models,
         available_claude_models,
+        claude_model_aliases,
+        claude_code_model_options,
+        meta_agent_providers,
         available_openai_models,
         config_path,
         is_first_run,
@@ -304,9 +325,11 @@ fn build_api_key_statuses() -> Vec<ApiKeyStatus> {
 /// Build model configuration list
 fn build_model_configs() -> Vec<ModelConfig> {
     let model_keys = [
+        env_keys::META_AGENT_PROVIDER,
         env_keys::ANTHROPIC_MODEL,
         env_keys::SECURITY_MODEL,
         env_keys::LIGHT_TASK_MODEL,
+        env_keys::CLAUDE_CODE_MODEL,
         env_keys::OPENAI_MODEL,
         env_keys::CLAUDE_CODE_API_KEY_MODE,
     ];
@@ -330,9 +353,11 @@ fn build_model_configs() -> Vec<ModelConfig> {
 /// Get the default value for a model configuration key
 fn get_default_for_model_key(key: &str) -> Option<String> {
     match key {
+        env_keys::META_AGENT_PROVIDER => Some("auto".to_string()),
         env_keys::ANTHROPIC_MODEL => Some(models::get_default_claude_model()),
         env_keys::SECURITY_MODEL => Some(models::get_default_claude_model()), // Falls back to main model
-        env_keys::LIGHT_TASK_MODEL => Some("claude-haiku-4-5-20251101".to_string()), // Faster/cheaper model
+        env_keys::LIGHT_TASK_MODEL => Some("claude-haiku-4-5".to_string()), // Faster/cheaper model (alias)
+        env_keys::CLAUDE_CODE_MODEL => Some("auto".to_string()), // Use Claude Code's default
         env_keys::OPENAI_MODEL => Some("gpt-4o".to_string()),
         _ => None, // Settings like CLAUDE_CODE_API_KEY_MODE don't have model defaults
     }

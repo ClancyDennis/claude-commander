@@ -203,6 +203,22 @@ impl ToolRegistry {
             }),
         });
 
+        // Persistent Memory Tool
+        tools.push(Tool {
+            name: "UpdateMemory".to_string(),
+            description: "Update your persistent memory that survives across sessions. Use this to remember important information about the user, their preferences, ongoing projects, or anything you want to recall in future conversations. A lightweight memory agent manages your memory files and keeps them organized. The memory content is automatically included in your context at the start of each conversation.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "instruction": {
+                        "type": "string",
+                        "description": "What to remember or update. Examples: 'Remember that the user prefers TypeScript over JavaScript', 'Note that project X uses PostgreSQL', 'Update: user's name is Alice', 'Forget the previous preference about dark mode'."
+                    }
+                },
+                "required": ["instruction"]
+            }),
+        });
+
         // User Interaction Tools
         tools.push(Tool {
             name: "Sleep".to_string(),

@@ -78,7 +78,9 @@ pub(crate) fn spawn_claude_process(
         std::env::var("CLAUDE_CODE_API_KEY_MODE").unwrap_or_else(|_| "blocked".to_string());
 
     let mut cmd = Command::new(&claude_path);
-    cmd.args([
+
+    // Build base args
+    let mut args = vec![
         "-p",
         "--verbose",
         "--permission-mode",
@@ -89,11 +91,27 @@ pub(crate) fn spawn_claude_process(
         "stream-json",
         "--settings",
         settings_path.to_str().unwrap(),
-    ])
-    .current_dir(working_dir)
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    ];
+
+    // Add --model flag if CLAUDE_CODE_MODEL is set and not "auto"
+    let model_arg: Option<String> = std::env::var("CLAUDE_CODE_MODEL")
+        .ok()
+        .filter(|m| {
+            let m = m.trim().to_lowercase();
+            !m.is_empty() && m != "auto"
+        })
+        .map(|m| m.trim().to_string());
+
+    if let Some(ref model) = model_arg {
+        args.push("--model");
+        args.push(model);
+    }
+
+    cmd.args(&args)
+        .current_dir(working_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     // Get elevation-bin path based on platform
     let elevation_bin_path = get_elevation_bin_path();

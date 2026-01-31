@@ -29,9 +29,11 @@
 
   // Form state for models
   let editedModels = $state<Record<string, string>>({
+    META_AGENT_PROVIDER: "",
     ANTHROPIC_MODEL: "",
     SECURITY_MODEL: "",
     LIGHT_TASK_MODEL: "",
+    CLAUDE_CODE_MODEL: "",
     OPENAI_MODEL: "",
   });
 
@@ -69,9 +71,11 @@
     // Initialize models with current values
     if (configData.data) {
       editedModels = {
+        META_AGENT_PROVIDER: configData.data.models.find(m => m.name === "META_AGENT_PROVIDER")?.value || "",
         ANTHROPIC_MODEL: configData.data.models.find(m => m.name === "ANTHROPIC_MODEL")?.value || "",
         SECURITY_MODEL: configData.data.models.find(m => m.name === "SECURITY_MODEL")?.value || "",
         LIGHT_TASK_MODEL: configData.data.models.find(m => m.name === "LIGHT_TASK_MODEL")?.value || "",
+        CLAUDE_CODE_MODEL: configData.data.models.find(m => m.name === "CLAUDE_CODE_MODEL")?.value || "",
         OPENAI_MODEL: configData.data.models.find(m => m.name === "OPENAI_MODEL")?.value || "",
       };
       // Initialize API key mode
@@ -85,7 +89,7 @@
   function cancelEditing() {
     isEditing = false;
     editedApiKeys = { ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GITHUB_TOKEN: "" };
-    editedModels = { ANTHROPIC_MODEL: "", SECURITY_MODEL: "", LIGHT_TASK_MODEL: "", OPENAI_MODEL: "" };
+    editedModels = { META_AGENT_PROVIDER: "", ANTHROPIC_MODEL: "", SECURITY_MODEL: "", LIGHT_TASK_MODEL: "", CLAUDE_CODE_MODEL: "", OPENAI_MODEL: "" };
     editedApiKeyMode = "";
     validationStatus = {};
     saveError = null;
@@ -181,11 +185,6 @@
     } catch (err) {
       console.error("Failed to open config directory:", err);
     }
-  }
-
-  function getAvailableModels(): string[] {
-    if (!configData.data) return [];
-    return [...configData.data.available_claude_models, ...configData.data.available_openai_models];
   }
 
   function handleApiKeyChange(keyName: string, value: string) {
@@ -291,9 +290,13 @@
     <!-- Model Configuration -->
     <ModelConfigSection
       models={configData.data.models}
+      apiKeys={configData.data.api_keys}
       {isEditing}
       {editedModels}
-      availableModels={getAvailableModels()}
+      availableClaudeModels={configData.data.available_claude_models}
+      claudeModelAliases={configData.data.claude_model_aliases}
+      claudeCodeModelOptions={configData.data.claude_code_model_options}
+      availableOpenaiModels={configData.data.available_openai_models}
       onModelChange={handleModelChange}
     />
 

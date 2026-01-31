@@ -91,47 +91,20 @@ impl Default for SecurityConfig {
 }
 
 /// LLM provider configuration for security monitoring
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum MonitoringProvider {
-    /// Use Claude Haiku for monitoring (fast & cheap)
-    ClaudeHaiku,
-    /// Use GPT-4o-mini for monitoring (fast & cheap)
-    GPT4oMini,
+    /// Use default security model from env (SECURITY_MODEL or main model)
+    #[default]
+    Auto,
     /// Use a custom provider/model configuration
     Custom { provider: String, model: String },
-}
-
-impl Default for MonitoringProvider {
-    fn default() -> Self {
-        // Prefer Claude Haiku if ANTHROPIC_API_KEY is available
-        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-            MonitoringProvider::ClaudeHaiku
-        } else {
-            MonitoringProvider::GPT4oMini
-        }
-    }
 }
 
 impl MonitoringProvider {
     /// Create an AIClient for this monitoring provider
     pub fn create_client(&self) -> Result<AIClient, String> {
         match self {
-            MonitoringProvider::ClaudeHaiku => {
-                let api_key =
-                    std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set")?;
-                Ok(AIClient::new(crate::ai_client::Provider::Claude {
-                    api_key,
-                    model: "claude-3-5-haiku-latest".to_string(),
-                }))
-            }
-            MonitoringProvider::GPT4oMini => {
-                let api_key =
-                    std::env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY not set")?;
-                Ok(AIClient::new(crate::ai_client::Provider::OpenAI {
-                    api_key,
-                    model: "gpt-4o-mini".to_string(),
-                }))
-            }
+            MonitoringProvider::Auto => AIClient::security_from_env().map_err(|e| e.to_string()),
             MonitoringProvider::Custom { provider, model } => {
                 match provider.to_lowercase().as_str() {
                     "claude" | "anthropic" => {

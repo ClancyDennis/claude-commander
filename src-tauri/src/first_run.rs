@@ -138,6 +138,26 @@ pub fn run_if_needed() {
         Ok(()) => println!("✓ Elevation scripts ready"),
         Err(e) => eprintln!("⚠ Failed to install elevation scripts: {}", e),
     }
+
+    // Ensure memory directory exists for meta-agent persistence
+    match ensure_memory_directory() {
+        Ok(()) => println!("✓ Memory directory ready"),
+        Err(e) => eprintln!("⚠ Failed to create memory directory: {}", e),
+    }
+}
+
+/// Ensure the meta-agent memory directory exists
+/// This is where the meta-agent stores persistent memory across sessions
+pub fn ensure_memory_directory() -> Result<(), String> {
+    let memory_dir = dirs::data_local_dir()
+        .ok_or("Could not determine data directory")?
+        .join("claude-commander")
+        .join("meta-memory");
+
+    fs::create_dir_all(&memory_dir)
+        .map_err(|e| format!("Failed to create memory directory: {}", e))?;
+
+    Ok(())
 }
 
 /// Install elevation wrapper scripts to app data directory

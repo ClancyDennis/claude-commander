@@ -3,6 +3,7 @@
 pub mod agent_tools;
 pub mod fs_tools;
 pub mod interaction_tools;
+pub mod memory_tools;
 pub mod todo_tools;
 
 // Re-export interaction tool types for use in MetaAgent
@@ -171,6 +172,14 @@ pub async fn execute_tool(
         // =====================================================================
         "UpdateMetaTodoList" => {
             let val = todo_tools::update_meta_todo_list(input.clone(), app_handle.clone()).await;
+            ToolExecutionResult::Continue(val)
+        }
+
+        // =====================================================================
+        // Memory Tools
+        // =====================================================================
+        "UpdateMemory" => {
+            let val = memory_tools::update_memory(input.clone()).await;
             ToolExecutionResult::Continue(val)
         }
 

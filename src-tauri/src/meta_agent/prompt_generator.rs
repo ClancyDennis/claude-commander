@@ -214,8 +214,9 @@ const MERGE_PROMPT_TEMPLATE: &str = r#"You are a prompt engineer. Your task is t
 Output the complete revised system prompt now:"#;
 
 /// Generate a personalized system prompt by threading settings through the base
+///
+/// Uses the light model (via LIGHT_TASK_MODEL env var) for fast/cheap generation.
 pub async fn generate_personalized_prompt(
-    ai_client: &AIClient,
     base_prompt: &str,
     personality: &CommanderPersonality,
 ) -> Result<String, String> {
@@ -224,6 +225,10 @@ pub async fn generate_personalized_prompt(
         return Ok(base_prompt.to_string());
     }
 
+    // Create light model client for this task
+    let client =
+        AIClient::light_from_env().map_err(|e| format!("Failed to create light client: {}", e))?;
+
     let settings_json = serde_json::to_string_pretty(personality)
         .map_err(|e| format!("Failed to serialize personality: {}", e))?;
 
@@ -231,7 +236,7 @@ pub async fn generate_personalized_prompt(
         .replace("{base_prompt}", base_prompt)
         .replace("{settings_json}", &settings_json);
 
-    let response = ai_client
+    let response = client
         .send_message(vec![Message {
             role: "user".to_string(),
             content: prompt,
@@ -272,16 +277,20 @@ mod tests {
 
     #[test]
     fn test_customized_personality_not_default() {
-        let mut personality = CommanderPersonality::default();
-        personality.strictness = 8;
+        let personality = CommanderPersonality {
+            strictness: 8,
+            ..Default::default()
+        };
         assert!(!personality.is_default());
     }
 
     #[test]
     fn test_settings_hash_differs() {
         let p1 = CommanderPersonality::default();
-        let mut p2 = CommanderPersonality::default();
-        p2.strictness = 8;
+        let p2 = CommanderPersonality {
+            strictness: 8,
+            ..Default::default()
+        };
 
         assert_ne!(p1.settings_hash(), p2.settings_hash());
     }

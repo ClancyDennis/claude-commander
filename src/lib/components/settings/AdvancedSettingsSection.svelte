@@ -18,28 +18,42 @@
   <h3>Advanced Settings</h3>
   <div class="advanced-setting-item">
     <div class="advanced-setting-header">
-      <span class="advanced-setting-name">Claude Code Local Authentication</span>
-      <HelpTip text="Allows Claude Code agent instances to use their own authentication (OAuth login or separate API key) instead of requiring the Anthropic API key configured above." placement="top" />
+      <span class="advanced-setting-name">Claude Code Authentication</span>
+      <HelpTip text="How Claude Code worker agents authenticate with Anthropic." placement="top" />
     </div>
     <p class="advanced-setting-description">
-      Allow Claude Code agent instances to use their own authentication (OAuth or separate API key) instead of the Anthropic API key configured here. The meta-agent still uses the API key above, but spawned Claude Code agents can authenticate independently.
+      Choose how worker agents authenticate. "Claude Code Configured" uses OAuth credentials
+      from ~/.claude/.credentials.json. "API Key" passes your Anthropic API key to workers.
     </p>
     {#if isEditing}
-      <div class="toggle-wrapper">
-        <label class="toggle">
+      <div class="auth-options">
+        <label class="auth-option" class:selected={editedApiKeyMode !== "passthrough"}>
           <input
-            type="checkbox"
-            checked={editedApiKeyMode === "passthrough"}
-            onchange={(e) => onApiKeyModeChange(e.currentTarget.checked ? "passthrough" : "blocked")}
+            type="radio"
+            name="auth-mode"
+            value="blocked"
+            checked={editedApiKeyMode !== "passthrough"}
+            onchange={() => onApiKeyModeChange("blocked")}
           />
-          <span class="toggle-slider"></span>
+          <span class="option-label">Claude Code Configured</span>
+          <span class="option-hint">(OAuth, default)</span>
         </label>
-        <span class="toggle-label">{editedApiKeyMode === "passthrough" ? "Enabled" : "Disabled"}</span>
+        <label class="auth-option" class:selected={editedApiKeyMode === "passthrough"}>
+          <input
+            type="radio"
+            name="auth-mode"
+            value="passthrough"
+            checked={editedApiKeyMode === "passthrough"}
+            onchange={() => onApiKeyModeChange("passthrough")}
+          />
+          <span class="option-label">API Key</span>
+          <span class="option-hint">(uses your Anthropic key)</span>
+        </label>
       </div>
     {:else}
       <div class="advanced-setting-value">
-        <span class="status-badge" class:enabled={currentApiKeyMode === "passthrough"}>
-          {currentApiKeyMode === "passthrough" ? "Enabled" : "Disabled"}
+        <span class="status-badge" class:oauth={currentApiKeyMode !== "passthrough"}>
+          {currentApiKeyMode === "passthrough" ? "API Key" : "Claude Code Configured"}
         </span>
       </div>
     {/if}
@@ -102,69 +116,55 @@
     border: 1px solid var(--border-hex);
   }
 
-  .status-badge.enabled {
+  .status-badge.oauth {
     background: var(--success-glow);
     color: var(--success-hex);
     border-color: rgba(52, 199, 89, 0.3);
   }
 
-  /* Toggle Switch */
-  .toggle-wrapper {
+  /* Radio Button Options */
+  .auth-options {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .auth-option {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .toggle {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-  }
-
-  .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-primary);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-primary);
     border: 1px solid var(--border-hex);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
     transition: all var(--transition-fast);
   }
 
-  .toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 2px;
-    bottom: 2px;
-    background-color: var(--text-muted);
-    border-radius: var(--radius-full);
-    transition: all var(--transition-fast);
+  .auth-option:hover {
+    border-color: var(--text-muted);
   }
 
-  .toggle input:checked + .toggle-slider {
-    background-color: var(--accent-hex);
+  .auth-option.selected {
     border-color: var(--accent-hex);
+    background: var(--accent-glow);
   }
 
-  .toggle input:checked + .toggle-slider:before {
-    transform: translateX(20px);
-    background-color: white;
+  .auth-option input[type="radio"] {
+    accent-color: var(--accent-hex);
+    width: 16px;
+    height: 16px;
+    margin: 0;
   }
 
-  .toggle-label {
+  .option-label {
     font-size: var(--text-sm);
-    color: var(--text-secondary);
+    font-weight: var(--font-medium);
+    color: var(--text-primary);
+  }
+
+  .option-hint {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
   }
 </style>

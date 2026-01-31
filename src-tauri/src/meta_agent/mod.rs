@@ -9,6 +9,7 @@ mod context_summarizer;
 mod context_tracker;
 mod conversation_manager;
 pub mod helpers;
+mod memory_manager;
 mod output_compressor;
 mod prompt_generator;
 mod result_queue;
@@ -245,8 +246,8 @@ impl MetaAgent {
         // Use get_history_with_summary to include context summary if present
         let mut history = self.conversation.get_history_with_summary();
 
-        // Run the tool loop with personalized prompt if available
-        let system_prompt = self.get_system_prompt();
+        // Run the tool loop with personalized prompt if available (includes memory)
+        let system_prompt = self.get_system_prompt_with_memory();
 
         // Create a closure to get context info for tools
         // We need to capture a reference, but closures can't capture &mut self
@@ -255,7 +256,7 @@ impl MetaAgent {
             .tool_loop
             .run_loop(
                 &self.ai_client,
-                system_prompt,
+                &system_prompt,
                 &mut history,
                 self.tool_registry.get_all_tools().to_vec(),
                 agent_manager,
@@ -343,8 +344,8 @@ impl MetaAgent {
         // Emit thinking event
         self.emit_thinking(&app_handle, true)?;
 
-        // Get personalized prompt (clone to avoid borrow conflicts)
-        let system_prompt = self.get_system_prompt().to_string();
+        // Get personalized prompt with memory (clone to avoid borrow conflicts)
+        let system_prompt = self.get_system_prompt_with_memory();
 
         // Build rich messages with the image for the first API call
         let rich_messages =
@@ -648,7 +649,6 @@ impl MetaAgent {
             );
 
             let generated = prompt_generator::generate_personalized_prompt(
-                &self.ai_client,
                 &self.base_system_prompt,
                 &personality,
             )
@@ -685,6 +685,36 @@ impl MetaAgent {
         self.cached_prompt
             .as_deref()
             .unwrap_or(&self.base_system_prompt)
+    }
+
+    /// Get the system prompt with memory content appended
+    ///
+    /// This builds the full system prompt including any persistent memory content.
+    fn get_system_prompt_with_memory(&self) -> String {
+        let base_prompt = self.get_system_prompt();
+
+        // Try to get memory content
+        let memory_section = if let Some(manager) = memory_manager::MemoryManager::new() {
+            if let Some(memory_content) = manager.get_memory_for_context() {
+                format!(
+                    r#"
+
+## Your Persistent Memory
+You have access to persistent memory that survives across sessions. Use UpdateMemory to save notes.
+Current memory:
+---
+{}
+---"#,
+                    memory_content
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        format!("{}{}", base_prompt, memory_section)
     }
 
     /// Get the current personality settings

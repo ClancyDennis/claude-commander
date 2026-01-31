@@ -656,6 +656,9 @@ export interface ConfigStatus {
   api_keys: ApiKeyStatus[];
   models: ModelConfig[];
   available_claude_models: string[];
+  claude_model_aliases: string[];
+  claude_code_model_options: string[];
+  meta_agent_providers: string[];
   available_openai_models: string[];
   config_path: string;
   is_first_run?: boolean;
