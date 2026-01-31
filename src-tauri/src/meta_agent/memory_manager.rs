@@ -46,12 +46,6 @@ impl MemoryManager {
         Some(Self { memory_dir })
     }
 
-    /// Get the memory directory path
-    #[allow(dead_code)]
-    pub fn memory_dir(&self) -> &Path {
-        &self.memory_dir
-    }
-
     /// Ensure the memory directory exists
     pub fn ensure_directory(&self) -> Result<(), String> {
         fs::create_dir_all(&self.memory_dir)

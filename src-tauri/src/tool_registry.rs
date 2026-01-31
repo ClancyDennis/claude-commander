@@ -79,7 +79,7 @@ impl ToolRegistry {
 
         tools.push(Tool {
             name: "GetAgentOutput".to_string(),
-            description: "Retrieves recent output from a worker agent. Useful for checking what an agent has been doing or its current status.".to_string(),
+            description: "Retrieves recent output from a worker agent. Useful for checking what an agent has been doing or its current status. Can filter by output type.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -90,6 +90,11 @@ impl ToolRegistry {
                     "last_n": {
                         "type": "number",
                         "description": "Optional: number of recent output entries to retrieve (default: 10)"
+                    },
+                    "filter_type": {
+                        "type": "string",
+                        "enum": ["result", "text", "tool_use", "tool_result", "error", "most_recent", "all"],
+                        "description": "Filter outputs by type. 'text' (default) returns assistant responses. 'result' returns final results with cost/tokens. 'most_recent' returns only the latest output for quick status checks. 'all' returns everything except system messages."
                     }
                 },
                 "required": ["agent_id"]
@@ -112,43 +117,17 @@ impl ToolRegistry {
         });
 
         tools.push(Tool {
-            name: "SearchRunHistory".to_string(),
-            description: "Search through historical agent runs stored in the database. Use this to find past work by directory, status, or keyword. Useful for questions like 'what work was done on project X?' or 'find crashed runs that can be resumed'.".to_string(),
+            name: "Search".to_string(),
+            description: "Search across run history and persistent memories using natural language. A search agent interprets your query and searches both data sources, correlating results. Use for questions like 'what work was done on project X?', 'find crashed runs that can be resumed', 'what do I remember about the user's preferences?'.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "working_dir": {
+                    "query": {
                         "type": "string",
-                        "description": "Filter by directory path (partial match). Example: '/home/user/project' matches any run in that directory or subdirectories."
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["running", "completed", "stopped", "crashed", "waiting_input"],
-                        "description": "Filter by run status."
-                    },
-                    "source": {
-                        "type": "string",
-                        "enum": ["ui", "meta", "pipeline", "pool", "manual"],
-                        "description": "Filter by how the agent was created."
-                    },
-                    "keyword": {
-                        "type": "string",
-                        "description": "Search for keyword in the initial prompt. Case-insensitive partial match."
-                    },
-                    "days_back": {
-                        "type": "number",
-                        "description": "Limit to runs from the last N days. Default: 30."
-                    },
-                    "limit": {
-                        "type": "number",
-                        "description": "Maximum number of results to return. Default: 20."
-                    },
-                    "resumable_only": {
-                        "type": "boolean",
-                        "description": "If true, only show crashed runs that can be resumed."
+                        "description": "Natural language query describing what to search for. Examples: 'recent work on tauri_server', 'crashed runs from last week', 'user preferences for coding style'."
                     }
                 },
-                "required": []
+                "required": ["query"]
             }),
         });
 

@@ -13,6 +13,7 @@ mod memory_manager;
 mod output_compressor;
 mod prompt_generator;
 mod result_queue;
+pub mod search_agent;
 mod system_prompt;
 mod tool_loop_engine;
 pub mod tools;
@@ -700,7 +701,18 @@ impl MetaAgent {
                     r#"
 
 ## Your Persistent Memory
-You have access to persistent memory that survives across sessions. Use UpdateMemory to save notes.
+You have access to persistent memory that survives across sessions.
+
+**Tools:**
+- **UpdateMemory**: Save notes, user preferences, project context
+- **Search**: Query your memories with natural language (also searches run history)
+
+**Proactive Memory Updates:**
+Update memory when you learn new facts about:
+- User preferences (coding style, tools, workflows)
+- Project context (tech stack, key files, architecture)
+- Important decisions or outcomes
+
 Current memory:
 ---
 {}

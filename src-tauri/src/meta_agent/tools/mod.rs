@@ -4,6 +4,7 @@ pub mod agent_tools;
 pub mod fs_tools;
 pub mod interaction_tools;
 pub mod memory_tools;
+pub mod search_tools;
 pub mod todo_tools;
 
 // Re-export interaction tool types for use in MetaAgent
@@ -154,8 +155,21 @@ pub async fn execute_tool(
             let val = agent_tools::get_agent_todo_list(input.clone(), agent_manager.clone()).await;
             ToolExecutionResult::Continue(val)
         }
-        "SearchRunHistory" => {
-            let val = agent_tools::search_run_history(input.clone(), agent_manager).await;
+        "Search" => {
+            // Get runs_db from agent_manager
+            let manager = agent_manager.lock().await;
+            let runs_db = match &manager.runs_db {
+                Some(db) => db.clone(),
+                None => {
+                    drop(manager);
+                    return ToolExecutionResult::Continue(json!({
+                        "success": false,
+                        "error": "Run history database is not available"
+                    }));
+                }
+            };
+            drop(manager);
+            let val = search_tools::search(input.clone(), runs_db).await;
             ToolExecutionResult::Continue(val)
         }
 
