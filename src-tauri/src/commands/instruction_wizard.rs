@@ -14,6 +14,7 @@
 
 use crate::ai_client::{ContentBlock, Message};
 use crate::types::AgentSource;
+use crate::utils::string::truncate_with_ellipsis;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -153,6 +154,8 @@ pub async fn create_test_agent(
                 Arc::new(app_handle.clone()),
                 None,                                        // No pipeline ID
                 Some(format!("Test: {}", &session_id[..8])), // Title
+                None,                                        // No model override
+                None,                                        // No complexity
             )
             .await
             .map_err(|e| format!("Failed to create test agent: {}", e))?
@@ -216,12 +219,8 @@ pub async fn analyze_test_results(
     // Determine final status based on agent info
     let status = determine_test_status(&state, &agent_id, &findings).await;
 
-    // Create summary
-    let raw_output_summary = if combined_output.len() > 2000 {
-        format!("{}...", &combined_output[..2000])
-    } else {
-        combined_output
-    };
+    // Create summary (safely handling UTF-8 boundaries)
+    let raw_output_summary = truncate_with_ellipsis(&combined_output, 2000);
 
     Ok(TestAnalysisResult {
         status,

@@ -16,12 +16,10 @@ pub mod env_keys {
     pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
     pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
     pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
-    pub const ANTHROPIC_MODEL: &str = "ANTHROPIC_MODEL";
+    pub const PRIMARY_MODEL: &str = "PRIMARY_MODEL";
     pub const SECURITY_MODEL: &str = "SECURITY_MODEL";
     pub const LIGHT_TASK_MODEL: &str = "LIGHT_TASK_MODEL";
-    pub const OPENAI_MODEL: &str = "OPENAI_MODEL";
     pub const CLAUDE_CODE_API_KEY_MODE: &str = "CLAUDE_CODE_API_KEY_MODE";
-    pub const META_AGENT_PROVIDER: &str = "META_AGENT_PROVIDER";
     pub const CLAUDE_CODE_MODEL: &str = "CLAUDE_CODE_MODEL";
 }
 
@@ -30,12 +28,10 @@ pub const ALLOWED_CONFIG_KEYS: &[&str] = &[
     env_keys::ANTHROPIC_API_KEY,
     env_keys::OPENAI_API_KEY,
     env_keys::GITHUB_TOKEN,
-    env_keys::ANTHROPIC_MODEL,
+    env_keys::PRIMARY_MODEL,
     env_keys::SECURITY_MODEL,
     env_keys::LIGHT_TASK_MODEL,
-    env_keys::OPENAI_MODEL,
     env_keys::CLAUDE_CODE_API_KEY_MODE,
-    env_keys::META_AGENT_PROVIDER,
     env_keys::CLAUDE_CODE_MODEL,
 ];
 
@@ -78,9 +74,6 @@ pub const CLAUDE_CODE_MODEL_OPTIONS: &[&str] = &[
 /// Fallback OpenAI models when API is unavailable
 pub const FALLBACK_OPENAI_MODELS: &[&str] =
     &["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano"];
-
-/// Meta agent provider options
-pub const META_AGENT_PROVIDERS: &[&str] = &["auto", "anthropic", "openai"];
 
 /// Cached snapshot of environment variables
 #[derive(Debug)]

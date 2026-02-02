@@ -48,6 +48,12 @@ SUMMARY:"#,
         );
 
         // Send to the light model
+        eprintln!(
+            "[LLM][{}][{}] Summarizing {} messages",
+            client.get_provider_name(),
+            client.get_model_name(),
+            messages.len()
+        );
         let response = client
             .send_message(vec![Message {
                 role: "user".to_string(),
@@ -114,6 +120,12 @@ BRIEF SUMMARY:"#,
             content_to_summarize
         );
 
+        eprintln!(
+            "[LLM][{}][{}] Emergency summarizing {} messages",
+            client.get_provider_name(),
+            client.get_model_name(),
+            messages.len()
+        );
         let response = client
             .send_message(vec![Message {
                 role: "user".to_string(),

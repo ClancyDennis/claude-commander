@@ -61,6 +61,7 @@ pub(crate) fn spawn_claude_process(
     settings_path: &std::path::Path,
     working_dir: &str,
     agent_id: &str,
+    model: Option<String>,
 ) -> Result<tokio::process::Child, String> {
     let claude_path = std::env::var("CLAUDE_PATH")
         .or_else(|_| find_claude_cli())
@@ -93,14 +94,16 @@ pub(crate) fn spawn_claude_process(
         settings_path.to_str().unwrap(),
     ];
 
-    // Add --model flag if CLAUDE_CODE_MODEL is set and not "auto"
-    let model_arg: Option<String> = std::env::var("CLAUDE_CODE_MODEL")
-        .ok()
-        .filter(|m| {
-            let m = m.trim().to_lowercase();
-            !m.is_empty() && m != "auto"
-        })
-        .map(|m| m.trim().to_string());
+    // Determine model: use passed model parameter, or fall back to CLAUDE_CODE_MODEL env var
+    let model_arg: Option<String> = model.or_else(|| {
+        std::env::var("CLAUDE_CODE_MODEL")
+            .ok()
+            .filter(|m| {
+                let m = m.trim().to_lowercase();
+                !m.is_empty() && m != "auto"
+            })
+            .map(|m| m.trim().to_string())
+    });
 
     if let Some(ref model) = model_arg {
         args.push("--model");

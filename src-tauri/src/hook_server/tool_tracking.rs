@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use crate::security_monitor::{SecurityEvent, SecurityEventMetadata, SecurityEventType};
 use crate::types::{AgentActivityDetailEvent, HookInput, ToolEventPayload};
+use crate::utils::string::truncate_with_ellipsis;
 
 use super::{AgentTodoItem, HookServerState};
 
@@ -394,12 +395,8 @@ pub(crate) fn format_agent_activity(
                 .and_then(|i| i.get("command"))
                 .and_then(|c| c.as_str())
                 .unwrap_or("command");
-            // Truncate long commands
-            let short_cmd = if command.len() > 35 {
-                format!("{}...", &command[..32])
-            } else {
-                command.to_string()
-            };
+            // Truncate long commands (safely handling UTF-8 boundaries)
+            let short_cmd = truncate_with_ellipsis(command, 32);
             format!("Running: {}", short_cmd)
         }
         "Grep" => {
@@ -441,11 +438,7 @@ pub(crate) fn format_agent_activity(
                 .and_then(|i| i.get("query"))
                 .and_then(|q| q.as_str())
                 .unwrap_or("query");
-            let short_query = if query.len() > 30 {
-                format!("{}...", &query[..27])
-            } else {
-                query.to_string()
-            };
+            let short_query = truncate_with_ellipsis(query, 27);
             format!("Searching: {}", short_query)
         }
         "TodoWrite" => "Updating task list".to_string(),

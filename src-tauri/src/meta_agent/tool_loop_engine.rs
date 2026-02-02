@@ -8,15 +8,21 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
-use crate::ai_client::{AIClient, AIResponse, ContentBlock, Message, RichMessage, Tool, Usage};
+use crate::ai_client::{
+    AIClient, AIResponse, ContentBlock, Message, RichContentBlock, RichMessage, RichMessageContent,
+    Tool, Usage,
+};
 use crate::error::{ApiError, AppError, AppResult};
 use crate::types::{
     ChatMessage, ChatResponse, ChatUsage, MetaAgentToolCallEvent, QueueStatus, ToolCall,
 };
 
 use super::context_tracker::ContextInfo;
+use super::memory_worker::MemoryWorker;
 use super::output_compressor::OutputCompressor;
-use super::tools::{self, IterationContext, PendingQuestion, SleepState, ToolExecutionResult};
+use super::tools::{
+    self, AgentWakeSender, IterationContext, PendingQuestion, SleepState, ToolExecutionResult,
+};
 
 /// Configuration for the tool loop engine
 pub struct ToolLoopConfig {
@@ -44,8 +50,8 @@ pub struct ResponseProcessingResult {
     pub text_content: String,
     /// Tool calls that were made
     pub tool_calls: Vec<ToolCall>,
-    /// Tool results to send back to the AI (if any tool calls were made)
-    pub tool_results: Vec<serde_json::Value>,
+    /// Tool results as (tool_use_id, content) pairs to send back to the AI
+    pub tool_results: Vec<(String, String)>,
     /// Number of tool calls in this response
     pub tool_call_count: usize,
     /// Whether CompleteTask was called - signals loop should exit
@@ -98,6 +104,8 @@ impl ToolLoopEngine {
         app_handle: &AppHandle,
         sleep_state: Arc<Mutex<SleepState>>,
         pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+        agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
+        memory_worker: Arc<MemoryWorker>,
         queue_status_fn: impl Fn() -> QueueStatus,
         iteration_ctx: IterationContext,
     ) -> ResponseProcessingResult {
@@ -125,6 +133,8 @@ impl ToolLoopEngine {
                         app_handle.clone(),
                         sleep_state.clone(),
                         pending_question.clone(),
+                        agent_wake_tx.clone(),
+                        memory_worker.clone(),
                         &queue_status_fn,
                         iteration_ctx.clone(),
                     )
@@ -169,12 +179,12 @@ impl ToolLoopEngine {
                         },
                     );
 
-                    // Add compressed tool result to send back to Claude
-                    tool_results.push(serde_json::json!({
-                        "type": "tool_result",
-                        "tool_use_id": id,
-                        "content": serde_json::to_string(&compressed_result).unwrap_or_else(|_| "{}".to_string()),
-                    }));
+                    // Add tool result as (tool_use_id, content) pair
+                    tool_results.push((
+                        id.clone(),
+                        serde_json::to_string(&compressed_result)
+                            .unwrap_or_else(|_| "{}".to_string()),
+                    ));
                 }
             }
         }
@@ -190,22 +200,42 @@ impl ToolLoopEngine {
         }
     }
 
-    /// Build the assistant message content for the conversation history
-    pub fn build_assistant_content(
-        response: &AIResponse,
-        text_content: &str,
-        has_tool_results: bool,
-    ) -> String {
-        if has_tool_results {
-            serde_json::to_string(&response.content).unwrap_or_else(|_| text_content.to_string())
-        } else {
-            text_content.to_string()
+    /// Build assistant message as RichMessage with proper content blocks
+    pub fn build_assistant_rich_message(response: &AIResponse) -> RichMessage {
+        let blocks: Vec<RichContentBlock> = response
+            .content
+            .iter()
+            .map(|block| match block {
+                ContentBlock::Text { text } => RichContentBlock::Text { text: text.clone() },
+                ContentBlock::ToolUse { id, name, input } => RichContentBlock::ToolUse {
+                    id: id.clone(),
+                    name: name.clone(),
+                    input: input.clone(),
+                },
+            })
+            .collect();
+
+        RichMessage {
+            role: "assistant".to_string(),
+            content: RichMessageContent::Blocks(blocks),
         }
     }
 
-    /// Build the tool results message content for the conversation history
-    pub fn build_tool_results_content(tool_results: &[serde_json::Value]) -> String {
-        serde_json::to_string(tool_results).unwrap_or_else(|_| "[]".to_string())
+    /// Build tool results message as RichMessage with proper content blocks
+    pub fn build_tool_results_rich_message(tool_results: &[(String, String)]) -> RichMessage {
+        let blocks: Vec<RichContentBlock> = tool_results
+            .iter()
+            .map(|(tool_use_id, content)| RichContentBlock::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                content: content.clone(),
+                is_error: None,
+            })
+            .collect();
+
+        RichMessage {
+            role: "user".to_string(),
+            content: RichMessageContent::Blocks(blocks),
+        }
     }
 
     /// Build the final ChatResponse from processed results
@@ -245,12 +275,14 @@ impl ToolLoopEngine {
         &self,
         ai_client: &AIClient,
         system_prompt: &str,
-        conversation_history: &mut Vec<Message>,
+        conversation_history: &mut Vec<RichMessage>,
         tools: Vec<Tool>,
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: &AppHandle,
         sleep_state: Arc<Mutex<SleepState>>,
         pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+        agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
+        memory_worker: Arc<MemoryWorker>,
         queue_status_fn: F,
         context_info_fn: G,
     ) -> AppResult<ToolLoopResult>
@@ -270,16 +302,36 @@ impl ToolLoopEngine {
         while iteration < max_iterations && tool_call_count < self.config.max_tool_calls {
             iteration += 1;
 
-            // Create iteration context to pass to tools (with context info if available)
-            let iteration_ctx = if let Some(ctx_info) = context_info_fn() {
-                IterationContext::with_context_info(iteration, max_iterations, ctx_info)
-            } else {
-                IterationContext::new(iteration, max_iterations)
-            };
+            // Extract recent messages for memory evaluation (last 15 messages)
+            // Convert RichMessage to Message by extracting text content
+            let recent_messages: Vec<Message> = conversation_history
+                .iter()
+                .rev()
+                .take(15)
+                .filter_map(Self::rich_message_to_message)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
 
-            // Call AI API with system prompt and tools
+            // Create iteration context to pass to tools (with context info and recent messages)
+            let iteration_ctx = IterationContext::with_context_and_messages(
+                iteration,
+                max_iterations,
+                context_info_fn(),
+                recent_messages,
+            );
+
+            // Call AI API with system prompt and tools (using RichMessage)
+            eprintln!(
+                "[LLM][{}][{}] Iteration {}/{} - sending rich request",
+                ai_client.get_provider_name(),
+                ai_client.get_model_name(),
+                iteration,
+                max_iterations
+            );
             let response = ai_client
-                .send_message_with_system_and_tools(
+                .send_rich_message_with_system_and_tools(
                     system_prompt,
                     conversation_history.clone(),
                     tools.clone(),
@@ -290,6 +342,16 @@ impl ToolLoopEngine {
             // Accumulate usage
             total_usage.input_tokens += response.usage.input_tokens;
             total_usage.output_tokens += response.usage.output_tokens;
+            eprintln!(
+                "[LLM][{}][{}] Iteration {} - tokens: in={}, out={} (total: in={}, out={})",
+                ai_client.get_provider_name(),
+                ai_client.get_model_name(),
+                iteration,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                total_usage.input_tokens,
+                total_usage.output_tokens
+            );
 
             // Process the response
             let result = self
@@ -299,6 +361,8 @@ impl ToolLoopEngine {
                     app_handle,
                     sleep_state.clone(),
                     pending_question.clone(),
+                    agent_wake_tx.clone(),
+                    memory_worker.clone(),
                     &queue_status_fn,
                     iteration_ctx,
                 )
@@ -306,17 +370,8 @@ impl ToolLoopEngine {
 
             tool_call_count += result.tool_call_count;
 
-            // Add assistant message to history
-            let assistant_content = Self::build_assistant_content(
-                &response,
-                &result.text_content,
-                !result.tool_results.is_empty(),
-            );
-
-            conversation_history.push(Message {
-                role: "assistant".to_string(),
-                content: assistant_content,
-            });
+            // Add assistant message as RichMessage with proper content blocks
+            conversation_history.push(Self::build_assistant_rich_message(&response));
 
             // Check if CompleteTask was called - exit the loop with completion message
             if result.should_complete {
@@ -340,12 +395,10 @@ impl ToolLoopEngine {
                 iteration = 0;
             }
 
-            // If there were tool calls, send tool results back
+            // If there were tool calls, send tool results back as RichMessage
             if !result.tool_results.is_empty() {
-                conversation_history.push(Message {
-                    role: "user".to_string(),
-                    content: Self::build_tool_results_content(&result.tool_results),
-                });
+                conversation_history
+                    .push(Self::build_tool_results_rich_message(&result.tool_results));
                 continue; // Continue the loop to get next response
             }
 
@@ -370,10 +423,36 @@ impl ToolLoopEngine {
             })
     }
 
+    /// Convert a RichMessage to a simple Message by extracting text content
+    fn rich_message_to_message(rm: &RichMessage) -> Option<Message> {
+        let content = match &rm.content {
+            RichMessageContent::Text(s) => s.clone(),
+            RichMessageContent::Blocks(blocks) => {
+                // Extract text from blocks, skip tool_use/tool_result
+                let text_parts: Vec<String> = blocks
+                    .iter()
+                    .filter_map(|block| match block {
+                        RichContentBlock::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if text_parts.is_empty() {
+                    return None; // No text content to extract
+                }
+                text_parts.join("\n")
+            }
+        };
+        Some(Message {
+            role: rm.role.clone(),
+            content,
+        })
+    }
+
     /// Run the tool loop with rich messages (for image support)
     ///
     /// This is used on the first iteration when processing a message with an image.
-    /// Subsequent iterations use the regular loop.
+    /// The initial_rich_messages are used for the first API call (containing images),
+    /// and the conversation_history is updated with RichMessages for subsequent calls.
     /// Sleep tool resets the iteration counter.
     #[allow(clippy::too_many_arguments)]
     pub async fn run_loop_with_initial_rich_messages<F, G>(
@@ -381,12 +460,14 @@ impl ToolLoopEngine {
         ai_client: &AIClient,
         system_prompt: &str,
         initial_rich_messages: Vec<RichMessage>,
-        conversation_history: &mut Vec<Message>,
+        conversation_history: &mut Vec<RichMessage>,
         tools: Vec<Tool>,
         agent_manager: Arc<Mutex<AgentManager>>,
         app_handle: &AppHandle,
         sleep_state: Arc<Mutex<SleepState>>,
         pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+        agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
+        memory_worker: Arc<MemoryWorker>,
         queue_status_fn: F,
         context_info_fn: G,
     ) -> AppResult<ToolLoopResult>
@@ -406,15 +487,40 @@ impl ToolLoopEngine {
         while iteration < max_iterations && tool_call_count < self.config.max_tool_calls {
             iteration += 1;
 
-            // Create iteration context to pass to tools (with context info if available)
-            let iteration_ctx = if let Some(ctx_info) = context_info_fn() {
-                IterationContext::with_context_info(iteration, max_iterations, ctx_info)
-            } else {
-                IterationContext::new(iteration, max_iterations)
-            };
+            // Extract recent messages for memory evaluation (last 15 messages)
+            // Convert RichMessage to Message by extracting text content
+            let recent_messages: Vec<Message> = conversation_history
+                .iter()
+                .rev()
+                .take(15)
+                .filter_map(Self::rich_message_to_message)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
 
-            // For first iteration, use rich messages with image
-            // For subsequent iterations, use simple messages
+            // Create iteration context to pass to tools (with context info and recent messages)
+            let iteration_ctx = IterationContext::with_context_and_messages(
+                iteration,
+                max_iterations,
+                context_info_fn(),
+                recent_messages,
+            );
+
+            // For first iteration, use initial rich messages (which may contain images)
+            // For subsequent iterations, use the conversation history (all RichMessages now)
+            eprintln!(
+                "[LLM][{}][{}] Iteration {}/{} - sending {} request",
+                ai_client.get_provider_name(),
+                ai_client.get_model_name(),
+                iteration,
+                max_iterations,
+                if iteration == 1 {
+                    "initial rich"
+                } else {
+                    "rich"
+                }
+            );
             let response = if iteration == 1 {
                 ai_client
                     .send_rich_message_with_tools(initial_rich_messages.clone(), tools.clone())
@@ -422,7 +528,7 @@ impl ToolLoopEngine {
                     .map_err(|e| AppError::Api(ApiError::Network(format!("AI API error: {}", e))))?
             } else {
                 ai_client
-                    .send_message_with_system_and_tools(
+                    .send_rich_message_with_system_and_tools(
                         system_prompt,
                         conversation_history.clone(),
                         tools.clone(),
@@ -434,6 +540,16 @@ impl ToolLoopEngine {
             // Accumulate usage
             total_usage.input_tokens += response.usage.input_tokens;
             total_usage.output_tokens += response.usage.output_tokens;
+            eprintln!(
+                "[LLM][{}][{}] Iteration {} - tokens: in={}, out={} (total: in={}, out={})",
+                ai_client.get_provider_name(),
+                ai_client.get_model_name(),
+                iteration,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                total_usage.input_tokens,
+                total_usage.output_tokens
+            );
 
             // Process the response
             let result = self
@@ -443,6 +559,8 @@ impl ToolLoopEngine {
                     app_handle,
                     sleep_state.clone(),
                     pending_question.clone(),
+                    agent_wake_tx.clone(),
+                    memory_worker.clone(),
                     &queue_status_fn,
                     iteration_ctx,
                 )
@@ -450,17 +568,8 @@ impl ToolLoopEngine {
 
             tool_call_count += result.tool_call_count;
 
-            // Add assistant message to history
-            let assistant_content = Self::build_assistant_content(
-                &response,
-                &result.text_content,
-                !result.tool_results.is_empty(),
-            );
-
-            conversation_history.push(Message {
-                role: "assistant".to_string(),
-                content: assistant_content,
-            });
+            // Add assistant message as RichMessage with proper content blocks
+            conversation_history.push(Self::build_assistant_rich_message(&response));
 
             // Check if CompleteTask was called - exit the loop with completion message
             if result.should_complete {
@@ -484,12 +593,10 @@ impl ToolLoopEngine {
                 iteration = 0;
             }
 
-            // If there were tool calls, send tool results back
+            // If there were tool calls, send tool results back as RichMessage
             if !result.tool_results.is_empty() {
-                conversation_history.push(Message {
-                    role: "user".to_string(),
-                    content: Self::build_tool_results_content(&result.tool_results),
-                });
+                conversation_history
+                    .push(Self::build_tool_results_rich_message(&result.tool_results));
                 continue;
             }
 
@@ -531,14 +638,6 @@ mod tests {
         assert_eq!(config.max_iterations, 40);
         assert_eq!(config.max_tool_calls, 200);
         assert_eq!(config.max_tool_output_chars, 10_000);
-    }
-
-    #[test]
-    fn test_build_tool_results_content() {
-        let results = vec![serde_json::json!({"type": "tool_result", "tool_use_id": "123"})];
-        let content = ToolLoopEngine::build_tool_results_content(&results);
-        assert!(content.contains("tool_result"));
-        assert!(content.contains("123"));
     }
 
     #[test]

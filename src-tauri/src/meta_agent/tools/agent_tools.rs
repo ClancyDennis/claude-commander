@@ -9,6 +9,37 @@ use crate::agent_manager::AgentManager;
 use crate::meta_agent::helpers::{error, get_optional_bool, get_optional_u64};
 use crate::types::AgentSource;
 
+/// Resolve model name from complexity level.
+/// Only applies when CLAUDE_CODE_MODEL is "auto" or unset.
+/// Returns None if a specific model is configured (letting env var take precedence).
+fn resolve_model_from_complexity(complexity: Option<&str>) -> Option<String> {
+    // Check if CLAUDE_CODE_MODEL is set to a specific model (not "auto" or empty)
+    let claude_code_model = std::env::var("CLAUDE_CODE_MODEL").unwrap_or_default();
+    let model_is_auto = {
+        let m = claude_code_model.trim().to_lowercase();
+        m.is_empty() || m == "auto"
+    };
+
+    if !model_is_auto {
+        // User has configured a specific model, don't override
+        return None;
+    }
+
+    // Map complexity to model using environment variables with defaults
+    let complexity = complexity.unwrap_or("easy");
+    let model = match complexity {
+        "simple" => {
+            std::env::var("LIGHT_TASK_MODEL").unwrap_or_else(|_| "claude-haiku-4-5".to_string())
+        }
+        "complex" => {
+            std::env::var("SECURITY_MODEL").unwrap_or_else(|_| "claude-opus-4-5".to_string())
+        }
+        _ => std::env::var("PRIMARY_MODEL").unwrap_or_else(|_| "claude-sonnet-4-5".to_string()),
+    };
+
+    Some(model)
+}
+
 /// Create a new worker agent
 pub async fn create_worker_agent(
     input: Value,
@@ -30,14 +61,22 @@ pub async fn create_worker_agent(
 
     let github_url = input["github_url"].as_str().map(|s| s.to_string());
 
+    // Get complexity for UI display and model selection
+    let complexity = input["complexity"].as_str().map(|s| s.to_string());
+
+    // Resolve model based on complexity level (only when CLAUDE_CODE_MODEL is "auto" or unset)
+    let model = resolve_model_from_complexity(complexity.as_deref());
+
     let manager = agent_manager.lock().await;
     match manager
-        .create_agent(
+        .create_agent_with_model(
             working_dir.to_string(),
             github_url,
             None,
             AgentSource::Meta,
             Arc::new(app_handle.clone()),
+            model,
+            complexity,
         )
         .await
     {
@@ -406,4 +445,142 @@ fn format_agent_outputs(outputs: &[crate::types::AgentOutputEvent]) -> String {
     }
 
     formatted
+}
+
+/// Filter outputs by type - extracted for testability
+pub fn filter_outputs_by_type(
+    outputs: Vec<crate::types::AgentOutputEvent>,
+    filter_type: &str,
+) -> Vec<crate::types::AgentOutputEvent> {
+    outputs
+        .into_iter()
+        .filter(|output| match filter_type {
+            "all" | "most_recent" => output.output_type != "system",
+            _ => output.output_type == filter_type,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::AgentOutputEvent;
+
+    fn make_output(output_type: &str, content: &str) -> AgentOutputEvent {
+        AgentOutputEvent {
+            agent_id: "test-agent".to_string(),
+            output_type: output_type.to_string(),
+            content: content.to_string(),
+            parsed_json: None,
+            metadata: None,
+            session_id: None,
+            uuid: None,
+            parent_tool_use_id: None,
+            subtype: None,
+            timestamp: Some(0),
+        }
+    }
+
+    #[test]
+    fn test_filter_outputs_by_type_text_only() {
+        let outputs = vec![
+            make_output("text", "Hello world"),
+            make_output("tool_use", "Using Read tool"),
+            make_output("tool_result", "File contents..."),
+            make_output("text", "Done!"),
+            make_output("result", "Final result"),
+        ];
+
+        let filtered = filter_outputs_by_type(outputs, "text");
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|o| o.output_type == "text"));
+        assert_eq!(filtered[0].content, "Hello world");
+        assert_eq!(filtered[1].content, "Done!");
+    }
+
+    #[test]
+    fn test_filter_outputs_by_type_all() {
+        let outputs = vec![
+            make_output("text", "Hello"),
+            make_output("system", "System message - should be excluded"),
+            make_output("tool_use", "Tool"),
+            make_output("result", "Result"),
+        ];
+
+        let filtered = filter_outputs_by_type(outputs, "all");
+
+        assert_eq!(filtered.len(), 3);
+        assert!(filtered.iter().all(|o| o.output_type != "system"));
+    }
+
+    #[test]
+    fn test_filter_outputs_by_type_most_recent() {
+        let outputs = vec![
+            make_output("text", "First"),
+            make_output("system", "System - excluded"),
+            make_output("tool_result", "Tool result"),
+        ];
+
+        let filtered = filter_outputs_by_type(outputs, "most_recent");
+
+        // most_recent filter should exclude system, same as "all"
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|o| o.output_type != "system"));
+    }
+
+    #[test]
+    fn test_filter_outputs_by_type_result() {
+        let outputs = vec![
+            make_output("text", "Working..."),
+            make_output("tool_use", "Using tool"),
+            make_output("result", "Final result with cost"),
+        ];
+
+        let filtered = filter_outputs_by_type(outputs, "result");
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].output_type, "result");
+    }
+
+    #[test]
+    fn test_filter_outputs_empty_input() {
+        let outputs: Vec<AgentOutputEvent> = vec![];
+        let filtered = filter_outputs_by_type(outputs, "text");
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_format_agent_outputs_text() {
+        let outputs = vec![make_output("text", "Hello from agent")];
+        let formatted = format_agent_outputs(&outputs);
+        assert!(formatted.contains("Assistant: Hello from agent"));
+    }
+
+    #[test]
+    fn test_format_agent_outputs_tool_result() {
+        let outputs = vec![make_output("tool_result", "File read successfully")];
+        let formatted = format_agent_outputs(&outputs);
+        assert!(formatted.contains("Tool result: File read successfully"));
+    }
+
+    #[test]
+    fn test_valid_filter_types() {
+        // These are the valid filter types from get_agent_output
+        let valid_types = [
+            "result",
+            "text",
+            "tool_use",
+            "tool_result",
+            "error",
+            "most_recent",
+            "all",
+        ];
+
+        for filter_type in valid_types {
+            let outputs = vec![make_output("text", "test")];
+            // Should not panic
+            let _ = filter_outputs_by_type(outputs, filter_type);
+        }
+    }
 }

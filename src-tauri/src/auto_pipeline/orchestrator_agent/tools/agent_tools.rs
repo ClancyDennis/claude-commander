@@ -67,6 +67,8 @@ impl OrchestratorAgent {
                     event_emitter.clone(),
                     Some(self.pipeline_id.clone()),
                     Some("Planning".to_string()),
+                    None, // No model override
+                    None, // No complexity
                 )
                 .await
             {
@@ -191,6 +193,8 @@ impl OrchestratorAgent {
                     event_emitter.clone(),
                     Some(self.pipeline_id.clone()),
                     Some("Building".to_string()),
+                    None, // No model override
+                    None, // No complexity
                 )
                 .await
             {
@@ -325,6 +329,8 @@ impl OrchestratorAgent {
                     event_emitter.clone(),
                     Some(self.pipeline_id.clone()),
                     Some("Verification".to_string()),
+                    None, // No model override
+                    None, // No complexity
                 )
                 .await
             {

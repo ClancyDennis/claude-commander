@@ -20,12 +20,15 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+use tokio::sync::mpsc;
+
 use crate::agent_runs_db::{AgentRunsDB, RunStatus};
 use crate::github;
 use crate::logger::Logger;
 use crate::security_monitor::SecurityMonitor;
 use crate::types::{
-    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus, AgentStatusEvent,
+    AgentActivityEvent, AgentInfo, AgentOutputEvent, AgentStatistics, AgentStatus,
+    AgentStatusEvent, AgentWakeEvent,
 };
 use crate::utils::time::now_millis;
 
@@ -43,6 +46,8 @@ pub struct AgentManager {
     pub logger: Option<Arc<Logger>>,
     pub runs_db: Option<Arc<AgentRunsDB>>,
     pub on_agent_created: Option<Arc<dyn Fn(String, crate::types::AgentSource) + Send + Sync>>,
+    /// Sender for waking meta-agent when agents reach terminal states
+    pub agent_wake_tx: Arc<Mutex<Option<mpsc::Sender<AgentWakeEvent>>>>,
 }
 
 impl AgentManager {
@@ -54,6 +59,7 @@ impl AgentManager {
             logger: None,
             runs_db: None,
             on_agent_created: None,
+            agent_wake_tx: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -65,6 +71,7 @@ impl AgentManager {
             logger: Some(logger),
             runs_db: None,
             on_agent_created: None,
+            agent_wake_tx: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -80,7 +87,13 @@ impl AgentManager {
             logger: Some(logger),
             runs_db: Some(runs_db),
             on_agent_created: None,
+            agent_wake_tx: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Set the agent wake sender (for waking meta-agent when agents reach terminal states)
+    pub fn set_agent_wake_tx(&mut self, tx: Arc<Mutex<Option<mpsc::Sender<AgentWakeEvent>>>>) {
+        self.agent_wake_tx = tx;
     }
 
     /// Set callback to be invoked when an agent is created
@@ -99,6 +112,30 @@ impl AgentManager {
         source: crate::types::AgentSource,
         app_handle: Arc<dyn crate::events::AppEventEmitter>,
     ) -> Result<String, String> {
+        self.create_agent_with_model(
+            working_dir,
+            github_url,
+            selected_instruction_files,
+            source,
+            app_handle,
+            None, // No model override
+            None, // No complexity
+        )
+        .await
+    }
+
+    /// Create a new agent with an optional model override and complexity
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_agent_with_model(
+        &self,
+        working_dir: String,
+        github_url: Option<String>,
+        selected_instruction_files: Option<Vec<String>>,
+        source: crate::types::AgentSource,
+        app_handle: Arc<dyn crate::events::AppEventEmitter>,
+        model: Option<String>,
+        complexity: Option<String>,
+    ) -> Result<String, String> {
         self.create_agent_with_pipeline(
             working_dir,
             github_url,
@@ -108,6 +145,8 @@ impl AgentManager {
             app_handle,
             None,
             None,
+            model,
+            complexity,
         )
         .await
     }
@@ -130,6 +169,8 @@ impl AgentManager {
             app_handle,
             None,
             None,
+            None,
+            None, // No complexity
         )
         .await
     }
@@ -146,6 +187,8 @@ impl AgentManager {
         app_handle: Arc<dyn crate::events::AppEventEmitter>,
         pipeline_id: Option<String>,
         title: Option<String>,
+        model: Option<String>,
+        complexity: Option<String>,
     ) -> Result<String, String> {
         let agent_id = uuid::Uuid::new_v4().to_string();
 
@@ -153,7 +196,7 @@ impl AgentManager {
         let settings_path = create_hooks_config(self.hook_port, &agent_id)?;
 
         // Spawn claude process
-        let mut child = spawn_claude_process(&settings_path, &working_dir, &agent_id)?;
+        let mut child = spawn_claude_process(&settings_path, &working_dir, &agent_id, model)?;
 
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
@@ -195,6 +238,7 @@ impl AgentManager {
             source: source.clone(),
             pooled: None,
             title,
+            complexity,
         };
 
         // Store agent
@@ -240,6 +284,7 @@ impl AgentManager {
             output_buffer: output_buffer.clone(),
             runs_db: self.runs_db.clone(),
             pipeline_id: pipeline_id.clone(),
+            agent_wake_tx: self.agent_wake_tx.clone(),
         };
 
         // Spawn stream handlers (capture JoinHandles for proper cleanup)

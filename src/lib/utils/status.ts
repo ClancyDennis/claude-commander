@@ -5,10 +5,63 @@
  * duplicated across AgentList, StatusBadge, and HistoricalRunView.
  */
 
-import type { AgentStatus, RunStatus } from '$lib/types';
+import type { AgentStatus, RunStatus, AgentComplexity } from '$lib/types';
 
 // Union type for all status values
 type Status = AgentStatus | RunStatus | string;
+
+// ============================================================================
+// Complexity Colors (for model tier indicators)
+// ============================================================================
+
+/**
+ * Get hex color for complexity level
+ * Used in: AgentListItem
+ */
+export function getComplexityColor(complexity?: AgentComplexity | string): string {
+  switch (complexity) {
+    case 'simple':
+      return '#10b981'; // emerald-500 (Haiku)
+    case 'complex':
+      return '#8b5cf6'; // violet-500 (Opus)
+    case 'easy':
+    default:
+      return '#3b82f6'; // blue-500 (Sonnet)
+  }
+}
+
+/**
+ * Get background tint for complexity level (subtle indicator)
+ * Used in: AgentListItem
+ */
+export function getComplexityBackground(complexity?: AgentComplexity | string): string {
+  switch (complexity) {
+    case 'simple':
+      return 'rgba(16, 185, 129, 0.08)'; // emerald tint
+    case 'complex':
+      return 'rgba(139, 92, 246, 0.08)'; // violet tint
+    case 'easy':
+    default:
+      return 'transparent'; // no tint for default
+  }
+}
+
+/**
+ * Get human-readable label for complexity level
+ * Used in: AgentListItem tooltip
+ */
+export function getComplexityLabel(complexity?: AgentComplexity | string): string {
+  switch (complexity) {
+    case 'simple':
+      return 'Simple (Haiku)';
+    case 'complex':
+      return 'Complex (Opus)';
+    case 'easy':
+      return 'Easy (Sonnet)';
+    default:
+      return 'Default';
+  }
+}
 
 // ============================================================================
 // Status Colors

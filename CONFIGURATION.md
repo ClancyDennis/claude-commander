@@ -13,12 +13,9 @@ Create a `.env` file in the project root (copy from `.env.example`):
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 
-# Optional: Model selection
-ANTHROPIC_MODEL=claude-sonnet-4-5-20241022
-OPENAI_MODEL=gpt-4o
-
-# Optional: Meta-agent provider (defaults to anthropic)
-META_AGENT_PROVIDER=anthropic  # or "openai"
+# Primary model for the meta-agent
+# Provider is auto-detected from model name
+PRIMARY_MODEL=claude-sonnet-4-5-20250929
 ```
 
 ### API Keys
@@ -32,11 +29,16 @@ META_AGENT_PROVIDER=anthropic  # or "openai"
 
 ### Model Selection
 
-| Variable | Default | Options |
-|----------|---------|---------|
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-5-20241022` | Any Claude model |
-| `OPENAI_MODEL` | `gpt-4o` | Any OpenAI model |
-| `META_AGENT_PROVIDER` | `anthropic` | `anthropic` or `openai` |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PRIMARY_MODEL` | `claude-sonnet-4-5-20250929` | Main model for meta-agent |
+| `SECURITY_MODEL` | (same as PRIMARY_MODEL) | Model for security analysis |
+| `LIGHT_TASK_MODEL` | `claude-haiku-4-5` | Model for lightweight tasks |
+| `CLAUDE_CODE_MODEL` | `auto` | Model for Claude Code workers |
+
+**Provider auto-detection**: The provider is inferred from the model name:
+- `gpt-*`, `o1-*`, `o3-*` → OpenAI
+- `claude-*` or aliases (`sonnet`, `opus`, `haiku`) → Anthropic
 
 ---
 

@@ -29,12 +29,10 @@
 
   // Form state for models
   let editedModels = $state<Record<string, string>>({
-    META_AGENT_PROVIDER: "",
-    ANTHROPIC_MODEL: "",
+    PRIMARY_MODEL: "",
     SECURITY_MODEL: "",
     LIGHT_TASK_MODEL: "",
     CLAUDE_CODE_MODEL: "",
-    OPENAI_MODEL: "",
   });
 
   // Form state for advanced settings
@@ -56,6 +54,18 @@
     return mapping[provider] || "";
   }
 
+  // Clean labels for model config display
+  const modelLabels: Record<string, string> = {
+    PRIMARY_MODEL: "Model",
+    SECURITY_MODEL: "Security",
+    LIGHT_TASK_MODEL: "Light",
+    CLAUDE_CODE_MODEL: "Claude Code",
+  };
+
+  function getModelLabel(name: string): string {
+    return modelLabels[name] || name.replace(/_/g, " ").toLowerCase();
+  }
+
   function startEditing() {
     isEditing = true;
     saveError = null;
@@ -71,12 +81,10 @@
     // Initialize models with current values
     if (configData.data) {
       editedModels = {
-        META_AGENT_PROVIDER: configData.data.models.find(m => m.name === "META_AGENT_PROVIDER")?.value || "",
-        ANTHROPIC_MODEL: configData.data.models.find(m => m.name === "ANTHROPIC_MODEL")?.value || "",
+        PRIMARY_MODEL: configData.data.models.find(m => m.name === "PRIMARY_MODEL")?.value || "",
         SECURITY_MODEL: configData.data.models.find(m => m.name === "SECURITY_MODEL")?.value || "",
         LIGHT_TASK_MODEL: configData.data.models.find(m => m.name === "LIGHT_TASK_MODEL")?.value || "",
         CLAUDE_CODE_MODEL: configData.data.models.find(m => m.name === "CLAUDE_CODE_MODEL")?.value || "",
-        OPENAI_MODEL: configData.data.models.find(m => m.name === "OPENAI_MODEL")?.value || "",
       };
       // Initialize API key mode
       editedApiKeyMode = configData.data.models.find(m => m.name === "CLAUDE_CODE_API_KEY_MODE")?.value || "";
@@ -89,7 +97,7 @@
   function cancelEditing() {
     isEditing = false;
     editedApiKeys = { ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GITHUB_TOKEN: "" };
-    editedModels = { META_AGENT_PROVIDER: "", ANTHROPIC_MODEL: "", SECURITY_MODEL: "", LIGHT_TASK_MODEL: "", CLAUDE_CODE_MODEL: "", OPENAI_MODEL: "" };
+    editedModels = { PRIMARY_MODEL: "", SECURITY_MODEL: "", LIGHT_TASK_MODEL: "", CLAUDE_CODE_MODEL: "" };
     editedApiKeyMode = "";
     validationStatus = {};
     saveError = null;
@@ -267,7 +275,7 @@
           <div class="active-models-list">
             {#each configData.data.models.filter(m => m.name !== "CLAUDE_CODE_API_KEY_MODE" && (m.value || m.default_value)) as model}
               <span class="active-model-chip" class:is-default={model.is_default} title={model.name}>
-                <span class="model-role">{model.name.replace(/_/g, " ").toLowerCase()}:</span>
+                <span class="model-role">{getModelLabel(model.name)}:</span>
                 {model.value ?? model.default_value}
               </span>
             {/each}

@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -24,7 +27,10 @@ impl OpenAIProvider {
         Self {
             api_key,
             model,
-            http_client: Client::new(),
+            http_client: Client::builder()
+                .timeout(Duration::from_secs(180))
+                .build()
+                .expect("Failed to build HTTP client"),
         }
     }
 
@@ -236,14 +242,34 @@ impl OpenAIProvider {
 
     /// Build and send request to OpenAI API
     async fn send_request(&self, body: Value) -> Result<AIResponse, AIError> {
+        let body_str = serde_json::to_string(&body).unwrap_or_default();
+        eprintln!(
+            "[LLM][OpenAI][{}] Sending API request (body size: {} bytes)",
+            self.model,
+            body_str.len()
+        );
         let response = self
             .http_client
             .post(OPENAI_API_URL)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("content-type", "application/json")
-            .json(&body)
+            .body(body_str)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                eprintln!(
+                    "[LLM][OpenAI][{}] Request failed: {} (is_timeout={}, is_connect={}, is_request={})",
+                    self.model,
+                    e,
+                    e.is_timeout(),
+                    e.is_connect(),
+                    e.is_request()
+                );
+                if let Some(source) = e.source() {
+                    eprintln!("[LLM][OpenAI][{}] Error source: {:?}", self.model, source);
+                }
+                e
+            })?;
 
         let response = check_response_status(response, "OpenAI").await?;
 
@@ -252,6 +278,12 @@ impl OpenAIProvider {
             .await
             .map_err(|e| AIError::ParseError(format!("Failed to parse OpenAI response: {}", e)))?;
 
+        eprintln!(
+            "[LLM][OpenAI][{}] Response received - tokens: in={}, out={}",
+            self.model,
+            openai_response.usage.prompt_tokens,
+            openai_response.usage.completion_tokens
+        );
         Self::convert_response(openai_response)
     }
 }
@@ -270,9 +302,12 @@ impl AIProvider for OpenAIProvider {
             "messages": openai_messages,
         });
 
+        // Only add tools if non-empty (empty tools with tool_choice: required causes issues)
         if let Some(tools) = tools {
-            body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("required");
+            if !tools.is_empty() {
+                body["tools"] = json!(Self::convert_tools(&tools));
+                body["tool_choice"] = json!("required");
+            }
         }
 
         self.send_request(body).await
@@ -296,9 +331,12 @@ impl AIProvider for OpenAIProvider {
             "messages": openai_messages,
         });
 
+        // Only add tools if non-empty (empty tools with tool_choice: required causes issues)
         if let Some(tools) = tools {
-            body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("required");
+            if !tools.is_empty() {
+                body["tools"] = json!(Self::convert_tools(&tools));
+                body["tool_choice"] = json!("required");
+            }
         }
 
         self.send_request(body).await
@@ -316,9 +354,12 @@ impl AIProvider for OpenAIProvider {
             "messages": openai_messages,
         });
 
+        // Only add tools if non-empty (empty tools with tool_choice: required causes issues)
         if let Some(tools) = tools {
-            body["tools"] = json!(Self::convert_tools(&tools));
-            body["tool_choice"] = json!("required");
+            if !tools.is_empty() {
+                body["tools"] = json!(Self::convert_tools(&tools));
+                body["tool_choice"] = json!("required");
+            }
         }
 
         self.send_request(body).await

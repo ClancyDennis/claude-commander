@@ -93,13 +93,25 @@ Claude Commander is a desktop application built with:
 |--------|---------|
 | `mod.rs` | Main meta-agent orchestration |
 | `conversation_manager.rs` | History management with image support |
-| `tool_loop_engine.rs` | Iterative tool execution cycle |
+| `tool_loop_engine.rs` | Iterative tool execution cycle (sleep-based iteration reset) |
 | `system_prompt.rs` | System prompt generation |
 | `result_queue.rs` | Queued results for display |
 | `action_logger.rs` | Action logging utilities |
-| `tools/agent_tools.rs` | Agent management tools |
-| `tools/fs_tools.rs` | File system tools |
-| `tools/todo_tools.rs` | Task orchestration updates |
+| `memory_manager.rs` | Persistent memory with Haiku sub-agent (2000 token budget) |
+| `context_tracker.rs` | Token counting, context state (Normal/Warning/Critical/Overflow) |
+| `context_summarizer.rs` | LLM-based context compaction at 75% usage |
+| `output_compressor.rs` | Smart output truncation with UTF-8 safety |
+| `prompt_generator.rs` | Personality customization and prompt caching |
+| `search_agent.rs` | Natural language search sub-agent |
+| `context_config.rs` | Context limits per AI provider |
+| `helpers.rs` | Utility functions |
+| `tools/mod.rs` | Tool dispatcher and execution |
+| `tools/agent_tools.rs` | CreateWorkerAgent, SendPrompt, StopWorkerAgent, etc. |
+| `tools/fs_tools.rs` | ListDirectory, ReadFile, WriteFile |
+| `tools/todo_tools.rs` | UpdateMetaTodoList |
+| `tools/memory_tools.rs` | UpdateMemory tool |
+| `tools/search_tools.rs` | Search tool (routes to SearchAgent) |
+| `tools/interaction_tools.rs` | Sleep (with iteration reset), AskUserQuestion, UpdateUser |
 
 ### Pipeline System
 
@@ -281,6 +293,12 @@ Real-time voice interaction powered by OpenAI Realtime API.
 
 #### Voice Modes
 
+| Mode | Model | Transcription | Tools | Special |
+|------|-------|---------------|-------|---------|
+| Dictate | gpt-realtime-mini | gpt-4o-transcribe | None | Fast, lightweight |
+| Discuss | gpt-4o-realtime-preview | whisper-1 | talk_to_mission_control | Full conversation |
+| Attention | gpt-4o-realtime-preview | whisper-1 | talk_to_mission_control | Auto-timeout |
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Dictate Mode                                                    │
@@ -291,10 +309,12 @@ Real-time voice interaction powered by OpenAI Realtime API.
 │  Tool: talk_to_mission_control → Routes to MetaAgent            │
 ├─────────────────────────────────────────────────────────────────┤
 │  Attention Mode                                                  │
-│  Task completes → AI announces result → Auto-closes (10s)       │
-│  User can ask brief follow-ups before timeout                   │
+│  Task completes → AI announces result → Auto-closes             │
+│  Timeout configured via personality settings (listen_timeout)   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+Voice settings (voice selection, timeout) are driven by `CommanderPersonality` in the meta-agent.
 
 ### Agent Runs Database (`agent_runs_db/`)
 
@@ -369,7 +389,9 @@ src/
     │   ├── activity.ts           # Activity timeline
     │   ├── security.ts           # Security monitoring state
     │   ├── voice.ts              # Voice state (3 modes)
-    │   └── metaTodos.ts          # Meta-agent task tracking
+    │   ├── metaTodos.ts          # Meta-agent task tracking
+    │   └── chat.ts               # Meta-agent chat/conversation state
+    ├── services/                 # Business logic
     └── types.ts                  # TypeScript type definitions
 ```
 
@@ -424,7 +446,15 @@ claude-agent-manager --hook-url http://localhost:19832/hook
 Agent run history is persisted in SQLite:
 
 - **Location**: `~/.local/share/claude-commander/agent_runs.db`
-- **Contents**: Run history, session metadata, tool events
+- **Contents**: Run history, session metadata, tool events, meta-agent conversations
+
+### Meta-Agent Memory
+
+Persistent memory for the meta-agent:
+
+- **Location**: `~/.local/share/claude-commander/meta-memory/`
+- **Contents**: `MEMORY.md` (main summary, 2000 token budget), project files, preferences
+- **Managed by**: `memory_manager.rs` using Haiku sub-agent
 
 ### Cost History
 

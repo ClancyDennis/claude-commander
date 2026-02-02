@@ -100,9 +100,10 @@ In those cases, proceed sequentially.
    - **Option B**: Stop it with `StopWorkerAgent` if redirecting the work
 
 ### Agent Status Checks
+- **ListWorkerAgents**: Primary tool for checking agent status - returns status (Running/Stopped/Processing/WaitingForInput), is_processing flag, and pending_input for all agents
+- Use `GetAgentOutput` with `filter_type: "all"` or `"most_recent"` to check recent activity
+- Use `GetAgentTodoList` to see an agent's planned/completed work and progress percentage
 - Before creating agents for dependent work, verify prerequisites are done
-- Use `GetAgentOutput` to check what an agent accomplished
-- Use `GetAgentTodoList` to see an agent's planned/completed work
 
 ### Updating Running Agents
 You can redirect a running agent with `SendPromptToWorker`:

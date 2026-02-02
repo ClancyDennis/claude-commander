@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -25,7 +27,10 @@ impl ClaudeProvider {
         Self {
             api_key,
             model,
-            http_client: Client::new(),
+            http_client: Client::builder()
+                .timeout(Duration::from_secs(180))
+                .build()
+                .expect("Failed to build HTTP client"),
         }
     }
 
@@ -103,6 +108,7 @@ impl ClaudeProvider {
 
     /// Build and send request to Claude API
     async fn send_request(&self, body: Value) -> Result<AIResponse, AIError> {
+        eprintln!("[LLM][Claude][{}] Sending API request", self.model);
         let response = self
             .http_client
             .post(CLAUDE_API_URL)
@@ -120,6 +126,10 @@ impl ClaudeProvider {
             .await
             .map_err(|e| AIError::ParseError(format!("Failed to parse Claude response: {}", e)))?;
 
+        eprintln!(
+            "[LLM][Claude][{}] Response received - tokens: in={}, out={}",
+            self.model, claude_response.usage.input_tokens, claude_response.usage.output_tokens
+        );
         Ok(Self::convert_response(claude_response))
     }
 }

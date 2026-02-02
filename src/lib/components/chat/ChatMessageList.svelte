@@ -23,7 +23,7 @@
   let scrollContainer: HTMLDivElement | null = $state(null);
 
   // Track previous message count to only scroll on new messages
-  const scrollState = { prevLength: 0, timeoutId: null as ReturnType<typeof setTimeout> | null };
+  let prevLength = 0;
 
   $effect(() => {
     const currentLength = messages.length;
@@ -33,25 +33,20 @@
     if ($isResizing) return;
 
     // Only auto-scroll when new messages arrive (not on every re-render)
-    if (currentLength > scrollState.prevLength) {
-      scrollState.prevLength = currentLength;
+    if (currentLength > prevLength) {
+      prevLength = currentLength;
 
-      // Clear any pending scroll
-      if (scrollState.timeoutId) clearTimeout(scrollState.timeoutId);
-
-      // Wait slightly for render
-      scrollState.timeoutId = setTimeout(() => {
-        requestAnimationFrame(() => {
-          if (DEBUG_SKIP_VIRTUAL_SCROLL && scrollContainer) {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight;
-          } else if (vs) {
-            vs.scrollToIndex(currentLength - 1);
-          }
-        });
-      }, 50);
-    } else if (currentLength < scrollState.prevLength) {
+      // Scroll to bottom on next frame
+      requestAnimationFrame(() => {
+        if (DEBUG_SKIP_VIRTUAL_SCROLL && scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        } else if (vs) {
+          vs.scrollToIndex(currentLength - 1);
+        }
+      });
+    } else if (currentLength < prevLength) {
       // Reset if chat was cleared
-      scrollState.prevLength = currentLength;
+      prevLength = currentLength;
     }
   });
 </script>

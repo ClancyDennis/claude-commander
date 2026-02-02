@@ -181,29 +181,6 @@ impl ConversationManager {
         self.history.clone()
     }
 
-    /// Get conversation history with context summary prepended (for API calls)
-    pub fn get_history_with_summary(&self) -> Vec<Message> {
-        let mut result = Vec::new();
-
-        // Prepend context summary as a system-like user message if available
-        if let Some(summary) = &self.context_summary {
-            result.push(Message {
-                role: "user".to_string(),
-                content: format!(
-                    "[PREVIOUS CONTEXT - The following is a summary of earlier conversation that was compacted to save context space:]\n\n{}",
-                    summary
-                ),
-            });
-            result.push(Message {
-                role: "assistant".to_string(),
-                content: "I understand. I'll continue with this context in mind.".to_string(),
-            });
-        }
-
-        result.extend(self.history.clone());
-        result
-    }
-
     /// Check if there is a context summary
     pub fn has_context_summary(&self) -> bool {
         self.context_summary.is_some()
@@ -270,6 +247,39 @@ impl ConversationManager {
                 content: RichMessageContent::Text(msg.content.clone()),
             })
             .collect()
+    }
+
+    /// Get history as RichMessages with context summary prepended (for API calls)
+    ///
+    /// This is the preferred method for the tool loop as it returns structured
+    /// RichMessage format that properly handles tool_use and tool_result blocks.
+    pub fn get_history_as_rich_messages(&self) -> Vec<RichMessage> {
+        let mut result = Vec::new();
+
+        // Prepend context summary if available
+        if let Some(summary) = &self.context_summary {
+            result.push(RichMessage {
+                role: "user".to_string(),
+                content: RichMessageContent::Text(format!(
+                    "[PREVIOUS CONTEXT - Summary of earlier conversation:]\n\n{}",
+                    summary
+                )),
+            });
+            result.push(RichMessage {
+                role: "assistant".to_string(),
+                content: RichMessageContent::Text(
+                    "I understand. I'll continue with this context in mind.".to_string(),
+                ),
+            });
+        }
+
+        // Convert each Message to RichMessage
+        result.extend(self.history.iter().map(|msg| RichMessage {
+            role: msg.role.clone(),
+            content: RichMessageContent::Text(msg.content.clone()),
+        }));
+
+        result
     }
 
     /// Create rich content blocks for a message with an image
@@ -388,12 +398,13 @@ mod tests {
     }
 
     #[test]
-    fn test_history_with_summary() {
+    fn test_history_as_rich_messages() {
         let mut manager = ConversationManager::new();
         manager.add_user_message("Hello".to_string());
 
-        // Without summary, should just return history
-        let history = manager.get_history_with_summary();
+        // Without summary, should just return history as RichMessages
+        let history = manager.get_history_as_rich_messages();
         assert_eq!(history.len(), 1);
+        assert_eq!(history[0].role, "user");
     }
 }

@@ -2,6 +2,7 @@ use crate::ai_client::AIClient;
 use crate::utils::generator::{
     extract_json_from_response, extract_text_from_content_blocks, sanitize_name,
 };
+use crate::utils::string::truncate_with_ellipsis;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -198,11 +199,7 @@ pub async fn generate_skill_from_instruction(
                 }
                 // Either not a JSON error or we've exhausted retries
                 // Include a snippet of the response for debugging
-                let response_preview = if ai_response.len() > 200 {
-                    format!("{}...", &ai_response[..200])
-                } else {
-                    ai_response.clone()
-                };
+                let response_preview = truncate_with_ellipsis(&ai_response, 200);
                 return Err(format!("{}\n\nResponse preview:\n{}", e, response_preview));
             }
         }

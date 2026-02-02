@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use crate::auto_pipeline::orchestrator_tools::{
     CompleteInput, GiveUpInput, IterateInput, ReplanInput, ToolResult,
 };
+use crate::utils::string::truncate_with_ellipsis;
 
 use super::context_builders::send_to_ai;
 use super::types::{
@@ -77,11 +78,7 @@ impl OrchestratorAgent {
                 // Emit tool complete event
                 if let Some(ref emitter) = self.event_emitter {
                     // Truncate content for event (avoid sending huge outputs)
-                    let summary = if result.content.len() > 200 {
-                        format!("{}...", &result.content[..200])
-                    } else {
-                        result.content.clone()
-                    };
+                    let summary = truncate_with_ellipsis(&result.content, 200);
                     let _ = emitter.emit(
                         "orchestrator:tool_complete",
                         json!({

@@ -388,7 +388,9 @@ Now process this instruction and update memory accordingly."#,
 
         for iteration in 0..MAX_MEMORY_AGENT_ITERATIONS {
             eprintln!(
-                "[MemoryManager] Iteration {}/{}",
+                "[LLM][{}][{}] MemoryManager Iteration {}/{}",
+                client.get_provider_name(),
+                client.get_model_name(),
                 iteration + 1,
                 MAX_MEMORY_AGENT_ITERATIONS
             );

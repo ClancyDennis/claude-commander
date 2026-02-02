@@ -27,6 +27,11 @@ impl ToolRegistry {
                     "navigate": {
                         "type": "boolean",
                         "description": "If true, automatically switch the UI to show this agent after creation. Defaults to false."
+                    },
+                    "complexity": {
+                        "type": "string",
+                        "enum": ["simple", "easy", "complex"],
+                        "description": "Task complexity level determining which Claude model to use. 'simple' uses Haiku (fast/cheap), 'easy' uses Sonnet (balanced, default), 'complex' uses Opus (most capable). Only applies when CLAUDE_CODE_MODEL is set to 'auto'."
                     }
                 },
                 "required": ["working_dir"]
@@ -69,7 +74,7 @@ impl ToolRegistry {
 
         tools.push(Tool {
             name: "ListWorkerAgents".to_string(),
-            description: "Lists all currently running worker agents with their status, working directories, and IDs.".to_string(),
+            description: "Lists all currently running worker agents with their status (Running/Stopped/Processing/WaitingForInput), working directories, and IDs. Use this as your PRIMARY tool to check agent status.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},

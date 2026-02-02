@@ -5,6 +5,7 @@
 
 use crate::agent_manager::AgentManager;
 use crate::meta_agent::MetaAgent;
+use crate::utils::string::truncate_with_ellipsis;
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::AppHandle;
@@ -69,11 +70,7 @@ async fn execute_talk_to_mission_control(
     {
         Ok(response) => {
             let content = &response.message.content;
-            let preview = if content.len() > 200 {
-                format!("{}...", &content[..200])
-            } else {
-                content.clone()
-            };
+            let preview = truncate_with_ellipsis(content, 200);
             println!("[Tools] Mission Control response: {}", preview);
 
             // Check if response looks like raw tool_use JSON (OpenAI compatibility issue)

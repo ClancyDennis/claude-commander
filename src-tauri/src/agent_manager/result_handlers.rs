@@ -6,6 +6,7 @@
 use crate::agent_runs_db::RunStatus;
 use crate::types::{
     AgentInputRequiredEvent, AgentStatistics, AgentStatsEvent, AgentStatus, AgentStatusEvent,
+    AgentWakeEvent, AgentWakeReason,
 };
 use crate::utils::time::now_millis;
 
@@ -133,6 +134,31 @@ async fn handle_success_completion(ctx: &StreamContext) {
         })
         .unwrap(),
     );
+
+    // Send wake event to meta-agent if it's sleeping
+    send_wake_event(ctx, AgentWakeReason::WaitingForInput).await;
+}
+
+/// Send a wake event to the meta-agent if it's sleeping
+async fn send_wake_event(ctx: &StreamContext, reason: AgentWakeReason) {
+    let wake_tx_guard = ctx.agent_wake_tx.lock().await;
+    if let Some(ref tx) = *wake_tx_guard {
+        let event = AgentWakeEvent {
+            agent_id: ctx.agent_id.clone(),
+            reason,
+        };
+        if let Err(e) = tx.send(event).await {
+            eprintln!(
+                "[StreamContext] Failed to send wake event for agent {}: {}",
+                ctx.agent_id, e
+            );
+        } else {
+            eprintln!(
+                "[StreamContext] Sent wake event for agent {} (waiting for input)",
+                &ctx.agent_id[..8.min(ctx.agent_id.len())]
+            );
+        }
+    }
 }
 
 /// Update costs in database incrementally after each result message
@@ -282,11 +308,19 @@ pub(crate) async fn handle_process_end(ctx: &StreamContext) {
         "agent:status",
         serde_json::to_value(AgentStatusEvent {
             agent_id: ctx.agent_id.clone(),
-            status,
+            status: status.clone(),
             info: None,
         })
         .unwrap(),
     );
+
+    // Send wake event to meta-agent if it's sleeping
+    let wake_reason = if was_stopped {
+        AgentWakeReason::Stopped
+    } else {
+        AgentWakeReason::Error("Process terminated unexpectedly".to_string())
+    };
+    send_wake_event(ctx, wake_reason).await;
 }
 
 /// Update database when process ends

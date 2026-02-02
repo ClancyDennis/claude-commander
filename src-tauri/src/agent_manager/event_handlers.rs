@@ -8,8 +8,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+use tokio::sync::mpsc;
+
 use crate::agent_runs_db::AgentRunsDB;
-use crate::types::{AgentOutputEvent, AgentStatistics};
+use crate::types::{AgentOutputEvent, AgentStatistics, AgentWakeEvent};
 
 use super::types::AgentProcess;
 
@@ -59,4 +61,7 @@ pub struct StreamContext {
 
     /// Optional pipeline ID if this agent is part of a pipeline
     pub pipeline_id: Option<String>,
+
+    /// Sender for waking the meta-agent when agent reaches terminal state
+    pub agent_wake_tx: Arc<Mutex<Option<mpsc::Sender<AgentWakeEvent>>>>,
 }

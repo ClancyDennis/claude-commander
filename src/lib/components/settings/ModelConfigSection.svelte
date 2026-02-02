@@ -30,7 +30,7 @@
 
   // User-friendly labels for settings
   const labels: Record<string, string> = {
-    ANTHROPIC_MODEL: "Model",
+    PRIMARY_MODEL: "Model",
     SECURITY_MODEL: "Security Model",
     LIGHT_TASK_MODEL: "Light Model",
     CLAUDE_CODE_MODEL: "Model",
@@ -38,7 +38,7 @@
 
   // Descriptions for settings
   const descriptions: Record<string, string> = {
-    ANTHROPIC_MODEL: "Main model for conversations and complex reasoning. Provider is inferred from model name.",
+    PRIMARY_MODEL: "Main model for conversations and complex reasoning. Provider is inferred from model name.",
     SECURITY_MODEL: "Model for security-critical analysis (higher capability recommended)",
     LIGHT_TASK_MODEL: "Model for lightweight tasks like title generation (faster/cheaper)",
     CLAUDE_CODE_MODEL: "Model used by Claude Code worker agents",
@@ -93,13 +93,13 @@
     <!-- Primary Model (unified dropdown) -->
     <div class="setting-item">
       <div class="setting-header">
-        <span class="setting-label">{labels.ANTHROPIC_MODEL}</span>
-        <HelpTip text={descriptions.ANTHROPIC_MODEL} placement="top" />
+        <span class="setting-label">{labels.PRIMARY_MODEL}</span>
+        <HelpTip text={descriptions.PRIMARY_MODEL} placement="top" />
       </div>
       {#if isEditing}
         <select
-          value={editedModels.ANTHROPIC_MODEL}
-          onchange={(e) => onModelChange("ANTHROPIC_MODEL", e.currentTarget.value)}
+          value={editedModels.PRIMARY_MODEL}
+          onchange={(e) => onModelChange("PRIMARY_MODEL", e.currentTarget.value)}
           class="setting-select"
         >
           <option value="">Use default</option>
@@ -124,7 +124,7 @@
           {/if}
         </select>
       {:else}
-        {@const model = getModel("ANTHROPIC_MODEL")}
+        {@const model = getModel("PRIMARY_MODEL")}
         {@const badge = getProviderBadge(model?.value || model?.default_value)}
         <div class="setting-value">
           <code>{getDisplayValue(model)}</code>

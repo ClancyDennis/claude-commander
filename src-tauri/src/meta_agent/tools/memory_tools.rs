@@ -1,13 +1,15 @@
 // Memory tools for MetaAgent
 //
-// Exposes the UpdateMemory tool that invokes the memory manager subagent.
+// Exposes the UpdateMemory tool that queues async memory updates.
 
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 use crate::meta_agent::memory_manager::MemoryManager;
+use crate::meta_agent::memory_worker::MemoryWorker;
 
-/// Update the persistent memory via the memory manager subagent
-pub async fn update_memory(input: Value) -> Value {
+/// Update the persistent memory via async worker (non-blocking)
+pub fn update_memory(input: Value, worker: &Arc<MemoryWorker>) -> Value {
     let instruction = match input["instruction"].as_str() {
         Some(i) => i,
         None => {
@@ -18,31 +20,14 @@ pub async fn update_memory(input: Value) -> Value {
         }
     };
 
-    // Create memory manager
-    let manager = match MemoryManager::new() {
-        Some(m) => m,
-        None => {
-            return json!({
-                "success": false,
-                "error": "Failed to initialize memory manager - could not determine data directory"
-            });
-        }
-    };
+    // Queue the update and return immediately
+    worker.queue_update(instruction.to_string());
 
-    // Process the instruction
-    match manager.update_memory(instruction).await {
-        Ok(result) => json!({
-            "success": result.success,
-            "memory_content": result.memory_content,
-            "token_count": result.token_count,
-            "message": result.message,
-            "hint": "Your persistent memory has been updated. This memory persists across sessions."
-        }),
-        Err(e) => json!({
-            "success": false,
-            "error": format!("Memory update failed: {}", e)
-        }),
-    }
+    json!({
+        "success": true,
+        "message": "Memory update queued. It will be processed in the background.",
+        "hint": "You can continue with other tasks. The memory will be updated shortly."
+    })
 }
 
 /// Get the current memory content (for reading without updating)

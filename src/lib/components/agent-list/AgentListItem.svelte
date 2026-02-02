@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Agent } from '$lib/types';
   import { formatPath, formatTimeRelative } from '$lib/utils/formatting';
-  import { getStatusColor } from '$lib/utils/status';
+  import { getStatusColor, getComplexityBackground, getComplexityLabel } from '$lib/utils/status';
   import { agentsWithAlerts } from '$lib/stores/security';
   import { selectedAgentIds } from '$lib/stores/agents';
   import { ChevronRight, AlertCircle, Shield } from "lucide-svelte";
@@ -36,6 +36,8 @@
   class="list-item"
   class:selected={isSelected}
   class:multi-selected={inMultiSelection && !isSelected}
+  style="--complexity-bg: {getComplexityBackground(agent.complexity)}"
+  title={agent.complexity ? getComplexityLabel(agent.complexity) : undefined}
   onclick={handleClick}
 >
   <div class="status-dot-container">
@@ -76,27 +78,29 @@
 
 <style>
   .list-item {
+    --hover-overlay: rgba(255, 255, 255, 0.05);
+    --active-overlay: rgba(255, 255, 255, 0.08);
     width: 100%;
     display: flex;
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3);
-    background: transparent;
+    background: var(--complexity-bg, transparent);
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: background var(--transition-fast);
+    transition: background var(--transition-fast), filter var(--transition-fast);
     text-align: left;
     color: inherit;
     margin-bottom: 2px;
   }
 
   .list-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: linear-gradient(var(--hover-overlay), var(--hover-overlay)), var(--complexity-bg, transparent);
   }
 
   .list-item:active {
-    background: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(var(--active-overlay), var(--active-overlay)), var(--complexity-bg, transparent);
   }
 
   .list-item.selected {

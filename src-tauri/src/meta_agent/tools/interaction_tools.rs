@@ -9,10 +9,13 @@
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::agent_manager::AgentManager;
+use crate::ai_client::Message;
 use crate::meta_agent::helpers::error;
+use crate::meta_agent::memory_worker::MemoryWorker;
+use crate::types::AgentWakeEvent;
 
 // ============================================================================
 // Shared State Types
@@ -29,32 +32,61 @@ pub struct PendingQuestion {
 pub struct SleepState {
     pub is_sleeping: bool,
     pub cancel_tx: Option<oneshot::Sender<String>>,
+    /// Receiver for agent wake events (created fresh each sleep)
+    pub wake_rx: Option<mpsc::Receiver<AgentWakeEvent>>,
 }
+
+/// Sender for agent wake events - stored separately in AppState for access by result handlers
+pub type AgentWakeSender = mpsc::Sender<AgentWakeEvent>;
 
 // ============================================================================
 // Sleep Tool
 // ============================================================================
 
-/// Sleep for a duration, interruptible by user messages.
+/// Sleep for a duration, interruptible by user messages or agent state changes.
 /// Returns current agent status when waking up.
+/// If sleep duration >= 1 minute, queues a memory evaluation task.
 pub async fn sleep_tool(
     input: Value,
     app_handle: &AppHandle,
     sleep_state: Arc<Mutex<SleepState>>,
     agent_manager: Arc<Mutex<AgentManager>>,
+    agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
+    memory_worker: Option<Arc<MemoryWorker>>,
+    recent_messages: Option<Vec<Message>>,
 ) -> Value {
     let duration_mins = input["duration_minutes"].as_f64().unwrap_or(1.0);
     let duration_ms = (duration_mins * 60_000.0) as u64;
     let reason = input["reason"].as_str().unwrap_or("Waiting...");
 
-    // Create cancellation channel
+    // Queue memory evaluation for sleeps >= 1 minute
+    // The worker has its own persistent runtime and AIClient
+    if duration_mins >= 1.0 {
+        if let (Some(worker), Some(messages)) = (&memory_worker, recent_messages) {
+            eprintln!(
+                "[Sleep] Queuing memory evaluation ({} messages, {:.1}min sleep)",
+                messages.len(),
+                duration_mins
+            );
+            worker.queue_evaluation(messages);
+        }
+    }
+
+    // Create cancellation channel for user messages
     let (cancel_tx, cancel_rx) = oneshot::channel::<String>();
 
-    // Set sleep state so user input can interrupt
+    // Create wake channel for agent events (buffer of 16 should be plenty)
+    let (wake_tx, mut wake_rx) = mpsc::channel::<AgentWakeEvent>(16);
+
+    // Set sleep state and store the wake sender for result handlers
     {
         let mut state = sleep_state.lock().await;
         state.is_sleeping = true;
         state.cancel_tx = Some(cancel_tx);
+    }
+    {
+        let mut wake_sender = agent_wake_tx.lock().await;
+        *wake_sender = Some(wake_tx);
     }
 
     // Notify frontend that we're sleeping
@@ -67,7 +99,7 @@ pub async fn sleep_tool(
         }),
     );
 
-    // Race: sleep timer vs user interrupt
+    // Race: sleep timer vs user interrupt vs agent wake event
     let result = tokio::select! {
         _ = tokio::time::sleep(std::time::Duration::from_millis(duration_ms)) => {
             // Natural wake - get current agent status
@@ -105,13 +137,34 @@ pub async fn sleep_tool(
                 }
             }
         }
+        Some(wake_event) = wake_rx.recv() => {
+            // Agent triggered wake event
+            let agents_status = get_agents_summary(&agent_manager).await;
+            json!({
+                "success": true,
+                "interrupted": true,
+                "agent_wake": {
+                    "agent_id": wake_event.agent_id,
+                    "reason": wake_event.reason.as_str(),
+                    "description": wake_event.reason.to_string()
+                },
+                "current_status": agents_status,
+                "message": format!("Sleep interrupted: Agent {} is {}.",
+                    &wake_event.agent_id[..8.min(wake_event.agent_id.len())],
+                    wake_event.reason)
+            })
+        }
     };
 
-    // Clear sleep state
+    // Clear sleep state and remove wake sender
     {
         let mut state = sleep_state.lock().await;
         state.is_sleeping = false;
         state.cancel_tx = None;
+    }
+    {
+        let mut wake_sender = agent_wake_tx.lock().await;
+        *wake_sender = None;
     }
 
     // Notify frontend that we're awake

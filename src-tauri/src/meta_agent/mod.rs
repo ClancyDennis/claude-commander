@@ -10,6 +10,7 @@ mod context_tracker;
 mod conversation_manager;
 pub mod helpers;
 mod memory_manager;
+mod memory_worker;
 mod output_compressor;
 mod prompt_generator;
 mod result_queue;
@@ -26,20 +27,22 @@ use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
 use crate::agent_runs_db::{AgentRunsDB, MetaConversationRecord, MetaMessageRecord};
-use crate::ai_client::{AIClient, Message};
+use crate::ai_client::{AIClient, Message, RichContentBlock, RichMessage, RichMessageContent};
 use crate::error::{ApiError, AppError, AppResult};
 use crate::tool_registry::ToolRegistry;
 use crate::types::{
     AgentResultStatus, ChatMessage, ChatResponse, ContextInfoEvent, ImageAttachment,
     MetaAgentThinkingEvent, QueueStatus, QueuedAgentResult,
 };
+use crate::utils::string::{truncate_utf8, truncate_with_ellipsis};
 
 use context_config::ContextConfig;
 use conversation_manager::ConversationManager;
+use memory_worker::MemoryWorker;
 use result_queue::ResultQueue;
 use system_prompt::build_system_prompt;
 use tool_loop_engine::{ToolLoopConfig, ToolLoopEngine};
-use tools::{PendingQuestion, SleepState};
+use tools::{AgentWakeSender, PendingQuestion, SleepState};
 
 /// The MetaAgent orchestrates worker agents through a conversational interface.
 ///
@@ -61,9 +64,13 @@ pub struct MetaAgent {
     // Interaction state for Sleep and AskUserQuestion tools
     sleep_state: Arc<Mutex<SleepState>>,
     pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+    // Wake sender storage for agents to wake meta-agent from sleep
+    agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
     // Conversation persistence
     conversation_db: Option<Arc<AgentRunsDB>>,
     current_conversation_id: Option<String>,
+    // Async memory worker for non-blocking updates
+    memory_worker: Arc<MemoryWorker>,
 }
 
 impl MetaAgent {
@@ -96,6 +103,9 @@ impl MetaAgent {
         let system_prompt = cached_prompt.as_deref().unwrap_or(&base_system_prompt);
         conversation.set_system_prompt(system_prompt);
 
+        // Start the async memory worker
+        let memory_worker = Arc::new(MemoryWorker::start());
+
         Self {
             conversation,
             tool_registry: ToolRegistry::new(),
@@ -109,8 +119,10 @@ impl MetaAgent {
             cached_prompt_hash,
             sleep_state: Arc::new(Mutex::new(SleepState::default())),
             pending_question: Arc::new(Mutex::new(None)),
+            agent_wake_tx: Arc::new(Mutex::new(None)),
             conversation_db: None,
             current_conversation_id: None,
+            memory_worker,
         }
     }
 
@@ -243,9 +255,8 @@ impl MetaAgent {
             eprintln!("[MetaAgent] Context compacted before processing");
         }
 
-        // Get a mutable reference to the conversation history for the tool loop
-        // Use get_history_with_summary to include context summary if present
-        let mut history = self.conversation.get_history_with_summary();
+        // Get conversation history as RichMessages for proper tool_use/tool_result handling
+        let mut history = self.conversation.get_history_as_rich_messages();
 
         // Run the tool loop with personalized prompt if available (includes memory)
         let system_prompt = self.get_system_prompt_with_memory();
@@ -264,6 +275,8 @@ impl MetaAgent {
                 &app_handle,
                 self.sleep_state.clone(),
                 self.pending_question.clone(),
+                self.agent_wake_tx.clone(),
+                self.memory_worker.clone(),
                 || self.get_queue_status(),
                 || None, // Context info will be added after we can get it
             )
@@ -278,7 +291,7 @@ impl MetaAgent {
         } else {
             0
         };
-        let new_history: Vec<Message> = history.into_iter().skip(summary_offset).collect();
+        let new_history: Vec<RichMessage> = history.into_iter().skip(summary_offset).collect();
         self.sync_history_from_loop(new_history);
 
         // Record token usage from the loop
@@ -371,9 +384,8 @@ impl MetaAgent {
             eprintln!("[MetaAgent] Context compacted before processing");
         }
 
-        // Get a mutable reference to the conversation history for the tool loop
-        // Use get_history_with_summary to include context summary if present
-        let mut history = self.conversation.get_history_with_summary();
+        // Get conversation history as RichMessages for proper tool_use/tool_result handling
+        let mut history = self.conversation.get_history_as_rich_messages();
 
         // Run the tool loop with initial rich messages
         let loop_result = self
@@ -388,6 +400,8 @@ impl MetaAgent {
                 &app_handle,
                 self.sleep_state.clone(),
                 self.pending_question.clone(),
+                self.agent_wake_tx.clone(),
+                self.memory_worker.clone(),
                 || self.get_queue_status(),
                 || None, // Context info will be added after we can get it
             )
@@ -402,7 +416,7 @@ impl MetaAgent {
         } else {
             0
         };
-        let new_history: Vec<Message> = history.into_iter().skip(summary_offset).collect();
+        let new_history: Vec<RichMessage> = history.into_iter().skip(summary_offset).collect();
         self.sync_history_from_loop(new_history);
 
         // Record token usage from the loop
@@ -435,15 +449,61 @@ impl MetaAgent {
     }
 
     /// Sync the conversation history after the tool loop has modified it
-    fn sync_history_from_loop(&mut self, history: Vec<Message>) {
+    fn sync_history_from_loop(&mut self, history: Vec<RichMessage>) {
         // The tool loop may have added assistant and tool result messages
         // We need to add any new messages to our conversation manager
         let current_len = self.conversation.get_history().len();
         for msg in history.into_iter().skip(current_len) {
+            // Extract text content from RichMessage
+            let content = Self::extract_text_from_rich_message(&msg);
             if msg.role == "assistant" {
-                self.conversation.add_assistant_message(msg.content);
+                self.conversation.add_assistant_message(content);
             } else if msg.role == "user" {
-                self.conversation.add_user_message(msg.content);
+                self.conversation.add_user_message(content);
+            }
+        }
+    }
+
+    /// Extract text content from a RichMessage (for storage in simple Message format)
+    fn extract_text_from_rich_message(msg: &RichMessage) -> String {
+        match &msg.content {
+            RichMessageContent::Text(s) => s.clone(),
+            RichMessageContent::Blocks(blocks) => {
+                // Extract text from blocks, serializing tool_use/tool_result as JSON
+                let parts: Vec<String> = blocks
+                    .iter()
+                    .map(|block| match block {
+                        RichContentBlock::Text { text } => text.clone(),
+                        RichContentBlock::ToolUse { id, name, input } => {
+                            // Serialize tool_use for reference in history
+                            serde_json::json!({
+                                "type": "tool_use",
+                                "id": id,
+                                "name": name,
+                                "input": input
+                            })
+                            .to_string()
+                        }
+                        RichContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            is_error,
+                        } => {
+                            // Serialize tool_result for reference in history
+                            let mut result = serde_json::json!({
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_id,
+                                "content": content
+                            });
+                            if let Some(err) = is_error {
+                                result["is_error"] = serde_json::json!(err);
+                            }
+                            result.to_string()
+                        }
+                        RichContentBlock::Image { .. } => "[Image]".to_string(),
+                    })
+                    .collect();
+                parts.join("\n")
             }
         }
     }
@@ -482,6 +542,21 @@ impl MetaAgent {
     /// Set the sleep state (for sharing with AppState to allow interrupt before locking)
     pub fn set_sleep_state(&mut self, state: Arc<Mutex<SleepState>>) {
         self.sleep_state = state;
+    }
+
+    /// Set the agent wake sender storage (for sharing with AppState to allow result handlers to wake meta-agent)
+    pub fn set_agent_wake_tx(&mut self, tx: Arc<Mutex<Option<AgentWakeSender>>>) {
+        self.agent_wake_tx = tx;
+    }
+
+    /// Get the agent wake sender storage (for tool loop to pass to sleep tool)
+    pub fn get_agent_wake_tx(&self) -> Arc<Mutex<Option<AgentWakeSender>>> {
+        self.agent_wake_tx.clone()
+    }
+
+    /// Get the memory worker for async memory updates
+    pub fn get_memory_worker(&self) -> Arc<MemoryWorker> {
+        self.memory_worker.clone()
     }
 
     /// Set the conversation database for persistence
@@ -595,21 +670,12 @@ impl MetaAgent {
             return;
         }
 
-        // Update conversation metadata
-        let preview = if content.len() > 100 {
-            Some(&content[..100])
-        } else {
-            Some(content)
-        };
+        // Update conversation metadata (safely truncate at UTF-8 boundaries)
+        let preview = Some(truncate_utf8(content, 100));
 
         // Auto-generate title from first user message
         let title = if message_index == 0 && role == "user" {
-            let title_text = if content.len() > 50 {
-                format!("{}...", &content[..50])
-            } else {
-                content.to_string()
-            };
-            Some(title_text)
+            Some(truncate_with_ellipsis(content, 50))
         } else {
             None
         };

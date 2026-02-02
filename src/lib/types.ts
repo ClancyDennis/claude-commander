@@ -1,5 +1,7 @@
 export type AgentStatus = "running" | "stopped" | "error" | "waitingforinput" | "idle" | "processing";
 
+export type AgentComplexity = "simple" | "easy" | "complex";
+
 export interface GitHubContext {
   repositoryUrl: string;
   owner: string;
@@ -20,6 +22,7 @@ export interface Agent {
   unreadOutputs?: number;
   githubContext?: GitHubContext;
   title?: string;
+  complexity?: AgentComplexity;
 }
 
 export interface AgentOutput {
@@ -80,6 +83,7 @@ export interface AgentInfo {
     last_synced?: string;
   };
   title?: string;
+  complexity?: string;
 }
 
 export interface AgentOutputEvent {
@@ -658,7 +662,6 @@ export interface ConfigStatus {
   available_claude_models: string[];
   claude_model_aliases: string[];
   claude_code_model_options: string[];
-  meta_agent_providers: string[];
   available_openai_models: string[];
   config_path: string;
   is_first_run?: boolean;

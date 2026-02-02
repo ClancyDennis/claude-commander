@@ -97,6 +97,8 @@ pub async fn execute_replan_step(
                 app_handle.clone(),
                 Some(pipeline_id.to_string()),
                 Some("Planning".to_string()),
+                None, // No model override
+                None, // No complexity
             )
             .await?
     };

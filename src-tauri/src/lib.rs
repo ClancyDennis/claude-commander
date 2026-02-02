@@ -32,7 +32,7 @@ use agent_manager::AgentManager;
 use agent_runs_db::AgentRunsDB;
 use auto_pipeline::AutoPipelineManager;
 use logger::Logger;
-use meta_agent::tools::{PendingQuestion, SleepState};
+use meta_agent::tools::{AgentWakeSender, PendingQuestion, SleepState};
 use meta_agent::MetaAgent;
 use security_monitor::{ResponseConfig, SecurityConfig, SecurityMonitor};
 use types::PendingElevatedCommand;
@@ -52,6 +52,8 @@ pub struct AppState {
     // Meta-agent interaction state (accessible without locking meta_agent)
     pub pending_meta_question: Arc<Mutex<Option<PendingQuestion>>>,
     pub meta_sleep_state: Arc<Mutex<SleepState>>,
+    // Wake sender for agents to wake meta-agent from sleep
+    pub agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -64,12 +66,35 @@ pub fn run() {
     // 2. Current working directory (for development overrides)
     if let Some(config_dir) = dirs::config_dir() {
         let app_env = config_dir.join("claude-commander").join(".env");
-        if app_env.exists() && dotenvy::from_path(&app_env).is_ok() {
-            println!("✓ Loaded .env from {:?}", app_env);
+        eprintln!("[Startup] Checking for .env at {:?}", app_env);
+        if app_env.exists() {
+            eprintln!("[Startup] .env file exists, attempting to load...");
+            match dotenvy::from_path(&app_env) {
+                Ok(_) => println!("✓ Loaded .env from {:?}", app_env),
+                Err(e) => eprintln!("[Startup] ERROR loading .env: {:?}", e),
+            }
+        } else {
+            eprintln!("[Startup] .env file does not exist at {:?}", app_env);
         }
+    } else {
+        eprintln!("[Startup] Could not determine config directory");
     }
     // Allow cwd .env to override config dir (useful for development)
     let _ = dotenvy::dotenv();
+
+    // Log loaded model configuration for debugging
+    eprintln!("[Startup] Model configuration loaded:");
+    for key in &[
+        "PRIMARY_MODEL",
+        "SECURITY_MODEL",
+        "LIGHT_TASK_MODEL",
+        "CLAUDE_CODE_MODEL",
+    ] {
+        match std::env::var(key) {
+            Ok(val) => eprintln!("[Startup]   {} = {}", key, val),
+            Err(_) => eprintln!("[Startup]   {} = <not set>", key),
+        }
+    }
 
     let hook_port: u16 = 19832;
 
@@ -167,18 +192,30 @@ pub fn run() {
                 agent_runs_db.clone(),
             )));
 
-            // Initialize meta-agent - tries ANTHROPIC_API_KEY first, then OPENAI_API_KEY
+            // Initialize meta-agent - infers provider from PRIMARY_MODEL
             let meta_agent = match MetaAgent::new() {
                 Ok(agent) => {
                     // Log which provider and model is being used
-                    let provider_info = if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-                        let model = std::env::var("ANTHROPIC_MODEL")
-                            .unwrap_or_else(|_| "claude-sonnet-4-5-20250929".to_string());
-                        format!("Claude ({})", model)
+                    let model = std::env::var("PRIMARY_MODEL").ok();
+                    let is_openai = model
+                        .as_ref()
+                        .map(|m| {
+                            let lower = m.to_lowercase();
+                            lower.starts_with("gpt-")
+                                || lower.starts_with("o1-")
+                                || lower.starts_with("o3-")
+                        })
+                        .unwrap_or(false);
+
+                    let provider_info = if is_openai {
+                        format!("OpenAI ({})", model.unwrap_or_else(|| "gpt-4o".to_string()))
+                    } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+                        format!(
+                            "Claude ({})",
+                            model.unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string())
+                        )
                     } else if std::env::var("OPENAI_API_KEY").is_ok() {
-                        let model =
-                            std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
-                        format!("OpenAI ({})", model)
+                        format!("OpenAI ({})", model.unwrap_or_else(|| "gpt-4o".to_string()))
                     } else {
                         "Unknown".to_string()
                     };
@@ -304,12 +341,22 @@ pub fn run() {
             let meta_sleep_state: Arc<Mutex<SleepState>> =
                 Arc::new(Mutex::new(SleepState::default()));
 
+            // Create shared wake sender storage (agents will use this to wake meta-agent)
+            let agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>> = Arc::new(Mutex::new(None));
+
             // Set the shared states on the meta agent
             {
                 let mut ma = meta_agent.blocking_lock();
                 ma.set_pending_question(pending_meta_question.clone());
                 ma.set_sleep_state(meta_sleep_state.clone());
+                ma.set_agent_wake_tx(agent_wake_tx.clone());
                 ma.set_conversation_db(agent_runs_db.clone());
+            }
+
+            // Share the wake sender with the agent manager so workers can wake meta-agent
+            {
+                let mut am = agent_manager.blocking_lock();
+                am.set_agent_wake_tx(agent_wake_tx.clone());
             }
 
             app.manage(AppState {
@@ -324,6 +371,7 @@ pub fn run() {
                 app_handle,
                 pending_meta_question,
                 meta_sleep_state,
+                agent_wake_tx,
             });
 
             Ok(())

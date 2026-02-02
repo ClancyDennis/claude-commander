@@ -238,6 +238,7 @@ async function setupStatusListener(
           lastSynced: info.github_context.last_synced,
         } : undefined,
         title: info.title,
+        complexity: info.complexity as Agent['complexity'],
       };
     }
 

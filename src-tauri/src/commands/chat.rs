@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::agent_runs_db::{ConversationQueryFilters, MetaConversationRecord};
 use crate::meta_agent::CommanderPersonality;
 use crate::types::{ChatMessage, ChatResponse, ImageAttachment};
+use crate::utils::string::truncate_with_ellipsis;
 use crate::AppState;
 
 #[derive(Debug, Serialize)]
@@ -105,12 +106,8 @@ pub async fn process_agent_results(
                 if results_only {
                     continue;
                 }
-                // Truncate long tool results
-                let truncated = if output.content.len() > 500 {
-                    format!("{}...[truncated]", &output.content[..500])
-                } else {
-                    output.content.clone()
-                };
+                // Truncate long tool results (safely handling UTF-8 boundaries)
+                let truncated = truncate_with_ellipsis(&output.content, 500);
                 formatted_output.push_str(&format!("Result: {}\n\n", truncated));
             }
             "result" => {
@@ -200,11 +197,7 @@ pub async fn answer_meta_agent_question(
     eprintln!(
         "[answer_meta_agent_question] Answering question {}: {}",
         question_id,
-        if answer.len() > 50 {
-            format!("{}...", &answer[..50])
-        } else {
-            answer.clone()
-        }
+        truncate_with_ellipsis(&answer, 50)
     );
 
     // Use the shared pending_meta_question directly from AppState

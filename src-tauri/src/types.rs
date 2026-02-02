@@ -91,6 +91,8 @@ pub struct AgentInfo {
     pub pooled: Option<bool>, // Whether tracked by pool
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>, // Optional display title (e.g., pipeline stage)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<String>, // Task complexity: "simple", "easy", "complex"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -588,4 +590,47 @@ pub struct MetaTodoItem {
 pub struct MetaTodoUpdatedEvent {
     pub todos: Vec<MetaTodoItem>,
     pub timestamp: i64,
+}
+
+// ============================================================================
+// Agent Wake Event Types (for waking meta-agent from sleep)
+// ============================================================================
+
+/// Reason why an agent is waking the meta-agent
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentWakeReason {
+    WaitingForInput,
+    Completed,
+    Error(String),
+    Stopped,
+}
+
+impl AgentWakeReason {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AgentWakeReason::WaitingForInput => "waiting_for_input",
+            AgentWakeReason::Completed => "completed",
+            AgentWakeReason::Error(_) => "error",
+            AgentWakeReason::Stopped => "stopped",
+        }
+    }
+}
+
+impl std::fmt::Display for AgentWakeReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentWakeReason::WaitingForInput => write!(f, "waiting for input"),
+            AgentWakeReason::Completed => write!(f, "completed"),
+            AgentWakeReason::Error(msg) => write!(f, "error: {}", msg),
+            AgentWakeReason::Stopped => write!(f, "stopped"),
+        }
+    }
+}
+
+/// Event sent to wake the meta-agent when an agent reaches a terminal state
+#[derive(Debug, Clone)]
+pub struct AgentWakeEvent {
+    pub agent_id: String,
+    pub reason: AgentWakeReason,
 }

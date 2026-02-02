@@ -12,6 +12,7 @@ use std::sync::Arc;
 use crate::agent_runs_db::{AgentRunsDB, RunQueryFilters, RunStatus};
 use crate::ai_client::{AIClient, ContentBlock, Message, Tool};
 use crate::types::AgentSource;
+use crate::utils::string::truncate_with_ellipsis;
 use chrono::{Duration, Utc};
 
 /// Maximum iterations for the search agent tool loop
@@ -236,13 +237,10 @@ impl SearchAgent {
                     .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                     .unwrap_or_else(|| "unknown".to_string());
 
-                let initial_prompt: Option<String> = run.initial_prompt.as_ref().map(|p| {
-                    if p.len() > 150 {
-                        format!("{}...", &p[..147])
-                    } else {
-                        p.clone()
-                    }
-                });
+                let initial_prompt: Option<String> = run
+                    .initial_prompt
+                    .as_ref()
+                    .map(|p| truncate_with_ellipsis(p, 147));
 
                 json!({
                     "agent_id": run.agent_id,
@@ -455,13 +453,7 @@ impl SearchAgent {
                             .lines()
                             .filter(|line| line.to_lowercase().contains(keyword))
                             .take(3)
-                            .map(|line| {
-                                if line.len() > 200 {
-                                    format!("{}...", &line[..197])
-                                } else {
-                                    line.to_string()
-                                }
-                            })
+                            .map(|line| truncate_with_ellipsis(line, 197))
                             .collect();
 
                         matches.push(json!({
@@ -554,7 +546,9 @@ Be efficient - don't call tools unnecessarily if you already have the answer."#;
 
         for iteration in 0..MAX_SEARCH_AGENT_ITERATIONS {
             eprintln!(
-                "[SearchAgent] Iteration {}/{}",
+                "[LLM][{}][{}] SearchAgent Iteration {}/{}",
+                client.get_provider_name(),
+                client.get_model_name(),
                 iteration + 1,
                 MAX_SEARCH_AGENT_ITERATIONS
             );

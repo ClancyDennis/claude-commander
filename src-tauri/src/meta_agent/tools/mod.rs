@@ -8,7 +8,10 @@ pub mod search_tools;
 pub mod todo_tools;
 
 // Re-export interaction tool types for use in MetaAgent
-pub use interaction_tools::{PendingQuestion, SleepState};
+pub use interaction_tools::{AgentWakeSender, PendingQuestion, SleepState};
+
+// Re-export IterationContext for use in tool_loop_engine
+pub use self::IterationContext as IterCtx;
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -16,6 +19,9 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
+use crate::ai_client::Message;
+use crate::meta_agent::memory_worker::MemoryWorker;
+use crate::utils::string::truncate_with_ellipsis;
 
 use super::action_logger::emit_action;
 use super::context_tracker::ContextInfo;
@@ -34,6 +40,8 @@ pub struct IterationContext {
     pub max: usize,
     /// Context usage information (optional)
     pub context_info: Option<ContextInfo>,
+    /// Recent messages for memory evaluation during sleep (optional)
+    pub recent_messages: Option<Vec<Message>>,
 }
 
 impl IterationContext {
@@ -42,6 +50,7 @@ impl IterationContext {
             current,
             max,
             context_info: None,
+            recent_messages: None,
         }
     }
 
@@ -51,6 +60,22 @@ impl IterationContext {
             current,
             max,
             context_info: Some(context_info),
+            recent_messages: None,
+        }
+    }
+
+    /// Create with context info and recent messages
+    pub fn with_context_and_messages(
+        current: usize,
+        max: usize,
+        context_info: Option<ContextInfo>,
+        recent_messages: Vec<Message>,
+    ) -> Self {
+        Self {
+            current,
+            max,
+            context_info,
+            recent_messages: Some(recent_messages),
         }
     }
 
@@ -112,6 +137,8 @@ pub async fn execute_tool(
     app_handle: AppHandle,
     sleep_state: Arc<Mutex<SleepState>>,
     pending_question: Arc<Mutex<Option<PendingQuestion>>>,
+    agent_wake_tx: Arc<Mutex<Option<AgentWakeSender>>>,
+    memory_worker: Arc<MemoryWorker>,
     _queue_status_fn: impl Fn() -> crate::types::QueueStatus,
     iteration_ctx: IterationContext,
 ) -> ToolExecutionResult {
@@ -193,7 +220,7 @@ pub async fn execute_tool(
         // Memory Tools
         // =====================================================================
         "UpdateMemory" => {
-            let val = memory_tools::update_memory(input.clone()).await;
+            let val = memory_tools::update_memory(input.clone(), &memory_worker);
             ToolExecutionResult::Continue(val)
         }
 
@@ -206,6 +233,9 @@ pub async fn execute_tool(
                 &app_handle,
                 sleep_state,
                 agent_manager,
+                agent_wake_tx,
+                Some(memory_worker),
+                iteration_ctx.recent_messages.clone(),
             )
             .await;
             // Add iteration reset info to sleep result
@@ -241,11 +271,7 @@ pub async fn execute_tool(
             eprintln!(
                 "[MetaAgent] CompleteTask called with status '{}': {}",
                 status,
-                if message.len() > 100 {
-                    format!("{}...", &message[..100])
-                } else {
-                    message.clone()
-                }
+                truncate_with_ellipsis(&message, 100)
             );
 
             ToolExecutionResult::Complete(message)
