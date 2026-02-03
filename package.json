@@ -27,7 +27,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/highlight.js": "^9.12.4",
     "@types/marked": "^5.0.2",
-    "bits-ui": "^2.15.4",
+    "bits-ui": "^2.15.5",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.1",
     "highlight.js": "^11.11.1",
