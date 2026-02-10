@@ -12,7 +12,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.1.18",
-    "@tauri-apps/cli": "^2.9.6",
+    "@tauri-apps/cli": "^2.10.0",
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
     "svelte": "^5.0.0",
@@ -21,9 +21,9 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-dialog": "^2.5.0",
-    "@tauri-apps/plugin-shell": "^2.3.4",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@types/dompurify": "^3.0.5",
     "@types/highlight.js": "^9.12.4",
     "@types/marked": "^5.0.2",
