@@ -24,6 +24,7 @@
     const mapping: Record<string, string> = {
       "Anthropic": "ANTHROPIC_API_KEY",
       "OpenAI": "OPENAI_API_KEY",
+      "Gemini": "GEMINI_API_KEY",
       "GitHub": "GITHUB_TOKEN",
     };
     return mapping[provider] || "";

@@ -45,6 +45,7 @@ impl ApiKeyValidationResult {
 pub enum Provider {
     Anthropic,
     OpenAI,
+    Gemini,
     GitHub,
 }
 
@@ -55,6 +56,7 @@ impl std::str::FromStr for Provider {
         match s.to_lowercase().as_str() {
             "anthropic" => Ok(Self::Anthropic),
             "openai" => Ok(Self::OpenAI),
+            "gemini" | "google" => Ok(Self::Gemini),
             "github" => Ok(Self::GitHub),
             _ => Err(format!("Unknown provider: {}", s)),
         }
@@ -77,6 +79,7 @@ pub async fn validate_api_key(
     match provider {
         Provider::Anthropic => validate_anthropic_key(&http_client, api_key).await,
         Provider::OpenAI => validate_openai_key(&http_client, api_key).await,
+        Provider::Gemini => validate_gemini_key(&http_client, api_key).await,
         Provider::GitHub => validate_github_token(&http_client, api_key).await,
     }
 }
@@ -134,6 +137,39 @@ async fn validate_openai_key(
     match status.as_u16() {
         200 => Ok(ApiKeyValidationResult::valid()),
         401 => Ok(ApiKeyValidationResult::invalid("Invalid API key")),
+        _ => {
+            let body = response.text().await.unwrap_or_default();
+            Ok(ApiKeyValidationResult::invalid(format!(
+                "Validation failed: {} - {}",
+                status, body
+            )))
+        }
+    }
+}
+
+/// Validate Gemini API key by listing models
+async fn validate_gemini_key(
+    client: &Client,
+    api_key: &str,
+) -> Result<ApiKeyValidationResult, AppError> {
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+        api_key
+    );
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| AppError::Api(ApiError::Network(format!("Network error: {}", e))))?;
+
+    let status = response.status();
+
+    match status.as_u16() {
+        200 => Ok(ApiKeyValidationResult::valid_with_message(
+            "Gemini API key is valid",
+        )),
+        400 | 403 => Ok(ApiKeyValidationResult::invalid("Invalid Gemini API key")),
         _ => {
             let body = response.text().await.unwrap_or_default();
             Ok(ApiKeyValidationResult::invalid(format!(

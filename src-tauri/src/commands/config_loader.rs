@@ -15,10 +15,13 @@ static ENV_CACHE: OnceLock<EnvCache> = OnceLock::new();
 pub mod env_keys {
     pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
     pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
+    pub const GEMINI_API_KEY: &str = "GEMINI_API_KEY";
     pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
     pub const PRIMARY_MODEL: &str = "PRIMARY_MODEL";
     pub const SECURITY_MODEL: &str = "SECURITY_MODEL";
     pub const LIGHT_TASK_MODEL: &str = "LIGHT_TASK_MODEL";
+    pub const ADVISOR_MODEL: &str = "ADVISOR_MODEL";
+    pub const ADVISOR_ENABLED: &str = "ADVISOR_ENABLED";
     pub const CLAUDE_CODE_API_KEY_MODE: &str = "CLAUDE_CODE_API_KEY_MODE";
     pub const CLAUDE_CODE_MODEL: &str = "CLAUDE_CODE_MODEL";
 }
@@ -27,16 +30,23 @@ pub mod env_keys {
 pub const ALLOWED_CONFIG_KEYS: &[&str] = &[
     env_keys::ANTHROPIC_API_KEY,
     env_keys::OPENAI_API_KEY,
+    env_keys::GEMINI_API_KEY,
     env_keys::GITHUB_TOKEN,
     env_keys::PRIMARY_MODEL,
     env_keys::SECURITY_MODEL,
     env_keys::LIGHT_TASK_MODEL,
+    env_keys::ADVISOR_MODEL,
+    env_keys::ADVISOR_ENABLED,
     env_keys::CLAUDE_CODE_API_KEY_MODE,
     env_keys::CLAUDE_CODE_MODEL,
 ];
 
 /// Keys that require app restart to take full effect
-pub const RESTART_REQUIRED_KEYS: &[&str] = &[env_keys::ANTHROPIC_API_KEY, env_keys::OPENAI_API_KEY];
+pub const RESTART_REQUIRED_KEYS: &[&str] = &[
+    env_keys::ANTHROPIC_API_KEY,
+    env_keys::OPENAI_API_KEY,
+    env_keys::GEMINI_API_KEY,
+];
 
 /// Claude model aliases (auto-update to latest snapshots)
 pub const CLAUDE_MODEL_ALIASES: &[&str] =

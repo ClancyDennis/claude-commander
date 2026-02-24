@@ -20,6 +20,7 @@ use tokio::sync::Mutex;
 
 use crate::agent_manager::AgentManager;
 use crate::ai_client::{AIClient, Tool};
+use crate::auto_pipeline::advisor::Advisor;
 use crate::events::AppEventEmitter;
 use crate::instruction_manager::{list_instruction_files, InstructionFileInfo};
 
@@ -81,6 +82,8 @@ pub struct OrchestratorAgent {
     pub(crate) pipeline_id: String,
     /// Spawned agent IDs for tracking: [planning, building, verification]
     pub(crate) spawned_agents: [Option<String>; 3],
+    /// Optional external advisor (e.g., Gemini) that reviews each step
+    pub(crate) advisor: Option<Advisor>,
 }
 
 impl OrchestratorAgent {
@@ -137,6 +140,9 @@ impl OrchestratorAgent {
         let ai_client = AIClient::openai_from_env()
             .or_else(|_| AIClient::from_env())
             .map_err(|e| format!("Failed to create AI client: {}", e))?;
+
+        // Initialize the external advisor (Gemini by default) if configured
+        let advisor = Advisor::from_env();
 
         // Load available instruction files
         let instruction_files = list_instruction_files(&working_dir).unwrap_or_default();
@@ -214,6 +220,7 @@ impl OrchestratorAgent {
             max_planning_replans: 1, // Default: allow 1 replan during planning
             pipeline_id: pipeline_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             spawned_agents: [None, None, None],
+            advisor,
         })
     }
 
@@ -262,6 +269,109 @@ impl OrchestratorAgent {
             | PipelineState::VerificationPassed
             | PipelineState::VerificationFailed => 3,
             PipelineState::Completed | PipelineState::Failed | PipelineState::GaveUp => 0,
+        }
+    }
+
+    /// Consult the external advisor (if configured) and inject its advice into the conversation.
+    /// Called after each major step (planning, execution, verification) completes.
+    pub async fn consult_advisor(&mut self, step_output: &str) {
+        let advisor = match &self.advisor {
+            Some(a) => a,
+            None => return,
+        };
+
+        let phase_name = self.current_state.phase_name();
+        let available_actions: Vec<&str> = self
+            .tools
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+
+        // Emit event that we're consulting the advisor
+        if let Some(ref emitter) = self.event_emitter {
+            let (provider, model) = advisor.model_info();
+            let _ = emitter.emit(
+                "orchestrator:advisor_consulting",
+                serde_json::json!({
+                    "phase": phase_name,
+                    "provider": provider,
+                    "model": model,
+                }),
+            );
+        }
+
+        eprintln!(
+            "[ADVISOR] Consulting advisor after {} phase (iteration {}/{})",
+            phase_name, self.current_iteration, self.max_iterations
+        );
+
+        // Truncate step output for advisor to avoid excessive token usage
+        let truncated_output = if step_output.len() > 8000 {
+            format!("{}...\n[truncated, {} total chars]", &step_output[..8000], step_output.len())
+        } else {
+            step_output.to_string()
+        };
+
+        match advisor
+            .consult(
+                &self.user_request,
+                phase_name,
+                &truncated_output,
+                &available_actions,
+                self.current_iteration,
+                self.max_iterations,
+            )
+            .await
+        {
+            Ok(advice) => {
+                eprintln!(
+                    "[ADVISOR] Received advice from {} ({}+{} tokens): {}",
+                    advice.model,
+                    advice.input_tokens,
+                    advice.output_tokens,
+                    &advice.recommendation[..advice.recommendation.len().min(200)]
+                );
+
+                // Inject advisor recommendation into the orchestrator's conversation
+                let advisor_context = format!(
+                    "[EXTERNAL ADVISOR RECOMMENDATION]\nThe following advice comes from an external AI advisor ({}) reviewing the {} phase output:\n\n{}\n\n[END ADVISOR RECOMMENDATION]\n\nConsider this advice when deciding your next action, but use your own judgment.",
+                    advice.model,
+                    phase_name,
+                    advice.recommendation
+                );
+
+                self.messages.push(ConversationMessage {
+                    role: "user".to_string(),
+                    content: ConversationContent::Text(advisor_context),
+                });
+
+                // Emit event with the advice
+                if let Some(ref emitter) = self.event_emitter {
+                    let _ = emitter.emit(
+                        "orchestrator:advisor_advice",
+                        serde_json::json!({
+                            "phase": phase_name,
+                            "model": advice.model,
+                            "recommendation": advice.recommendation,
+                            "input_tokens": advice.input_tokens,
+                            "output_tokens": advice.output_tokens,
+                        }),
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[ADVISOR] Consultation failed: {}", e);
+                // Non-fatal - the orchestrator continues without advice
+                if let Some(ref emitter) = self.event_emitter {
+                    let _ = emitter.emit(
+                        "orchestrator:advisor_error",
+                        serde_json::json!({
+                            "phase": phase_name,
+                            "error": e,
+                        }),
+                    );
+                }
+            }
         }
     }
 

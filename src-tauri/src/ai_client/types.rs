@@ -101,4 +101,5 @@ pub struct Usage {
 pub enum Provider {
     Claude { api_key: String, model: String },
     OpenAI { api_key: String, model: String },
+    Gemini { api_key: String, model: String },
 }

@@ -7,6 +7,7 @@
 // 4. Verifying - Reviews implementation and generates verification report
 // 5. Orchestrator decides: complete | iterate (back to build) | replan (back to plan)
 
+pub mod advisor;
 mod agent_utils;
 mod orchestrator;
 pub mod prompts;

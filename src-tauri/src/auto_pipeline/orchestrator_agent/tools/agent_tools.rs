@@ -125,6 +125,9 @@ impl OrchestratorAgent {
         self.current_plan = output.raw_text.clone();
         self.planning_agent_outputs = output.agent_outputs.clone();
 
+        // Consult external advisor for guidance on the plan
+        self.consult_advisor(&output.raw_text).await;
+
         ToolResult::success(
             "".to_string(),
             format!(
@@ -250,6 +253,9 @@ impl OrchestratorAgent {
         // Store the implementation and agent outputs
         self.current_implementation = output.raw_text.clone();
         self.building_agent_outputs = output.agent_outputs.clone();
+
+        // Consult external advisor for guidance on the build output
+        self.consult_advisor(&output.raw_text).await;
 
         ToolResult::success(
             "".to_string(),
@@ -385,6 +391,9 @@ impl OrchestratorAgent {
 
         // Store agent outputs
         self.verification_agent_outputs = output.agent_outputs.clone();
+
+        // Consult external advisor for guidance on verification results
+        self.consult_advisor(&output.raw_text).await;
 
         ToolResult::success(
             "".to_string(),

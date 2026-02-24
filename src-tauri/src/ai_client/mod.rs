@@ -9,7 +9,7 @@ pub mod providers;
 pub mod types;
 
 pub use error::AIError;
-pub use providers::{AIProvider, ClaudeProvider, OpenAIProvider};
+pub use providers::{AIProvider, ClaudeProvider, GeminiProvider, OpenAIProvider};
 pub use types::{
     AIResponse, ContentBlock, Message, Provider, RichContentBlock, RichMessage, RichMessageContent,
     Tool, Usage,
@@ -28,6 +28,7 @@ impl AIClient {
         let provider: Arc<dyn AIProvider> = match provider {
             Provider::Claude { api_key, model } => Arc::new(ClaudeProvider::new(api_key, model)),
             Provider::OpenAI { api_key, model } => Arc::new(OpenAIProvider::new(api_key, model)),
+            Provider::Gemini { api_key, model } => Arc::new(GeminiProvider::new(api_key, model)),
         };
 
         Self { provider }
@@ -99,6 +100,12 @@ impl AIClient {
     fn is_openai_model(model: &str) -> bool {
         let lower = model.to_lowercase();
         lower.starts_with("gpt-") || lower.starts_with("o1-") || lower.starts_with("o3-")
+    }
+
+    /// Check if a model name indicates Gemini
+    fn is_gemini_model(model: &str) -> bool {
+        let lower = model.to_lowercase();
+        lower.starts_with("gemini-")
     }
 
     /// Create an OpenAI-based client (preferred for orchestration)
@@ -229,6 +236,54 @@ impl AIClient {
         Err(AIError::ConfigError(
             "No API key available for security model. Set ANTHROPIC_API_KEY or OPENAI_API_KEY"
                 .to_string(),
+        ))
+    }
+
+    /// Create an AI client for the advisor role (Gemini-based)
+    ///
+    /// Uses GEMINI_API_KEY and ADVISOR_MODEL env vars.
+    /// Defaults to gemini-2.5-pro-preview-06-05.
+    pub fn advisor_from_env() -> Result<Self, AIError> {
+        let gemini_key = std::env::var("GEMINI_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty());
+
+        let model = std::env::var("ADVISOR_MODEL")
+            .ok()
+            .filter(|m| !m.is_empty());
+
+        // If a model is explicitly set, infer the provider from its name
+        if let Some(ref m) = model {
+            if Self::is_openai_model(m) {
+                if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+                    return Ok(Self::new(Provider::OpenAI {
+                        api_key,
+                        model: m.clone(),
+                    }));
+                }
+            } else if !Self::is_gemini_model(m) {
+                // Assume Claude model
+                if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+                    return Ok(Self::new(Provider::Claude {
+                        api_key,
+                        model: m.clone(),
+                    }));
+                }
+            }
+        }
+
+        // Default: use Gemini
+        if let Some(api_key) = gemini_key {
+            let gemini_model =
+                model.unwrap_or_else(|| "gemini-2.5-pro-preview-06-05".to_string());
+            return Ok(Self::new(Provider::Gemini {
+                api_key,
+                model: gemini_model,
+            }));
+        }
+
+        Err(AIError::ConfigError(
+            "No API key available for advisor. Set GEMINI_API_KEY (or ADVISOR_MODEL with appropriate provider key)".to_string(),
         ))
     }
 

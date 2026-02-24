@@ -33,6 +33,8 @@
     PRIMARY_MODEL: "Model",
     SECURITY_MODEL: "Security Model",
     LIGHT_TASK_MODEL: "Light Model",
+    ADVISOR_MODEL: "Advisor Model",
+    ADVISOR_ENABLED: "Advisor",
     CLAUDE_CODE_MODEL: "Model",
   };
 
@@ -41,6 +43,8 @@
     PRIMARY_MODEL: "Main model for conversations and complex reasoning. Provider is inferred from model name.",
     SECURITY_MODEL: "Model for security-critical analysis (higher capability recommended)",
     LIGHT_TASK_MODEL: "Model for lightweight tasks like title generation (faster/cheaper)",
+    ADVISOR_MODEL: "External AI advisor model that reviews each pipeline step (default: Gemini)",
+    ADVISOR_ENABLED: "Enable the external advisor to provide guidance after each pipeline phase",
     CLAUDE_CODE_MODEL: "Model used by Claude Code worker agents",
   };
 
@@ -73,13 +77,29 @@
     return lower.startsWith("gpt-") || lower.startsWith("o1-") || lower.startsWith("o3-");
   }
 
+  function isGeminiModel(model: string): boolean {
+    if (!model) return false;
+    return model.toLowerCase().startsWith("gemini-");
+  }
+
   // Get provider badge for display
   function getProviderBadge(modelValue: string | null | undefined): string {
     if (!modelValue) return "";
     if (isOpenAIModel(modelValue)) return "OpenAI";
     if (isClaudeModel(modelValue)) return "Claude";
+    if (isGeminiModel(modelValue)) return "Gemini";
     return "";
   }
+
+  // Known Gemini model options
+  const geminiModels = [
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.0-flash",
+  ];
+
+  // Check if Gemini is configured
+  const geminiConfigured = $derived(apiKeys.find(k => k.provider === "Gemini")?.is_configured ?? false);
 </script>
 
 <!-- Meta Agent Section -->
@@ -236,6 +256,92 @@
   </div>
 </section>
 
+<!-- Advisor Section -->
+<section class="config-section">
+  <div class="section-header">
+    <h3>Advisor</h3>
+    <span class="section-subtitle">External AI that reviews each pipeline step and provides guidance</span>
+  </div>
+
+  <div class="settings-grid">
+    <!-- Advisor Enabled Toggle -->
+    <div class="setting-item">
+      <div class="setting-header">
+        <span class="setting-label">{labels.ADVISOR_ENABLED}</span>
+        <HelpTip text={descriptions.ADVISOR_ENABLED} placement="top" />
+      </div>
+      {#if isEditing}
+        <select
+          value={editedModels.ADVISOR_ENABLED || "false"}
+          onchange={(e) => onModelChange("ADVISOR_ENABLED", e.currentTarget.value)}
+          class="setting-select"
+        >
+          <option value="false">Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      {:else}
+        {@const model = getModel("ADVISOR_ENABLED")}
+        <div class="setting-value">
+          <code>{(model?.value || model?.default_value) === "true" ? "Enabled" : "Disabled"}</code>
+          {#if model?.is_default}
+            <span class="default-indicator">(default)</span>
+          {/if}
+        </div>
+      {/if}
+    </div>
+
+    <!-- Advisor Model -->
+    <div class="setting-item">
+      <div class="setting-header">
+        <span class="setting-label">{labels.ADVISOR_MODEL}</span>
+        <HelpTip text={descriptions.ADVISOR_MODEL} placement="top" />
+      </div>
+      {#if isEditing}
+        <select
+          value={editedModels.ADVISOR_MODEL}
+          onchange={(e) => onModelChange("ADVISOR_MODEL", e.currentTarget.value)}
+          class="setting-select"
+        >
+          <option value="">Use default (gemini-2.5-pro-preview-06-05)</option>
+          {#if geminiConfigured}
+            <optgroup label="Gemini">
+              {#each geminiModels as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </optgroup>
+          {/if}
+          {#if anthropicConfigured}
+            <optgroup label="Claude">
+              {#each claudeModelAliases as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </optgroup>
+          {/if}
+          {#if openaiConfigured}
+            <optgroup label="OpenAI">
+              {#each availableOpenaiModels as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </optgroup>
+          {/if}
+        </select>
+      {:else}
+        {@const model = getModel("ADVISOR_MODEL")}
+        {@const badge = getProviderBadge(model?.value || model?.default_value)}
+        <div class="setting-value">
+          <code>{getDisplayValue(model)}</code>
+          {#if badge}
+            <span class="provider-badge" class:openai={badge === "OpenAI"} class:claude={badge === "Claude"} class:gemini={badge === "Gemini"}>{badge}</span>
+          {/if}
+          {#if model?.is_default}
+            <span class="default-indicator">(default)</span>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  </div>
+</section>
+
 <!-- Claude Code (Worker Agents) Section -->
 <section class="config-section">
   <div class="section-header">
@@ -375,6 +481,11 @@
   .provider-badge.openai {
     background: rgba(16, 163, 127, 0.2);
     color: rgb(16, 163, 127);
+  }
+
+  .provider-badge.gemini {
+    background: rgba(66, 133, 244, 0.2);
+    color: rgb(66, 133, 244);
   }
 
   .setting-select {

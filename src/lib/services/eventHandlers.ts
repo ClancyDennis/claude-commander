@@ -136,6 +136,9 @@ export interface EventHandlerCallbacks {
   }) => void;
   onOrchestratorStateChange: (stateChange: OrchestratorStateChange) => void;
   onOrchestratorDecision: (decision: OrchestratorDecision) => void;
+  onAdvisorConsulting?: (data: { phase: string; provider: string; model: string }) => void;
+  onAdvisorAdvice?: (data: { phase: string; model: string; recommendation: string; input_tokens: number; output_tokens: number }) => void;
+  onAdvisorError?: (data: { phase: string; error: string }) => void;
 
   // Security callbacks
   onSecurityAlert?: (payload: SecurityAlertPayload) => void;
@@ -619,6 +622,50 @@ async function setupOrchestratorDecisionListener(
 }
 
 // ============================================================================
+// Advisor Event Handlers
+// ============================================================================
+
+async function setupAdvisorConsultingListener(
+  onAdvisorConsulting: EventHandlerCallbacks['onAdvisorConsulting']
+): Promise<UnlistenFn> {
+  return listen<{
+    phase: string;
+    provider: string;
+    model: string;
+  }>("orchestrator:advisor_consulting", (event) => {
+    console.log("[Frontend] Advisor consulting:", event.payload.provider, event.payload.model, "for", event.payload.phase);
+    onAdvisorConsulting?.(event.payload);
+  });
+}
+
+async function setupAdvisorAdviceListener(
+  onAdvisorAdvice: EventHandlerCallbacks['onAdvisorAdvice']
+): Promise<UnlistenFn> {
+  return listen<{
+    phase: string;
+    model: string;
+    recommendation: string;
+    input_tokens: number;
+    output_tokens: number;
+  }>("orchestrator:advisor_advice", (event) => {
+    console.log("[Frontend] Advisor advice received for", event.payload.phase, "from", event.payload.model);
+    onAdvisorAdvice?.(event.payload);
+  });
+}
+
+async function setupAdvisorErrorListener(
+  onAdvisorError: EventHandlerCallbacks['onAdvisorError']
+): Promise<UnlistenFn> {
+  return listen<{
+    phase: string;
+    error: string;
+  }>("orchestrator:advisor_error", (event) => {
+    console.log("[Frontend] Advisor error:", event.payload.error);
+    onAdvisorError?.(event.payload);
+  });
+}
+
+// ============================================================================
 // Security Event Handlers
 // ============================================================================
 
@@ -755,6 +802,11 @@ export async function setupEventListeners(
     setupOrchestratorToolCompleteListener(callbacks.onOrchestratorToolComplete),
     setupOrchestratorStateChangeListener(callbacks.onOrchestratorStateChange),
     setupOrchestratorDecisionListener(callbacks.onOrchestratorDecision),
+
+    // Advisor events (3)
+    setupAdvisorConsultingListener(callbacks.onAdvisorConsulting),
+    setupAdvisorAdviceListener(callbacks.onAdvisorAdvice),
+    setupAdvisorErrorListener(callbacks.onAdvisorError),
 
     // Security events (5)
     setupSecurityAlertListener(callbacks.onSecurityAlert),

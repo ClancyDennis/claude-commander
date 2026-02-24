@@ -294,6 +294,7 @@ fn build_api_key_statuses() -> Vec<ApiKeyStatus> {
     let providers = [
         ("Anthropic", env_keys::ANTHROPIC_API_KEY),
         ("OpenAI", env_keys::OPENAI_API_KEY),
+        ("Gemini", env_keys::GEMINI_API_KEY),
     ];
 
     providers
@@ -322,6 +323,8 @@ fn build_model_configs() -> Vec<ModelConfig> {
         env_keys::PRIMARY_MODEL,
         env_keys::SECURITY_MODEL,
         env_keys::LIGHT_TASK_MODEL,
+        env_keys::ADVISOR_MODEL,
+        env_keys::ADVISOR_ENABLED,
         env_keys::CLAUDE_CODE_MODEL,
         env_keys::CLAUDE_CODE_API_KEY_MODE,
     ];
@@ -353,6 +356,8 @@ fn get_default_for_model_key(key: &str) -> Option<String> {
         env_keys::PRIMARY_MODEL => Some(models::get_default_claude_model()),
         env_keys::SECURITY_MODEL => Some(models::get_default_claude_model()), // Falls back to main model
         env_keys::LIGHT_TASK_MODEL => Some("claude-haiku-4-5".to_string()), // Faster/cheaper model (alias)
+        env_keys::ADVISOR_MODEL => Some("gemini-2.5-pro-preview-06-05".to_string()), // Gemini advisor
+        env_keys::ADVISOR_ENABLED => Some("false".to_string()), // Disabled by default
         env_keys::CLAUDE_CODE_MODEL => Some("auto".to_string()), // Use Claude Code's default
         _ => None, // Settings like CLAUDE_CODE_API_KEY_MODE don't have model defaults
     }
